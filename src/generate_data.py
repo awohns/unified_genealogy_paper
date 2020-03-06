@@ -256,7 +256,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Generate the data for a figure.")
     parser.add_argument(
-        "name", type=str, help="figure name",
+        "name", type=str, help="figure name", default='all',
         choices=sorted(list(name_map.keys()) + ['all']))
     parser.add_argument(
         "--setup", action="store_true", default=False, help="Run simulations")
