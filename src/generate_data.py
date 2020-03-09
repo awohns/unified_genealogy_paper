@@ -53,8 +53,8 @@ class CpuScalingSampleSize(DataGeneration):
 
     def __init__(self):
         DataGeneration.__init__(self)
-        # self.sample_sizes = [10, 20, 40, 64, 100, 250, 500]
-        self.sample_sizes = [10, 20, 40, 64, 100]
+        self.sample_sizes = [10, 20, 40, 64, 100, 250, 500, 1000, 1500, 2000]
+        # self.sample_sizes = [10, 20, 40, 64, 100]
         self.tools = ["tsdate", "tsinfer", "relate", "geva"]
         self.sim_cols = self.sim_cols + ["tsdate_cputime", "tsdate_memory",
                                          "tsinfer_cputime", "tsinfer_memory",
@@ -74,7 +74,7 @@ class CpuScalingSampleSize(DataGeneration):
             for index, seed in enumerate(seeds):
                 sim = evaluation.run_neutral_sim(sample_size, mutation_rate=1e-8,
                                                  recombination_rate=1e-8, Ne=10000,
-                                                 length=1e6, seed=seed)
+                                                 length=10e6, seed=seed)
                 # Dump simulated tree
                 filename = self.name + "_" + str(sample_size) + "_" + str(index)
                 # Save the simulated tree sequence
@@ -91,7 +91,7 @@ class CpuScalingSampleSize(DataGeneration):
 
                 # Update dataframe with details of simulation
                 row_data = {"filename": filename, "replicate": index,
-                            "sample_size": sample_size, "Ne": 10000, "length": 2e5,
+                            "sample_size": sample_size, "Ne": 10000, "length": 10e6,
                             "mutation_rate": 1e-8, "recombination_rate": 1e-8,
                             "n_edges": sim.num_edges, "n_trees": sim.num_trees,
                             "n_sites": sim.num_sites, "seed": seed,
@@ -156,7 +156,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
 
         seeds = [self.rng.randint(1, 2**31) for i in range(self.default_replicates)]
         for index, seed in tqdm(enumerate(seeds), desc="Running Simulations"):
-            sim = evaluation.run_neutral_sim(sample_size=250, mutation_rate=1e-8,
+            sim = evaluation.run_neutral_sim(sample_size=500, mutation_rate=1e-8,
                                              recombination_rate=1e-8, Ne=10000,
                                              length=1e6, seed=seed)
             # Dump simulated tree
@@ -175,7 +175,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
 
             # Update dataframe with details of simulation
             row_data = {"filename": filename, "replicate": index,
-                        "sample_size": 250, "Ne": 10000, "length": 2e5,
+                        "sample_size": 500, "Ne": 10000, "length": 1e6,
                         "mutation_rate": 1e-8, "recombination_rate": 1e-8,
                         "n_edges": sim.num_edges, "n_trees": sim.num_trees,
                         "n_sites": sim.num_sites, "seed": seed}

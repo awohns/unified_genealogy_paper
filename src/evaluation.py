@@ -25,9 +25,9 @@ from sklearn.metrics import mean_squared_error, mean_squared_log_error
 
 import tsdate # NOQA
 
-relate_executable = os.path.join('tools', 'relate_v1.0.16_MacOSX',
+relate_executable = os.path.join('tools', 'relate',
                                  'bin', 'Relate')
-relatefileformat_executable = os.path.join('tools', 'relate_v1.0.16_MacOSX',
+relatefileformat_executable = os.path.join('tools', 'relate',
                                            'bin', 'RelateFileFormats')
 geva_executable = os.path.join('tools', 'geva', 'geva_v1beta')
 geva_hmm_initial_probs = os.path.join('tools', 'geva', 'hmm', 'hmm_initial_probs.txt')
@@ -551,45 +551,6 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, output):
     # os.chdir("../../")
     # shutil.rmtree("tmp/" + output)
     return relate_ts_fixed, relate_ages, cpu_time, memory_use
-
-
-def run_relate_old(ts, path_to_vcf, mut_rate, Ne, output):
-    """
-    Run relate software on tree sequence. Requires vcf of simulated data
-    NOTE: Relate's effective population size is "of haplotypes"
-    """
-    # Create separate subdirectory for each run (requirement of relate)
-    if not os.path.exists("tmp/" + output):
-        os.mkdir("tmp/" + output)
-    os.chdir("tmp/" + output)
-    subprocess.check_output(["../../" + relatefileformat_executable,
-                             "--mode", "ConvertFromVcf", "--haps",
-                             output + ".haps",
-                             "--sample", output + ".sample",
-                             "-i", "../" + path_to_vcf])
-    subprocess.check_output(["../../" + relate_executable, "--mode",
-                             "All", "-m", str(mut_rate), "-N", str(Ne),
-                             "--haps", output + ".haps",
-                             "--sample", output + ".sample",
-                             "--seed", "1", "-o", output, "--map",
-                             "../../data/genetic_map.txt"])
-    subprocess.check_output(["../../" + relatefileformat_executable, "--mode",
-                             "ConvertToTreeSequence",
-                             "-i", output, "-o", output])
-    relate_ts = tskit.load(output + ".trees")
-    # Set samples flags to "1"
-    table_collection = relate_ts.dump_tables()
-    samples = np.repeat(1, ts.num_samples)
-    internal = np.repeat(0, relate_ts.num_nodes - ts.num_samples)
-    correct_sample_flags = np.array(
-        np.concatenate([samples, internal]), dtype='uint32')
-    table_collection.nodes.set_columns(
-        flags=correct_sample_flags, time=relate_ts.tables.nodes.time)
-    relate_ts_fixed = table_collection.tree_sequence()
-    relate_ages = pd.read_csv(output + ".mut", sep=';')
-    os.chdir("../../")
-    shutil.rmtree("tmp/" + output)
-    return relate_ts_fixed, relate_ages
 
 
 def run_geva(file_name, Ne, mut_rate, rec_rate):
