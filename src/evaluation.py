@@ -25,9 +25,9 @@ from sklearn.metrics import mean_squared_error, mean_squared_log_error
 
 import tsdate # NOQA
 
-relate_executable = os.path.join('tools', 'relate_v1.0.16_MacOSX',
+relate_executable = os.path.join('tools', 'relate_v1.0.17_MacOSX',
                                  'bin', 'Relate')
-relatefileformat_executable = os.path.join('tools', 'relate_v1.0.16_MacOSX',
+relatefileformat_executable = os.path.join('tools', 'relate_v1.0.17_MacOSX',
                                            'bin', 'RelateFileFormats')
 geva_executable = os.path.join('tools', 'geva', 'geva_v1beta')
 geva_hmm_initial_probs = os.path.join('tools', 'geva', 'hmm', 'hmm_initial_probs.txt')
@@ -322,21 +322,28 @@ def compare_mutations(method_names, ts_list, relate_ages, geva_ages=None,
     :rtype pandas.DataFrame
     """
 
-    def get_mut_bounds(ts):
+    def get_mut_age(ts):
         """
-        Method to return the bounding nodes of each mutation (upper and lower)
+        Get the edge id associated with each mutation
         """
-        mut_bounds = {}
-        for mutation in ts.mutations():
-            mut_site = ts.site(mutation.site).position
-            edge_num = np.intersect1d(
-                np.argwhere(ts.tables.edges.child == mutation.node),
-                np.argwhere(np.logical_and(ts.tables.edges.left <= mut_site,
-                            ts.tables.edges.right > mut_site)))
-            mut_bounds[round(mutation.position)] = np.sqrt(
-                ts.tables.nodes.time[mutation.node] *
-                ts.tables.nodes.time[ts.edge(int(edge_num)).parent])
-        return mut_bounds
+        edge_diff_iter = ts.edge_diffs()
+        right = 0
+        edges_by_child = {}  # contains {child_node:edge_id}
+        mut_age = {}
+        for site in ts.sites():
+            while right <= site.position:
+                (left, right), edges_out, edges_in = next(edge_diff_iter)
+                for e in edges_out:
+                    del edges_by_child[e.child]
+                for e in edges_in:
+                    assert e.child not in edges_by_child
+                    edges_by_child[e.child] = e.id
+            for m in site.mutations:
+                if m.node in edges_by_child:
+                    edge_id = edges_by_child[m.node]
+                    mut_age[site.position] = (ts.tables.nodes.time[m.node] +
+                                              ts.tables.nodes.time[ts.edge(edge_id).parent])/2
+        return mut_age
     relate_mut_ages = dict()
     if geva_ages is not None:
         geva_mut_ages = dict()
@@ -345,17 +352,17 @@ def compare_mutations(method_names, ts_list, relate_ages, geva_ages=None,
     dated_ts = ts_list[1]
     dated_inferred_ts = ts_list[2]
 
-    mut_ages = get_mut_bounds(ts)
-    mut_dated_ages = get_mut_bounds(dated_ts)
-    mut_inferred_dated_ages = get_mut_bounds(dated_inferred_ts)
+    mut_ages = get_mut_age(ts)
+    mut_dated_ages = get_mut_age(dated_ts)
+    mut_inferred_dated_ages = get_mut_age(dated_inferred_ts)
 
     for mut in ts.mutations():
-        position = round(mut.position)
+        position = np.round(mut.position)
 
         if np.any(relate_ages['pos_of_snp'] == position):
             relate_row = relate_ages[relate_ages['pos_of_snp'] == position]
-            relate_mut_ages[position] = np.sqrt((relate_row['age_end'] *
-                                                 relate_row['age_begin']).values[0])
+            relate_mut_ages[position] = (relate_row['age_end'] +
+                                                 relate_row['age_begin']).values[0] / 2
 
         if geva_ages is not None:
             if position in geva_positions['Position'].values:
@@ -514,29 +521,31 @@ def run_tsinfer(sample_fn, length,
     return ts_simplified, cpu_time, memory_use
 
 
-def run_relate(ts, path_to_vcf, mut_rate, Ne, output):
+def run_relate(ts, path_to_vcf, mut_rate, Ne, working_dir, output):
     """
     Run relate software on tree sequence. Requires vcf of simulated data
+    Relate needs to run in its own directory (param working_dir) 
     NOTE: Relate's effective population size is "of haplotypes"
     """
-    # Create temporary directory for each run (requirement of relate)
-    cur_dir = os.getcwd() + "/"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        subprocess.check_output([cur_dir + relatefileformat_executable,
-                                 "--mode", "ConvertFromVcf", "--haps",
-                                 output + ".haps",
-                                 "--sample", output + ".sample",
-                                 "-i", cur_dir + path_to_vcf])
-        cpu_time, memory_use = time_cmd([cur_dir + relate_executable, "--mode",
-                                 "All", "-m", str(mut_rate), "-N", str(Ne),
-                                 "--haps", output + ".haps",
-                                 "--sample", output + ".sample",
-                                 "--seed", "1", "-o", output, "--map",
-                                 cur_dir + "data/genetic_map.txt"])
-        subprocess.check_output([cur_dir + relatefileformat_executable, "--mode",
-                                 "ConvertToTreeSequence",
-                                 "-i", output, "-o", output])
-        relate_ts = tskit.load(output + ".trees")
+    cur_dir = os.getcwd()
+    if not os.path.isdir(working_dir):
+       os.mkdir(working_dir)
+    os.chdir(working_dir)
+    subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable),
+                             "--mode", "ConvertFromVcf", "--haps",
+                             output + ".haps",
+                             "--sample", output + ".sample",
+                             "-i", path_to_vcf])
+    cpu_time, memory_use = time_cmd([os.path.join(cur_dir, relate_executable), "--mode",
+                             "All", "-m", str(mut_rate), "-N", str(Ne),
+                             "--haps", output + ".haps",
+                             "--sample", output + ".sample",
+                             "--seed", "1", "-o", output, "--map",
+                             os.path.join(cur_dir, "data/genetic_map.txt")])
+    subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable), "--mode",
+                             "ConvertToTreeSequence",
+                             "-i", output, "-o", output])
+    relate_ts = tskit.load(output + ".trees")
 
     # Set samples flags to "1"
     table_collection = relate_ts.dump_tables()
@@ -548,8 +557,7 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, output):
         flags=correct_sample_flags, time=relate_ts.tables.nodes.time)
     relate_ts_fixed = table_collection.tree_sequence()
     relate_ages = pd.read_csv(output + ".mut", sep=';')
-    # os.chdir("../../")
-    # shutil.rmtree("tmp/" + output)
+    os.chdir(cur_dir)
     return relate_ts_fixed, relate_ages, cpu_time, memory_use
 
 

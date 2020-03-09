@@ -48,7 +48,7 @@ def main():
     prior = tsdate.build_prior_grid(input_ts, timepoints=args.timepoints, 
                                     approximate_prior=True)
     ts = tsdate.date(
-        input_ts, args.Ne, method=args.method, prior=prior)
+        input_ts, args.Ne, mutation_rate=args.mutation_rate, method=args.method, prior=prior)
     ts.dump(args.output)
 
 
