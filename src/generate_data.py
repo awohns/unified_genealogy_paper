@@ -385,8 +385,6 @@ def main():
         "--setup", action="store_true", default=False, help="Run simulations")
     parser.add_argument(
         "--inference", action="store_true", default=False, help="Run inference")
-    parser.add_argument(
-        "--summarize", action="store_true", default=False, help="Summarize output")
 
 
     args = parser.parse_args()
@@ -394,19 +392,15 @@ def main():
         for name, fig in name_map.items():
             if fig in figures:
                 if args.setup:
-                    fig.setup()
+                    fig().setup()
                 if args.inference:
-                    fig.inference()
-                if args.summarize:
-                    fig.summarize()
+                    fig().inference()
     else:
         fig = name_map[args.name]()
         if args.setup:
             fig.setup()
         if args.inference:
             fig.inference()
-        if args.summarize:
-            fig.summarize()
 
 
 if __name__ == "__main__":
