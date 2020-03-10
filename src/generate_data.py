@@ -113,8 +113,8 @@ class CpuScalingSampleSize(DataGeneration):
 
     def __init__(self):
         DataGeneration.__init__(self)
-        # self.sample_sizes = [10, 20, 40, 64, 100, 250, 500]
-        self.sample_sizes = [10, 20, 40, 64, 100]
+        self.sample_sizes = [10, 20, 40, 64, 100, 250, 500, 1000, 1500, 2000]
+        # self.sample_sizes = [10, 20, 40, 64, 100]
         self.sim_cols = self.sim_cols + ["filename", "replicate", "sample_size", "Ne",
                                          "length", "mut_rate", "rec_rate", "n_edges",
                                          "n_trees", "n_sites", "seed", "tsdate_cpu",
