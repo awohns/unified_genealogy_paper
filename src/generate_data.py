@@ -8,6 +8,7 @@ import argparse
 import logging
 import os
 import pandas as pd
+import multiprocessing
 import numpy as np
 import random
 import shutil
@@ -98,6 +99,24 @@ class DataGeneration:
         genetic_map_output.to_csv(path_to_genetic_map, sep=' ', index=False)
         return path_to_genetic_map
 
+    def run_multiprocessing(function, params, num_processes=1):
+        """
+        Run multiprocessing of inputted function a specified number of times
+        """
+        if num_processes > 1:
+            logging.info("Setting up using multiprocessing ({} processes)"
+                         .format(num_processes))
+            with multiprocessing.Pool(processes=num_processes,
+                                      maxtasksperchild=2) as pool:
+                for result in pool.imap_unordered(function, params):
+                    logging.info("Running inference")
+        else:
+            # When we have only one process it's easier to keep everything in the
+            # same process for debugging.
+            logging.info("Setting up using a single process")
+            for result in map(function, params):
+                logging.info("Running inference")
+
     def summarize(self):
         """
         Take the output of the inference and save to CSV
@@ -154,7 +173,8 @@ class CpuScalingSampleSize(DataGeneration):
         except FileNotFoundError:
             logging.error("Must run with --setup flag first")
 
-        for index, row in tqdm(self.data.iterrows(), desc="Running Inference"):
+        for index, row in tqdm(self.data.iterrows(), desc="Running Inference",
+                               total=self.data.shape[0]):
             path_to_file = os.path.join(self.data_dir, row["filename"])
             sim = tskit.load(path_to_file + ".trees")
 
@@ -294,7 +314,8 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
 
         # Name of output file with mutations ages
         output_fn = os.path.join(self.data_dir, self.name + "_mutations.csv")
-        for index, row in tqdm(self.data.iterrows(), desc="Running Inference"):
+        for index, row in tqdm(self.data.iterrows(), desc="Running Inference",
+                               total=self.data.shape[0]):
             path_to_file = os.path.join(self.data_dir, row["filename"])
             sim = tskit.load(path_to_file + ".trees")
 
@@ -399,7 +420,8 @@ class Chr20SimulatedMutationAccuracy(DataGeneration):
             self.data = pd.read_csv(self.data_file)
         except FileNotFoundError:
             logging.error("Must run with --setup flag first")
-        for index, row in tqdm(self.data.iterrows(), desc="Running Inference"):
+        for index, row in tqdm(self.data.iterrows(), desc="Running Inference",
+                               total=self.data.shape[0]):
             path_to_file = os.path.join(self.data_dir, row["filename"])
             sim = tskit.load(path_to_file + ".trees")
 
@@ -459,22 +481,26 @@ def main():
         "--setup", action="store_true", default=False, help="Run simulations")
     parser.add_argument(
         "--inference", action="store_true", default=False, help="Run inference")
+    parser.add_argument(
+        "--processes", '-p', type=int, default=1,
+        help="number of worker processes, e.g. 40")
 
 
     args = parser.parse_args()
     if args.name == 'all':
         for name, fig in name_map.items():
             if fig in figures:
+                fig = fig()
                 if args.setup:
-                    fig().setup()
+                    fig.setup()
                 if args.inference:
-                    fig().inference()
+                    fig.run_multiprocessing(fig.inference(), num_processes=args.processes)
     else:
         fig = name_map[args.name]()
         if args.setup:
             fig.setup()
         if args.inference:
-            fig.inference()
+            fig.run_multiprocessing(fig.inference(), num_processes=args.processes)
 
 
 if __name__ == "__main__":
