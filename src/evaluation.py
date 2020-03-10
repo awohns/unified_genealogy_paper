@@ -341,7 +341,7 @@ def compare_mutations(method_names, ts_list, relate_ages, geva_ages=None,
             for m in site.mutations:
                 if m.node in edges_by_child:
                     edge_id = edges_by_child[m.node]
-                    mut_age[site.position] = (ts.tables.nodes.time[m.node] +
+                    mut_age[np.round(site.position)] = (ts.tables.nodes.time[m.node] +
                                               ts.tables.nodes.time[ts.edge(edge_id).parent])/2
         return mut_age
     relate_mut_ages = dict()
@@ -521,7 +521,7 @@ def run_tsinfer(sample_fn, length,
     return ts_simplified, cpu_time, memory_use
 
 
-def run_relate(ts, path_to_vcf, mut_rate, Ne, working_dir, output):
+def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, output):
     """
     Run relate software on tree sequence. Requires vcf of simulated data
     Relate needs to run in its own directory (param working_dir) 
@@ -541,7 +541,7 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, working_dir, output):
                              "--haps", output + ".haps",
                              "--sample", output + ".sample",
                              "--seed", "1", "-o", output, "--map",
-                             os.path.join(cur_dir, "data/genetic_map.txt")])
+                             os.path.join(cur_dir, genetic_map_path)])
     subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable), "--mode",
                              "ConvertToTreeSequence",
                              "-i", output, "-o", output])
