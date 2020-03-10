@@ -113,7 +113,9 @@ class CpuScalingSampleSize(DataGeneration):
 
     def __init__(self):
         DataGeneration.__init__(self)
-        self.sample_sizes = [10, 20, 40, 64, 100, 250, 500, 1000, 1500, 2000]
+        self.sample_sizes = [10, 260, 526, 790, 1052, 1316, 1578, 1842, 2106,
+                             2368, 2632, 2894, 3158, 3421, 3684, 3948, 4210,
+                             4474, 4736, 5000]
         # self.sample_sizes = [10, 20, 40, 64, 100]
         self.sim_cols = self.sim_cols + ["filename", "replicate", "sample_size", "Ne",
                                          "length", "mut_rate", "rec_rate", "n_edges",
@@ -130,7 +132,7 @@ class CpuScalingSampleSize(DataGeneration):
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        row_data["length"] = 1e6
+        row_data["length"] = 5e6
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
@@ -214,13 +216,13 @@ class CpuScalingLength(CpuScalingSampleSize):
 
     def __init__(self):
         CpuScalingSampleSize.__init__(self)
-        self.lengths = [1e4, 1e5]
-        # self.lengths = [1e4, 1e5, 1e6, 5e6, 1e7, 2e7, 5e7]
+        # self.lengths = [1e4, 1e5]
+        self.lengths = np.linspace(1e5, 10e6, 20)
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        row_data["sample_size"] = 200
+        row_data["sample_size"] = 1000
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
