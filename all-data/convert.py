@@ -556,29 +556,30 @@ class HgdpConverter(VcfConverter):
                 population=populations[name])
 
 
-class NeanderthalConverter(VcfConverter):
+class MaxPlanckConverter(VcfConverter):
     """
-    Converts data for three phased Neanderthals.
+    Converts data for Max Planck Data. 
     """
 
     def process_metadata(self, metadata_file, show_progress=False):
         """
-        Adds the Neanderthal populations metadata.
+        Adds the Max Planck metadata.
         """
-        with open(metadata_file, "r") as neanderthal_metadata:
+        with open(metadata_file, "r") as max_planck_metadata:
             # Parse the individual metadata out of the file.
-            lines = neanderthal_metadata.read().splitlines() 
+            lines = max_planck_metadata.read().splitlines() 
             metadata = {}
             row = lines[1].split(" ")
             name = row[0]
             metadata["name"] = name
+            metadata["age"] = row[2]
             population = row[1]
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
         vcf.close()
         self.num_samples = len(individual_names) * 2
         pop_id = self.samples.add_population(
-                {"name": name, "super_population": population})
+                {"name": population, "super_population": "Max Planck"})
         self.samples.add_individual(
             metadata=metadata, population=pop_id, ploidy=2)
 
@@ -730,7 +731,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Script to convert VCF files into tsinfer input.")
     parser.add_argument(
-        "source", choices=["1kg", "sgdp", "ukbb", "hgdp", "neanderthal"],
+        "source", choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck"],
         help="The source of the input data.")
     parser.add_argument(
         "data_file", help="The input data file pattern.")
@@ -783,7 +784,7 @@ def main():
         "sgdp": SgdpConverter,
         "ukbb": UkbbConverter,
         "hgdp": HgdpConverter,
-        "neanderthal": NeanderthalConverter}
+        "max-planck": MaxPlanckConverter}
 
     try:
         with tsinfer.SampleData(

@@ -137,17 +137,52 @@ hgdp_%.snipped.trees.gnn.csv: hgdp_%.snipped.trees
 	python3 tsutil.py compute-hgdp-gnn $^ $@ --num-threads=16
 	
 #############################################
-# Neanderthal Data 
+# Max Planck Data 
 #############################################
 
 ARCHAIC_PATH=max_planck_data/
 
-vindija_%.samples: max_planck_data/vindija/vindija.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/vindija/vindija.samples
-	python convert.py neanderthal -p \
+vindija_%.samples: max_planck_data/vindija/vindija.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/vindija/vindija_metadata.txt
+	python convert.py max-planck -p \
 		max_planck_data/vindija/vindija.$*_mq25_mapab100.vcf.gz \
-		${ANCESTRAL_STATES_PREFIX_37}/$*_ancestral_states_37.fa \
+		$*_ancestral_states_37.fa \
 		-m max_planck_data/vindija/vindija_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
-		--reference-name=${REFERENCE_NAME}\
+		--reference-name=${REFERENCE_NAME_37}\
 		$@ > $@.report
 
+altai_%.samples: max_planck_data/altai/altai.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/altai/altai_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/altai/altai.$*_mq25_mapab100.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/altai/altai_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+chagyrskaya_%.samples: max_planck_data/chagyrskaya/chagyrskaya.%.noRB.vcf.gz %_ancestral_states_37.fa max_planck_data/chagyrskaya/chagyrskaya_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/chagyrskaya/chagyrskaya.$*.noRB.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/chagyrskaya/chagyrskaya_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+denisovan_%.samples: max_planck_data/denisovan/denisovan.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/denisovan/denisovan_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/denisovan/denisovan.$*_mq25_mapab100.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/denisovan/denisovan_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+ust_ishim_%.samples: max_planck_data/ust_ishim/ust_ishim.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/ust_ishim/ust_ishim_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/ust_ishim/ust_ishim.$*_mq25_mapab100.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/ust_ishim/ust_ishim_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
