@@ -186,3 +186,50 @@ ust_ishim_%.samples: max_planck_data/ust_ishim/ust_ishim.%_mq25_mapab100.vcf.gz 
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
 		$@ > $@.report
+
+loshbour_%.samples: max_planck_data/loshbour/loshbour.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/loshbour/loshbour_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/loshbour/loshbour.$*_mq25_mapab100.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/loshbour/loshbour_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+lbk_%.samples: max_planck_data/lbk/lbk.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/lbk/lbk_metadata.txt
+	python convert.py max-planck -p \
+		max_planck_data/lbk/lbk.$*_mq25_mapab100.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m max_planck_data/lbk/lbk_metadata.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+#############################################
+# 1240k Data
+#############################################
+
+afanasievo_%.samples: afanasievo/Afanasievo.%.0.999.phased.vcf.gz %_ancestral_states_37.fa
+	python convert.py afanasievo -p \
+		afanasievo/Afanasievo.$*.0.999.phased.vcf.gz \
+		$*_ancestral_states_37.fa \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+
+#############################################
+# 1240k Data
+#############################################
+
+#v42.4.1240K_%.vcf: 
+#plink --file 1240k/v42.4.1240K_$* --alleleACGT --recode vcf --out 1240k/v42.4.1240K_$*
+
+reich_%.samples: 1240k/v42.4.1240K_%.vcf.gz %_ancestral_states_37.fa 1240k/v42.4.1240K.anno
+	python convert.py 1240k -p \
+		1240k/v42.4.1240K_chr20.vcf.gz \
+		$*_ancestral_states_37.fa \
+		-m 1240k/v42.4.1240K.anno \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
+		--reference-name=${REFERENCE_NAME_37}\
+		$@ > $@.report
+

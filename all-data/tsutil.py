@@ -533,8 +533,7 @@ def run_combine_sampledata(args):
         population_id_map = {}
         for sampledata in sampledata_files:
             for pop in sampledata.populations_metadata[:]:
-                pop_id = samples.add_population({"name": pop["name"],
-                        "super_population": pop["super_population"]})
+                pop_id = samples.add_population({"name": pop["name"]})
                 population_id_map[pop["name"]] = pop_id
         for sampledata in sampledata_files:
             for indiv in sampledata.individuals():
@@ -556,7 +555,7 @@ def run_combine_sampledata(args):
                 pos_bool, cur_sample:cur_sample + num_samps] = sampledata.sites_genotypes[:]
             combined_alleles[np.isin(
                 combined_pos, sampledata.sites_position[:]), index * 2:(index *2)+ 2] = np.stack(
-                        sampledata.sites_alleles[:], axis=0) 
+                        sampledata.sites_alleles[:], axis=0)[:, 0:2] 
             combined_metadata[np.isin(
                 combined_pos, sampledata.sites_position[:]), index] = sampledata.sites_metadata[:]
             cur_sample += num_samps

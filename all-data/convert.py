@@ -13,6 +13,9 @@ import cyvcf2
 import pysam
 import tqdm
 import pandas as pd
+
+import tskit
+
 try:
     import bgen_reader
     # Local module used to work around slow genotype access in bgen_reader
@@ -644,6 +647,206 @@ class MaxPlanckConverter(VcfConverter):
         progress.close()
 
 
+class AfanasievoConverter(VcfConverter):
+    """
+    Converts data for Afanasievo Family. 
+    """
+
+    def process_metadata(self, show_progress=False):
+        """
+        Adds the Afanasievo metadata.
+        """
+        pop_id = self.samples.add_population(
+                {"name": "Afanasievo", "super_population": "Afanasievo"})
+        vcf = cyvcf2.VCF(self.data_file)
+        individual_names = list(vcf.samples)
+        vcf.close()
+        for name in individual_names:
+            metadata = {}
+            metadata["name"] = name
+            metadata["age"] = 5500
+            self.samples.add_individual(
+                metadata=metadata, population=pop_id, ploidy=2)
+        self.num_samples = len(individual_names) * 2
+        
+    def convert_genotypes(self, row, ancestral_state):
+        ret = None
+        num_diploids = self.num_samples // 2
+        a = np.zeros(self.num_samples, dtype=np.uint8)
+        all_alleles = set([ancestral_state])
+        # Fill in a with genotypes.
+        bases = np.array(row.gt_bases)
+        for j in range(num_diploids):
+            alleles = bases[j].split("|")
+            if len(alleles) != 2:
+                self.num_unphased += 1
+                break
+            for allele in alleles:
+                if allele == ".":
+                    self.num_missing_data += 1
+                    break
+                all_alleles.add(allele)
+            a[2 * j] = alleles[0] != ancestral_state
+            a[2 * j + 1] = alleles[1] != ancestral_state
+        else:
+            freq = np.sum(a)
+            # The loop above exited without breaking, so we have valid data.
+            if freq == 0:
+                self.num_invariant += 1
+            elif any(len(allele) != 1 for allele in all_alleles):
+                self.num_indels += 1
+            elif len(all_alleles) > 2:
+                self.num_non_biallelic += 1
+
+            else:
+                all_alleles.remove(ancestral_state)
+                alleles = [ancestral_state, all_alleles.pop()]
+                metadata = {"ID": row.ID, "REF": row.REF}
+                ret = Site(
+                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
+        return ret
+
+    def process_sites(self, show_progress=False, max_sites=None):
+        num_data_sites = int(subprocess.check_output(
+            ["bcftools", "index", "--nrecords", self.data_file]))
+        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
+        seen_positions = list()
+        num_sites = 0
+        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
+            ancestral_state = self.get_ancestral_state(row.POS)
+            if ancestral_state is not None:
+                site = self.convert_genotypes(row, ancestral_state)
+                if site is not None: 
+                    self.samples.add_site(
+                        position=site.position, genotypes=site.genotypes,
+                        alleles=site.alleles, metadata=site.metadata)
+                    seen_positions.append(site.position)
+                    progress.set_postfix(used=str(num_sites))
+                    num_sites += 1
+                    if num_sites == max_sites:
+                        break
+            progress.update()
+
+        progress.close()
+
+
+class ReichConverter(Converter):
+    """
+    Convert data from 1240K array to SampleData file.
+    """
+    def process_metadata(self, metadata_file, show_progress=False):
+        metadata_df = pd.read_csv(metadata_file, delimiter="\t")
+        # Add populations
+        population_id_map = {}
+        seen_populations = list()
+        for index, row in metadata_df.iterrows():
+            country = row["Country"]
+            if country not in seen_populations:
+                pop_id = self.samples.add_population(
+                        {'name': country, "locality": row["Locality"]})
+                population_id_map[country] = pop_id
+                seen_populations.append(country)
+
+        # The file contains some non UTF-8 codepoints for a contributors name.
+        with open(metadata_file, "r") as md_file:
+            columns = next(md_file).split("\t")
+            sane_names = [col.lower().split(" (")[0].split(" [")[0].replace(" ", "_") for col in columns]
+            rows = {}
+            populations = {}
+            locations = {}
+            for line in md_file:
+                metadata = dict(zip(sane_names, line.strip().split("\t")))
+                name = metadata["index"] + "_" + metadata["instance_id"]
+                population_name = metadata.pop("country")
+                populations[name] = population_id_map[population_name]
+                age = metadata.pop("average_of_95.4%_date_range_in_calbp")
+                metadata["age"] = age 
+                rows[name] = metadata
+                try:
+                    location = [
+                        float(metadata.pop("lat.")), float(metadata.pop("long."))]
+                except:
+                    pass
+                locations[name] = location
+        vcf = cyvcf2.VCF(self.data_file)
+        individual_names = list(vcf.samples)
+        vcf.close()
+        self.num_samples = len(individual_names) * 2
+
+        # Add in the metadata rows in the order of the VCF.
+        for name in individual_names:
+            metadata = rows[name]
+            self.samples.add_individual(
+                metadata=metadata, location=locations[name], ploidy=2,
+                population=populations[name])
+
+
+    def convert_genotypes(self, row, ancestral_state):
+        ret = None
+        num_diploids = self.num_samples // 2
+        a = np.zeros(self.num_samples, dtype=np.int8)
+        all_alleles = set([ancestral_state])
+        # Fill in a with genotypes.
+        bases = np.array(row.gt_bases)
+        for j in range(num_diploids):
+            alleles = bases[j].split("/")
+            if len(alleles) != 2:
+                self.num_unphased += 1
+                break
+            missing = False
+            for allele in alleles:
+                if allele == '.':
+                   missing = True 
+                else:
+                    all_alleles.add(allele)
+            a[2 * j] = alleles[0] != ancestral_state
+            a[2 * j + 1] = alleles[1] != ancestral_state
+            if missing:
+                if alleles[0] == '.':
+                    a[2 * j] = tskit.MISSING_DATA
+                if alleles[1] == '.':
+                    a[2 * j + 1] = tskit.MISSING_DATA
+        else:
+            freq = np.sum(a)
+            # The loop above exited without breaking, so we have valid data.
+            if freq == 0:
+                self.num_invariant += 1
+            elif any(len(allele) != 1 for allele in all_alleles):
+                self.num_indels += 1
+            elif len(all_alleles) != 2:
+                self.num_non_biallelic += 1
+            else:
+                all_alleles.remove(ancestral_state)
+                alleles = [ancestral_state, all_alleles.pop()]
+                metadata = {"ID": row.ID, "REF": row.REF}
+                ret = Site(
+                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
+        return ret
+
+    def process_sites(self, show_progress=False, max_sites=None):
+        num_data_sites = int(subprocess.check_output(
+            ["bcftools", "index", "--nrecords", self.data_file]))
+        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
+        seen_positions = list()
+        num_sites = 0
+        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
+            ancestral_state = self.get_ancestral_state(row.POS)
+            if ancestral_state is not None:
+                site = self.convert_genotypes(row, ancestral_state)
+                if site is not None: 
+                    self.samples.add_site(
+                        position=site.position, genotypes=site.genotypes,
+                        alleles=site.alleles, metadata=site.metadata)
+                    seen_positions.append(site.position)
+                    progress.set_postfix(used=str(num_sites))
+                    num_sites += 1
+                    if num_sites == max_sites:
+                        break
+            progress.update()
+
+        progress.close()
+
+
 class UkbbConverter(Converter):
 
     def process_metadata(self, metadata_file, show_progress=False):
@@ -725,13 +928,14 @@ class UkbbConverter(Converter):
             if j == max_sites:
                 break
         self.report()
-
+ 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Script to convert VCF files into tsinfer input.")
     parser.add_argument(
-        "source", choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck"],
+        "source", choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck",
+            "afanasievo", "1240k"],
         help="The source of the input data.")
     parser.add_argument(
         "data_file", help="The input data file pattern.")
@@ -784,7 +988,9 @@ def main():
         "sgdp": SgdpConverter,
         "ukbb": UkbbConverter,
         "hgdp": HgdpConverter,
-        "max-planck": MaxPlanckConverter}
+        "max-planck": MaxPlanckConverter,
+        "afanasievo": AfanasievoConverter,
+        "1240k": ReichConverter}
 
     try:
         with tsinfer.SampleData(
@@ -792,7 +998,10 @@ def main():
                 sequence_length=sequence_length) as samples:
             converter = converter_class[args.source](
                     args.data_file, ancestral_states, samples)
-            converter.process_metadata(args.metadata_file, args.progress)
+            if args.metadata_file:
+                converter.process_metadata(args.metadata_file, args.progress)
+            else:
+                converter.process_metadata(args.progress)
             converter.process_sites(args.progress, args.max_variants)
             samples.record_provenance(
                 command=sys.argv[0], args=sys.argv[1:], git=git_provenance,
