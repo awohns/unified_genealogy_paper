@@ -1,7 +1,3 @@
-import msprime
-import tsinfer
-import tskit
-
 import argparse
 from itertools import combinations
 import logging
@@ -23,7 +19,13 @@ import scipy
 from scipy.stats import gaussian_kde
 from sklearn.metrics import mean_squared_error, mean_squared_log_error
 
-import tsdate # NOQA
+import msprime
+import tsinfer
+import tskit
+import stdpopsim
+
+sys.path.append("/home/wilderwohns/tsdate_paper/tsdate/")
+import tsdate  # NOQA
 
 relate_executable = os.path.join('tools', 'relate',
                                  'bin', 'Relate')
@@ -167,8 +169,8 @@ def generate_samples(
     return sample_data
 
 
-def run_neutral_sim(
-        sample_size, Ne, length, mutation_rate, recombination_rate, seed=None):
+def run_neutral_sim(sample_size, Ne, length, mutation_rate,
+                    recombination_rate, seed=None):
     """
     Run simulation
     """
@@ -177,6 +179,75 @@ def run_neutral_sim(
         mutation_rate=mutation_rate, recombination_rate=recombination_rate,
         random_seed=seed)
     return ts
+
+
+def run_chr20_ooa(samples, Ne, length, mutation_rate,
+        recombination_rate, rng, seed=None):
+    """
+    Run StandardPopSim Out of Africa Chromosome 20
+    """
+    species = stdpopsim.get_species("HomSap")
+    contig = species.get_contig("chr20", genetic_map='HapMapII_GRCh37')
+    model = species.get_demographic_model('OutOfAfrica_3G09')
+    engine = stdpopsim.get_default_engine()
+    ts = engine.simulate(model, contig, samples, seed=seed)
+    snippet_start = rng.randint(0, ts.get_sequence_length() - length)
+    snippet = [snippet_start, snippet_start + length]
+    return ts.keep_intervals(np.array([snippet])).trim()
+
+
+def get_genetic_map_chr20_snippet(filename):
+    """
+    For each chromosome 20 simulation, randomly select a region to run inference on
+    """
+    species = stdpopsim.get_species("HomSap")
+    genetic_map = species.get_genetic_map("HapMapII_GRCh37")
+    cm = genetic_map.get_chromosome_map('chr20')
+    pos = np.array(cm.get_positions())
+    snippet = np.where(np.logical_and(pos > self.snippet[0],
+                                      pos < self.snippet[1]))
+    snippet_pos = pos[snippet]
+    snippet_rates = np.array(cm.get_rates())[snippet]
+    map_distance = np.concatenate(
+        [[0], (np.diff(snippet_pos) * snippet_rates[:-1]) / 1e6])
+    genetic_map_output = pd.DataFrame(
+        data=np.stack([snippet_pos, snippet_rates, map_distance], axis=1),
+        columns=["position", "COMBINED_rate.cM.Mb.", "Genetic_Map.cM."])
+    path_to_genetic_map = os.path.join(self.data_dir, filename + "_genetic_map.txt")
+    genetic_map_output.to_csv(path_to_genetic_map, sep=' ', index=False)
+    return genetic_map_output
+
+
+def sample_times(ancient_sample_size, generation_time):
+    """
+    Pick the sample times from the Reich dataset
+    """
+    sample_times = np.genfromtxt(
+        "all-data/ancient_sample_times/reich_ancient_samples_age.txt",
+        skip_header=1)
+    age_hist = np.histogram(sample_times, bins=100)
+    age_distribution = age_hist[0] / sample_times.shape[0] 
+    sampled_ages = np.random.choice((age_hist[1][1:] + age_hist[1][:-1]) / 2, 
+            size=ancient_sample_size, p=age_distribution)
+    return sampled_ages / generation_time
+
+def run_neutral_ancients(sample_size_modern, sample_size_ancient,
+                         ancient_sample_times, length, Ne, mut_rate,
+                         rec_rate, seed=None):
+    """
+    Run a vanilla msprime simulation with a specified number of modern and ancient
+    samples (the latter at given ages). Return both the simulated tree with
+    ancients and the modern-only tree.
+    """
+    samples = [msprime.Sample(population=0, time=0) for samp in range(sample_size_modern)]
+    ancient_sample_times = np.array(ancient_sample_times, dtype=float)
+    ancient_samples = [msprime.Sample(population=0, time=time) for samp, time in
+                       zip(range(sample_size_ancient), ancient_sample_times)]
+    samples = samples + ancient_samples
+
+    return msprime.simulate(samples=samples, length=length, Ne=Ne,
+                            mutation_rate=mut_rate, recombination_rate=rec_rate,
+                            random_seed=seed)
 
 
 def out_of_africa(sample_size, mutation_rate, recombination_rate, length):
@@ -247,6 +318,30 @@ def out_of_africa(sample_size, mutation_rate, recombination_rate, length):
     return ts
 
 
+def remove_ancients(ts):
+    """
+    Remove all ancient samples from simulated tree sequence
+    """
+    modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
+    modern_ts = ts.simplify(samples=modern_samples, keep_unary=True)
+
+    del_sites = list()
+    for tree in modern_ts.trees():
+        for site in tree.sites():
+            assert len(site.mutations) == 1  # Only supports infinite sites muts.
+            mut = site.mutations[0]
+            if tree.num_samples(mut.node) == modern_ts.num_samples:
+                del_sites.append(site.id)
+            elif (tree.num_samples(mut.node) == 1 and 
+                ts.at(site.position).num_samples(
+                    ts.tables.mutations.node[np.where(
+                        ts.tables.sites.position == site.position)[0][0]]) != 1):
+                del_sites.append(site.id)
+    tables = modern_ts.dump_tables()
+    tables.delete_sites(del_sites)
+    modern_ts = tables.tree_sequence()
+
+    return modern_ts
 
 
 def return_vcf(tree_sequence, filename):
@@ -303,8 +398,6 @@ def sampledata_to_vcf(sample_data, filename):
 
     df.to_csv(output_VCF, sep="\t", mode='a', index=False)
     return df
-
-
 
 
 def compare_mutations(method_names, ts_list, relate_ages, geva_ages=None,
@@ -381,6 +474,129 @@ def compare_mutations(method_names, ts_list, relate_ages, geva_ages=None,
             [mut_ages, mut_dated_ages, mut_inferred_dated_ages, relate_mut_ages],
             index=['simulated_ts', 'tsdate', 'tsdate_inferred', 'relate']).T
     return run_results
+
+
+def compare_mutation_msle_noancients(ts, inferred, tsdate_dates, iter_infer, iter_dates,
+                                     tsinfer_keep_times, tsdate_keep_times, tsdate_true_topo):
+    """
+    Compare mutation accuracy in iterative approach
+    """
+
+    real_time = list()
+    tsdate_time = list()
+    iteration_time = list()
+    tsinfer_keep_time = list()
+    simulated_topo_time = list()
+
+    for mut in ts.mutations():
+        real_pos = np.where(mut.position == ts.tables.sites.position)[0][0]
+        real_time.append(ts.tables.nodes.time[ts.tables.mutations.node[real_pos]])
+
+        dated_pos = np.where(mut.position == inferred.tables.sites.position)[0][0]
+        tsdate_time.append(tsdate_dates[inferred.tables.mutations.node[dated_pos]])
+
+        iteration_pos = np.where(
+            mut.position == iter_infer.tables.sites.position)[0][0]
+        iteration_time.append(iter_dates[
+            iter_infer.tables.mutations.node[iteration_pos]])
+
+        real_times_pos = np.where(
+            mut.position == tsinfer_keep_times.tables.sites.position)[0][0]
+        tsinfer_keep_time.append(
+            tsdate_keep_times[tsinfer_keep_times.tables.mutations.node[real_times_pos]])
+
+        simulated_topo_time.append(
+            tsdate_true_topo[ts.tables.mutations.node[mut.id]])
+
+    run_results = pd.DataFrame(
+        [mean_squared_log_error(real_time, tsdate_time),
+         mean_squared_log_error(real_time, iteration_time),
+         mean_squared_log_error(real_time, tsinfer_keep_time),
+         mean_squared_log_error(real_time, simulated_topo_time)],
+        index=['tsdateTime',  'IterationTime',
+               'tsinfer_keep_time', 'SimulatedTopoTime']).T
+    return run_results
+
+
+def compare_mutations_iterative(ancient_sample_size, ts, modern_ts, inferred, sample_data,
+                                tsdate_dates, sample_data_constr, iter_infer, iter_dates,
+                                tsinfer_keep_times, tsdate_keep_times, tsdate_true_topo):
+    """
+    Compare mutation accuracy in iterative approach
+    """
+
+   # real_time = list()
+   # frequency = list()
+   # tsdate_time = list()
+   # constrained_time = list()
+   # iteration_time = list()
+   # tsinfer_keep_time = list()
+   # simulated_topo_time = list()
+    mut_df = pd.DataFrame(
+            index=range(modern_ts.num_mutations),
+            columns=['ancient_sample_size', 'TrueTime', 'tsdateTime', 'keeptimeTime',
+                     'simulatedTopoTime', 'IterationTime'])
+    mut_df['ancient_sample_size'] = ancient_sample_size
+    for mut in modern_ts.mutations():
+        real_pos = np.where(mut.position == ts.tables.sites.position)[0][0]
+        mut_df.loc[mut.id, 'TrueTime'] = ts.tables.nodes.time[ts.tables.mutations.node[real_pos]]
+        dated_pos = np.where(mut.position == inferred.tables.sites.position)[0][0]
+        mut_df.loc[mut.id, 'tsdateTime'] = tsdate_dates[inferred.tables.mutations.node[dated_pos]]
+        real_times_pos = np.where(mut.position == tsinfer_keep_times.tables.sites.position)[0][0]
+        mut_df.loc[mut.id, 'keeptimeTime'] = tsdate_keep_times[tsinfer_keep_times.tables.mutations.node[real_times_pos]]
+        mut_df.loc[mut.id, 'simulatedTopoTime'] = tsdate_true_topo[modern_ts.simplify().tables.mutations.node[mut.id]]
+        iter_pos = np.where(
+                mut.position == iter_infer.tables.sites.position)[0][0]
+        mut_df.loc[mut.id, 'IterationTime'] = iter_dates[iter_infer.tables.mutations.node[iter_pos]]
+#        real_pos = np.where(mut.position == ts.tables.sites.position)[0][0]
+#        real_time.append(ts.tables.nodes.time[ts.tables.mutations.node[real_pos]])
+#
+#        dated_pos = np.where(mut.position == inferred.tables.sites.position)[0][0]
+#        frequency.append(sample_data.sites_time[:][dated_pos])
+#        tsdate_time.append(tsdate_dates[inferred.tables.mutations.node[dated_pos]])
+#
+#        modern_pos = np.where(mut.position == sample_data_constr.sites_position[:])[0][0]
+#        constrained_time.append(sample_data_constr.sites_time[:][modern_pos])
+#
+#        iteration_pos = np.where(
+#            mut.position == iter_infer.tables.sites.position)[0][0]
+#        iteration_time.append(iter_dates[
+#            iter_infer.tables.mutations.node[iteration_pos]])
+#
+#        real_times_pos = np.where(
+#            mut.position == tsinfer_keep_times.tables.sites.position)[0][0]
+#
+#        tsinfer_keep_time.append(
+#            tsdate_keep_times[tsinfer_keep_times.tables.mutations.node[real_times_pos]])
+#
+#        simulated_topo_time.append(
+#            tsdate_true_topo[modern_ts.simplify().tables.mutations.node[mut.id]])
+#
+#    run_results = pd.DataFrame(
+#        [ancient_sample_size, mean_squared_log_error(real_time, tsdate_time),
+#         mean_squared_log_error(real_time, iteration_time),
+#         mean_squared_log_error(real_time, tsinfer_keep_time),
+#         mean_squared_log_error(real_time, simulated_topo_time)],
+#        index=['ancient_sample_size', 'tsdateTime', 'IterationTime',
+#               'tsinfer_keep_time', 'SimulatedTopoTime']).T
+    print(mean_squared_log_error(mut_df['TrueTime'], mut_df['tsdateTime']))
+    print(mean_squared_log_error(mut_df['TrueTime'], mut_df['keeptimeTime']))
+    print(mean_squared_log_error(mut_df['TrueTime'], mut_df['simulatedTopoTime']))
+    print(mean_squared_log_error(mut_df['TrueTime'], mut_df['IterationTime']))
+    run_results = pd.DataFrame(
+        [ancient_sample_size, mean_squared_log_error(mut_df['TrueTime'], mut_df['tsdateTime']),
+         mean_squared_log_error(mut_df['TrueTime'], mut_df['IterationTime']),
+         mean_squared_log_error(mut_df['TrueTime'], mut_df['keeptimeTime']),
+         mean_squared_log_error(mut_df['TrueTime'], mut_df['simulatedTopoTime'])],
+        index=['ancient_sample_size', 'tsdateTime', 'IterationTime',
+               'tsinfer_keep_time', 'SimulatedTopoTime']).T
+
+    #run_results = pd.DataFrame(
+    #    [real_time, frequency, tsdate_time, constrained_time, iteration_time,
+    #     tsinfer_keep_time, simulated_topo_time],
+    #    index=['SimulatedTime', 'Frequency', 'tsdateTime', 'ConstrainedTime',
+    #           'IterationTime', 'tsinfer_keep_time', 'SimulatedTopoTime']).T
+    return run_results 
 
 
 def kc_distance_ts(ts_1, ts_2, lambda_param):
@@ -498,6 +714,18 @@ def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
         name = add_subsample_param_to_name(name, subsample_size)
     return name
 
+
+def run_tsdate_get_dates(inferred, Ne, mutation_rate):
+    """
+    Return dates of the inferred tree sequence
+    """
+
+    dates, _, timepoints, eps, nds = tsdate.get_dates(
+        inferred, Ne=Ne, mutation_rate=mutation_rate)
+
+    return dates * 2 * Ne
+
+
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
         cmd = [sys.executable, tsdate_executable, input_fn, ts_out.name, str(Ne)]
@@ -505,6 +733,22 @@ def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
         cpu_time, memory_use = time_cmd(cmd)
         dated_ts = tskit.load(ts_out.name)
     return dated_ts, cpu_time, memory_use
+
+
+def iteration_tsdate(constr_sample_data, constr_sites, Ne, mut_rate, adjust_priors=True):
+    iter_infer = tsinfer.infer(constr_sample_data).simplify()
+    priors = tsdate.build_prior_grid(iter_infer)
+    if adjust_priors and constr_sites:
+        for mut_pos, limit in constr_sites.items():
+            infer_mut_pos = np.where(
+                mut_pos == iter_infer.tables.sites.position)[0][0]
+            node = (iter_infer.tables.mutations.node[infer_mut_pos] -
+                    iter_infer.num_samples)
+            priors.grid_data[node][:(
+                np.abs(priors.timepoints * 20000 - limit)).argmin()] = 0
+    iter_dates, _, _, _, _ = tsdate.get_dates(iter_infer, Ne=Ne, mutation_rate=mut_rate,
+                                              priors=priors)
+    return iter_infer, iter_dates * 2 * Ne
 
 
 def run_tsinfer(sample_fn, length,
@@ -524,27 +768,28 @@ def run_tsinfer(sample_fn, length,
 def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, output):
     """
     Run relate software on tree sequence. Requires vcf of simulated data
-    Relate needs to run in its own directory (param working_dir) 
+    Relate needs to run in its own directory (param working_dir)
     NOTE: Relate's effective population size is "of haplotypes"
     """
     cur_dir = os.getcwd()
     if not os.path.isdir(working_dir):
        os.mkdir(working_dir)
     os.chdir(working_dir)
-    subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable),
-                             "--mode", "ConvertFromVcf", "--haps",
-                             output + ".haps",
-                             "--sample", output + ".sample",
-                             "-i", path_to_vcf])
-    cpu_time, memory_use = time_cmd([os.path.join(cur_dir, relate_executable), "--mode",
-                             "All", "-m", str(mut_rate), "-N", str(Ne),
-                             "--haps", output + ".haps",
-                             "--sample", output + ".sample",
-                             "--seed", "1", "-o", output, "--map",
-                             os.path.join(cur_dir, genetic_map_path)])
-    subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable), "--mode",
-                             "ConvertToTreeSequence",
-                             "-i", output, "-o", output])
+    with tempfile.NamedTemporaryFile("w+") as relate_out:
+        subprocess.run([os.path.join(cur_dir, relatefileformat_executable),
+                                 "--mode", "ConvertFromVcf", "--haps",
+                                 output + ".haps",
+                                 "--sample", output + ".sample",
+                                 "-i", path_to_vcf])
+        cpu_time, memory_use = time_cmd([os.path.join(cur_dir, relate_executable), "--mode",
+                                 "All", "-m", str(mut_rate), "-N", str(Ne),
+                                 "--haps", output + ".haps",
+                                 "--sample", output + ".sample",
+                                 "--seed", "1", "-o", output, "--map",
+                                 os.path.join(cur_dir, genetic_map_path)])
+        subprocess.check_output([os.path.join(cur_dir, relatefileformat_executable), "--mode",
+                                 "ConvertToTreeSequence",
+                                 "-i", output, "-o", output])
     relate_ts = tskit.load(output + ".trees")
 
     # Set samples flags to "1"
@@ -619,9 +864,39 @@ def geva_age_estimate(file_name, Ne, mut_rate, rec_rate):
 
     age_estimates = pd.read_csv(
         file_name + "_estimation.sites.txt", sep=" ", index_col="MarkerID")
-    keep_ages = age_estimates[(age_estimates["Clock"] == "J")
-                              & (age_estimates["Filtered"] == 1)]
+    keep_ages = age_estimates[(age_estimates["Clock"] == "J") & (age_estimates[
+        "Filtered"] == 1)]
     return keep_ages
+
+
+def constrain_with_ancient(sample_data, dates, inferred, ancient_genos=None,
+                           ancient_ages=None):
+    """
+    Take date estimates and constrain using ancient information
+    """
+
+    ancient_ages = np.array(ancient_ages)
+    constr_ages = np.zeros_like(sample_data.sites_time[:])
+    sites_pos = sample_data.sites_position[:]
+
+    if ancient_ages is not None:
+        constr_sites = {}
+    else:
+        constr_sites = None
+    for mut in inferred.mutations():
+        constr_ages[sites_pos == mut.position] = dates[mut.node]
+        if ancient_ages is not None:
+            if np.any(ancient_genos[mut.id] == 1):
+                constr_sites[mut.position] = np.max(
+                    ancient_ages[ancient_genos[mut.id] == 1])
+                if np.max(ancient_ages[ancient_genos[mut.id] == 1]) > dates[mut.node]:
+                    constr_ages[sites_pos == mut.position] = np.max(ancient_ages[
+                        ancient_genos[mut.id] == 1])
+
+    constr_sample_data = sample_data.copy()
+    constr_sample_data.sites_time[:] = constr_ages
+    constr_sample_data.finalise()
+    return constr_sample_data, constr_sites
 
 
 def run_all_methods_compare(
@@ -755,7 +1030,7 @@ def run_multiprocessing(function, params, output, num_replicates, num_processes)
 def plot_results_mutation_compare(result_df, output=None):
     alpha = 0.2
     with sns.axes_style('white'):
-        fig, ax = plt.subplots(nrows = 2, ncols = 2, figsize = (12,12), sharex=True, sharey=True)
+        fig, ax = plt.subplots(nrows=2, ncols=2, figsize = (12,12), sharex=True, sharey=True)
         true_vals = result_df['simulated_ts']
         tsdate = result_df['tsdate']
         tsdate_inferred = result_df['tsdate_inferred']
@@ -768,59 +1043,65 @@ def plot_results_mutation_compare(result_df, output=None):
             geva = result_df_geva['geva']
             true_geva = result_df_geva['simulated_ts']
     
-        ax[0,0].set_xscale('log')
-        ax[0,0].set_yscale('log')
-        ax[0,0].set_xlim(1,2e5)
-        ax[0,0].set_ylim(1,2e5)
+        ax[0, 0].set_xscale('log')
+        ax[0, 0].set_yscale('log')
+        ax[0, 0].set_xlim(1, 2e5)
+        ax[0, 0].set_ylim(1, 2e5)
 
         # tsdate on true tree
         x = true_vals
         y = tsdate 
-        ax[0,0].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
-        ax[0,0].plot(ax[0,0].get_xlim(), ax[0,0].get_ylim(), ls="--", c=".3")
-        ax[0,0].set_title('tsdate with true topology', fontsize=17)
-        ax[0,0].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[0,0].transAxes)
-        ax[0,0].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[0,0].transAxes)
-        ax[0,0].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[0,0].transAxes)
+        ax[0, 0].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
+        ax[0, 0].plot(ax[0, 0].get_xlim(), ax[0, 0].get_ylim(), ls="--", c=".3")
+        ax[0, 0].set_title('tsdate with true topology', fontsize=17)
+        ax[0, 0].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[0, 0].transAxes)
+        ax[0, 0].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[0, 0].transAxes)
+        ax[0, 0].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[0, 0].transAxes)
 
         # tsdate on inferred tree
         y = tsdate_inferred
-        ax[0,1].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
-        ax[0,1].plot(ax[0,0].get_xlim(), ax[0,0].get_ylim(), ls="--", c=".3")
-        ax[0,1].set_title('tsdate with inferrred topology', fontsize=17)
-        ax[0,1].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[0,1].transAxes)
-        ax[0,1].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[0,1].transAxes)
-        ax[0,1].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[0,1].transAxes)
+        ax[0, 1].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
+        ax[0, 1].plot(ax[0, 0].get_xlim(), ax[0, 0].get_ylim(), ls="--", c=".3")
+        ax[0, 1].set_title('tsdate with inferrred topology', fontsize=17)
+        ax[0, 1].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[0, 1].transAxes)
+        ax[0, 1].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[0, 1].transAxes)
+        ax[0, 1].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[0, 1].transAxes)
 
         if 'geva' in result_df.columns:
             # geva
             x = true_geva
             y = geva
-            xy = np.vstack([x,y])
+            xy = np.vstack([x, y])
             z = gaussian_kde(xy)(xy)
-            ax[1,0].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
-            ax[1,0].plot(ax[0,0].get_xlim(), ax[0,0].get_ylim(), ls="--", c=".3")
-            ax[1,0].set_title('GEVA: Albers & McVean (2018)', fontsize=17)
-            ax[1,0].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[1,0].transAxes)
-            ax[1,0].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[1,0].transAxes)
-            ax[1,0].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[1,0].transAxes)
+            ax[1, 0].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
+            ax[1, 0].plot(ax[0, 0].get_xlim(), ax[0, 0].get_ylim(), ls="--", c=".3")
+            ax[1, 0].set_title('GEVA: Albers & McVean (2018)', fontsize=17)
+            ax[1, 0].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[1, 0].transAxes)
+            ax[1, 0].text(0.6, 0.1, "Spearman's "+'$\\rho$: '  + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[1, 0].transAxes)
+            ax[1, 0].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[1, 0].transAxes)
 
 
         # relate
         x = true_relate
         y = relate
-        xy = np.vstack([x,y])
+        xy = np.vstack([x, y])
         z = gaussian_kde(xy)(xy)
-        scatter = ax[1,1].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
-        im = ax[1,1].plot(ax[0,0].get_xlim(), ax[0,0].get_ylim(), ls="--", c=".3")
-        ax[1,1].set_title('Relate: Speidel et al. (2019)', fontsize=17)
-        ax[1,1].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[1,1].transAxes)
-        ax[1,1].text(0.6, 0.1, "Spearman's "+'$\\rho$: ' + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]), fontsize=12, transform=ax[1,1].transAxes)
-        ax[1,1].text(0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]), fontsize=12, transform=ax[1,1].transAxes)
-
+        scatter = ax[1, 1].scatter(x, y, s=5, edgecolor='', cmap=plt.cm.viridis, alpha=alpha)
+        im = ax[1, 1].plot(ax[0, 0].get_xlim(), ax[0, 0].get_ylim(), ls="--", c=".3")
+        ax[1, 1].set_title('Relate: Speidel et al. (2019)', fontsize=17)
+        ax[1, 1].text(0.6, 0.15, "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))), fontsize=12, transform=ax[1, 1].transAxes)
+        ax[1, 1].text(
+                0.6, 0.1, "Spearman's "+'$\\rho$: ' + "{0:.2f}".format(
+                    scipy.stats.spearmanr(x, y)[0]), fontsize=12,
+                transform=ax[1, 1].transAxes)
+        ax[1, 1].text(
+                0.6, 0.05, "Pearson's r: " + "{0:.2f}".format(
+                    scipy.stats.pearsonr(x, y)[0]),
+                fontsize=12, transform=ax[1, 1].transAxes)
 
         fig.text(0.5, 0.04, 'True Mutation Age', size=20, ha='center')
-        fig.text(0.04, 0.5, 'Estimated Mutation Age', size=20, va='center', rotation='vertical')
+        fig.text(0.04, 0.5, 'Estimated Mutation Age', size=20, va='center',
+                 rotation='vertical')
 
 #         cbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
 #         fig.colorbar(scatter, cax=cbar_ax)
@@ -834,7 +1115,7 @@ def time_cmd(cmd, stdout=sys.stdout):
     and writes the stdout to the specified file object.
     """
     if sys.platform == 'darwin':
-        #on OS X, install gtime using `brew install gnu-time`
+        # on OS X, install gtime using `brew install gnu-time`
         time_cmd = "/usr/local/bin/gtime"
     else:
         time_cmd = "/usr/bin/time"
@@ -907,7 +1188,7 @@ def main():
     params = iter([np.concatenate([[index], inputted_params, [seed]])
                   for index, seed in enumerate(seeds)])
     mutation_df = run_multiprocessing(run_all_tests, params, args.output, args.replicates,
-                        args.processes)
+                                      args.processes)
     plot_results_mutation_compare(mutation_df, output="testoutput")
 
 if __name__ == "__main__":
