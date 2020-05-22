@@ -371,10 +371,12 @@ def run_compute_1kg_gnn(args):
         md = json.loads(population.metadata.decode())
         name = md["name"]
         population_name.append(name)
-        try:
+        if "super_population" in md:
             region_name.append(md["super_population"])
-        except:
+        elif "region" in md:
             region_name.append(md["region"])
+        elif "name" in md:
+            region_name.append(md["name"])
 
     population = []
     region = []
@@ -382,7 +384,10 @@ def run_compute_1kg_gnn(args):
     for j, u in enumerate(ts.samples()):
         node = ts.node(u)
         ind = json.loads(ts.individual(node.individual).metadata.decode())
-        individual.append(ind["individual_id"])
+        if "individual_id" in ind:
+            individual.append(ind["individual_id"])
+        elif "name" in ind:
+            individual.append(ind["name"])
         population.append(population_name[node.population])
         region.append(region_name[node.population])
 
@@ -511,7 +516,7 @@ def run_snip_centromere(args):
 
 def run_combine_sampledata(args):
     """
-    Combine a list of SampleData files
+    Combine a list of SampleData files. Similar to a database outer join. 
     """
     sampledata_files = list()
     sequence_length = None
@@ -577,6 +582,72 @@ def run_combine_sampledata(args):
             combined_pos[biallelic_sites], combined_genos[biallelic_sites], alleles, combined_metadata[biallelic_sites]),
             total=np.sum(biallelic_sites)):
             samples.add_site(position=row[0], genotypes=row[1], alleles=row[2], metadata=row[3][0])
+
+
+def run_merge_sampledata(args):
+    """
+    Merge a list of SampleData files. Only add variants appearing in all sampledata files.
+    """
+    sampledata_files = list()
+    sequence_length = None
+    total_samples = 0
+
+    with open(args.input, "r") as sampledata_fn:
+        for index, fn in enumerate(sampledata_fn):
+            fn = fn.rstrip("\n")
+            sampledata_files.append(tsinfer.load(fn))
+            total_samples += sampledata_files[index].num_samples
+            if sequence_length:
+                assert sequence_length == sampledata_files[index].sequence_length
+            else:
+                sequence_length = sampledata_files[index].sequence_length
+
+    with tsinfer.SampleData(
+            path=args.output, num_flush_threads=2,
+            sequence_length=sequence_length) as samples:
+        population_id_map = {}
+        for sampledata in sampledata_files:
+            for pop in sampledata.populations_metadata[:]:
+                pop_id = samples.add_population({"name": pop["name"]})
+                population_id_map[pop["name"]] = pop_id
+        for sampledata in sampledata_files:
+            for indiv in sampledata.individuals():
+                samples.add_individual(metadata=indiv.metadata,
+                        population=population_id_map[sampledata.populations_metadata[:][sampledata.samples_population[indiv.id * 2]]['name']],
+                        ploidy=2)
+        merged_pos = np.sort(list(set.intersection(*map(set,[sampledata.sites_position[:] for sampledata in sampledata_files]))))
+        pos_bool = np.isin(sampledata_files[0].sites_position[:], merged_pos)
+        anc_alleles = np.array([allele[0] for allele in sampledata_files[0].sites_alleles[:][pos_bool]])
+        deriv_alleles = np.array([allele[1] if len(allele) > 1 else "" for allele in sampledata_files[0].sites_alleles[:][pos_bool]])
+        biallelic_sites = np.full_like(merged_pos, True, dtype=bool)
+        for sampledata in sampledata_files[1 :]:
+            pos_bool = np.isin(sampledata.sites_position[:], merged_pos)
+            # Assert ancestral alleles match between the sampledata files
+            assert np.array_equal(anc_alleles, [allele[0] for allele in sampledata.sites_alleles[:][pos_bool]])
+            cur_derived = np.array([allele[1] if len(allele) > 1 else "" for allele in sampledata.sites_alleles[:][pos_bool]])
+            no_deriv_bool = np.logical_or(np.array(deriv_alleles == ""), np.array(cur_derived == ""))
+            deriv_alleles[no_deriv_bool] = cur_derived[no_deriv_bool]
+            # If alt alleles conflict
+            biallelic_sites = np.logical_and(biallelic_sites, deriv_alleles == cur_derived)
+        print(np.sum(biallelic_sites))
+        merged_pos = merged_pos[biallelic_sites]
+        num_sites = len(merged_pos)
+        num_files = len(sampledata_files)
+        combined_genos = np.full((num_sites, total_samples), tskit.MISSING_DATA, dtype=np.int8)
+        combined_metadata = np.full((num_sites, num_files), {})
+        cur_sample = 0
+        for index, sampledata in enumerate(sampledata_files):
+            pos_bool = np.isin(sampledata.sites_position[:], merged_pos)
+            num_samps = sampledata.num_samples
+            combined_genos[:, cur_sample:cur_sample + num_samps] = sampledata.sites_genotypes[:][pos_bool]
+            combined_metadata[:, index] = sampledata.sites_metadata[:][pos_bool]
+            cur_sample += num_samps
+
+        for row in tqdm.tqdm(zip(
+            merged_pos, combined_genos, anc_alleles, deriv_alleles, combined_metadata),
+            total=np.sum(biallelic_sites)):
+            samples.add_site(position=row[0], genotypes=row[1], alleles=[row[2], row[3]], metadata=row[4][0])
+
 
 def main():
 
@@ -667,6 +738,12 @@ def main():
             The path to each SampleData file should be a row in a text file.")
     subparser.add_argument("output", type=str, help="Output combined sample data file")
     subparser.set_defaults(func=run_combine_sampledata)
+
+    subparser = subparsers.add_parser("merge-sampledata")
+    subparser.add_argument("input", type=str, help="Input sample files to merge. \
+            The path to each SampleData file should be a row in a text file.")
+    subparser.add_argument("output", type=str, help="Output merged sample data file")
+    subparser.set_defaults(func=run_merge_sampledata)
 
 
     daiquiri.setup(level="INFO")

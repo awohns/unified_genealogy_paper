@@ -691,16 +691,17 @@ class AfanasievoConverter(VcfConverter):
         else:
             freq = np.sum(a)
             # The loop above exited without breaking, so we have valid data.
-            if freq == 0:
-                self.num_invariant += 1
-            elif any(len(allele) != 1 for allele in all_alleles):
+            if any(len(allele) != 1 for allele in all_alleles):
                 self.num_indels += 1
             elif len(all_alleles) > 2:
                 self.num_non_biallelic += 1
 
             else:
                 all_alleles.remove(ancestral_state)
-                alleles = [ancestral_state, all_alleles.pop()]
+                try:
+                    alleles = [ancestral_state, all_alleles.pop()]
+                except:
+                    alleles = [ancestral_state]
                 metadata = {"ID": row.ID, "REF": row.REF}
                 ret = Site(
                     position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
