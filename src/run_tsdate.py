@@ -5,6 +5,8 @@ import os
 import argparse
 import logging
 
+import sys
+#sys.path.insert(0, "/home/wilderwohns/tsdate_paper/tsdate/")
 import tsdate
 import tskit
 
