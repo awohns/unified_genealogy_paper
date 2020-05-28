@@ -22,8 +22,8 @@ import msprime
 import stdpopsim
 
 import evaluation
-
-GENERATION_TIME = 30
+import constants
+import iteration
 
 
 class DataGeneration:
@@ -236,7 +236,7 @@ class CpuScalingSampleSize(DataGeneration):
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        row_data["length"] = 5e6 
+        row_data["length"] = 5e6
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
@@ -290,9 +290,9 @@ class CpuScalingSampleSize(DataGeneration):
 
         relate_dir = os.path.join(self.data_dir, "relate_" + row["filename"])
         path_to_genetic_map = path_to_file + "_genetic_map.txt"
-        #path_to_genetic_map = (
+        # path_to_genetic_map = (
         #    row["filename"] + "_genetic_map.txt"
-        #)
+        # )
         _, _, relate_cpu, relate_memory = evaluation.run_relate(
             sim,
             path_to_file,
@@ -304,10 +304,10 @@ class CpuScalingSampleSize(DataGeneration):
         )
 
         row["relate_cpu", "relate_memory"] = [relate_cpu, relate_memory]
-#        _, geva_cpu, geva_memory = evaluation.run_geva(
-#            path_to_file, row["Ne"], row["mut_rate"], row["rec_rate"]
-#        )
-#        row["geva_cpu", "geva_memory"] = [geva_cpu, geva_memory]
+        #        _, geva_cpu, geva_memory = evaluation.run_geva(
+        #            path_to_file, row["Ne"], row["mut_rate"], row["rec_rate"]
+        #        )
+        #        row["geva_cpu", "geva_memory"] = [geva_cpu, geva_memory]
 
         # Delete all generated files to save diskspace
         self.clear(row["filename"])
@@ -583,11 +583,11 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
-        row_data["sample_size"] =  1000
-        row_data["Ne"] = 10000 
+        row_data["sample_size"] = 1000
+        row_data["Ne"] = 10000
         row_data["length"] = 5e6
-        row_data["mut_rate"] = 1e-8 
-        row_data["rec_rate"] = 1e-8 
+        row_data["mut_rate"] = 1e-8
+        row_data["rec_rate"] = 1e-8
 
         def simulate_func(params):
             seed = params[1]
@@ -602,15 +602,18 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
                 0, ts.get_sequence_length() - row_data["length"]
             )
             snippet_end = snippet_start + row_data["length"]
-            while (snippet_end > chr20_centromere[0] and snippet_end < chr20_centromere[1]) or (snippet_start > chr20_centromere[0] and snippet_start < chr20_centromere[1]):
+            while (
+                snippet_end > chr20_centromere[0] and snippet_end < chr20_centromere[1]
+            ) or (
+                snippet_start > chr20_centromere[0]
+                and snippet_start < chr20_centromere[1]
+            ):
                 snippet_start = self.rng.randint(
                     0, ts.get_sequence_length() - row_data["length"]
                 )
                 snippet_end = snippet_start + row_data["length"]
-            print(row_data)
             self.snippet = [snippet_start, snippet_start + row_data["length"]]
             row_data["snippet"] = self.snippet
-
 
             return ts.keep_intervals(np.array([self.snippet])).trim()
 
@@ -639,7 +642,7 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         )
         path_to_genetic_map = os.path.join(self.data_dir, filename + "_genetic_map.txt")
         genetic_map_output.to_csv(path_to_genetic_map, sep=" ", index=False)
-        return genetic_map_output 
+        return genetic_map_output
 
 
 class IterativeApproachNoAncients(NeutralSimulatedMutationAccuracy):
@@ -806,15 +809,13 @@ class SimulateVanillaAncient(DataGeneration):
         DataGeneration.__init__(self)
         self.columns = [
             "ancient_sample_size",
-            "simulated_ts",
-            "tsdate",
-            "tsdate_inferred",
-            "tsdate_iteration",
-            "tsdate_true_times",
-            "tsdate_sim_topo",
+            "tsdateTime",
+            "ConstrainedTime",
+            "IterationTime",
+            "SimulatedTopoTime"
         ]
 
-        self.default_replicates = 20
+        self.default_replicates = 5
         self.sim_cols = self.sim_cols
         self.num_rows = self.default_replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
@@ -826,7 +827,6 @@ class SimulateVanillaAncient(DataGeneration):
         """
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        # row_data["sample_size"] = 500
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
         row_data["sample_size_modern"] = 1000
@@ -837,7 +837,7 @@ class SimulateVanillaAncient(DataGeneration):
         for index, seed in tqdm(enumerate(seeds), desc="Running Simulations"):
             # randomly sample ancient times
             ancient_sample_times = evaluation.sample_times(
-                row_data["sample_size_ancient"], GENERATION_TIME
+                row_data["sample_size_ancient"], constants.GENERATION_TIME
             )
             sim = evaluation.run_neutral_ancients(
                 row_data["sample_size_modern"],
@@ -863,15 +863,31 @@ class SimulateVanillaAncient(DataGeneration):
             sim.dump(os.path.join(self.data_dir, filename + ".trees"))
 
             # Remove ancient samples and fixed mutations
-            modern_ts = evaluation.remove_ancients(sim)
+            modern_ts = evaluation.remove_ancients(sim).simplify()
 
             # Save the simulated tree sequence
             modern_ts.dump(os.path.join(self.data_dir, filename + ".modern.trees"))
 
             # Create sampledata file, with and without keeping times
+            # Need to add the time of ancient samples from nodes
+            tables = sim.dump_tables()
+            #            time, off = tskit.pack_strings(np.array(sim.tables.nodes.time[sim.samples()],dtype=str)[::2])
+            #            tables.individuals.append_columns(flags=np.ones(sim.num_samples//2, dtype='uint32'), metadata=time, metadata_offset=off)
+            #            sim_anc_times = tables.tree_sequence()
+            sample_data = tsinfer.formats.SampleData.from_tree_sequence(
+                sim, use_times=False,
+            )
+            sample_data_indiv_times = sample_data.copy(
+                path=os.path.join(self.data_dir, filename + ".samples")
+            )
+            sample_data_indiv_times.individuals_time[:] = np.array(
+                sim.tables.nodes.time[sim.samples()]
+            )
+            sample_data_indiv_times.finalise()
+
             tsinfer.formats.SampleData.from_tree_sequence(
                 modern_ts,
-                path=os.path.join(self.data_dir, filename + ".samples"),
+                path=os.path.join(self.data_dir, filename + ".modern.samples"),
                 use_times=False,
             )
             tsinfer.formats.SampleData.from_tree_sequence(
@@ -893,7 +909,6 @@ class SimulateVanillaAncient(DataGeneration):
         index = row_data[0]
         row = row_data[1]
         path_to_file = os.path.join(self.data_dir, row["filename"])
-        # print(type(row["ancient_sample_times"]), row["ancient_sample_times"].split(' '))
         # Load the original simulation and the one with only modern samples
         sim = tskit.load(path_to_file + ".trees")
         modern_ts = tskit.load(path_to_file + ".modern.trees")
@@ -901,60 +916,50 @@ class SimulateVanillaAncient(DataGeneration):
         # Name of output file with mutations ages
         path_to_file = os.path.join(self.data_dir, row["filename"])
 
-        # Infer the ts based on modern sample data
-        inferred_ts, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
-            path_to_file + ".samples", modern_ts.get_sequence_length()
-        )
-        inferred_ts = inferred_ts.simplify()
-        inferred_ts.dump(path_to_file + ".tsinferred.trees")
-
+                
         # Infer the ts based on modern sample data with keep_times
         inferred_ts_keep_times, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
             path_to_file + ".keep_times.samples", modern_ts.get_sequence_length()
         )
         inferred_ts_keep_times = inferred_ts_keep_times.simplify()
         inferred_ts_keep_times.dump(path_to_file + ".tsinferred.keep_times.trees")
-
-        # tsdate runs
-        tsdate_dates = evaluation.run_tsdate_get_dates(
-            inferred_ts, row["Ne"], row["mut_rate"]
-        )
         tsdate_keep_times = evaluation.run_tsdate_get_dates(
             inferred_ts_keep_times, row["Ne"], row["mut_rate"]
         )
         tsdate_true_topo = evaluation.run_tsdate_get_dates(
-            modern_ts.simplify(), row["Ne"], row["mut_rate"]
+            modern_ts, row["Ne"], row["mut_rate"]
         )
-
-        # Constrain, reinfer, and redate
         ancient_sample_sizes = [0, 1, 5, 10, 50, 100]
+        modern_samples = np.where(sim.tables.nodes.time[sim.samples()] == 0)[0]
         ancient_samples = np.where(sim.tables.nodes.time[sim.samples()] != 0)[0]
         master_df = pd.DataFrame(columns=self.columns)
         for ancient_sample_size in ancient_sample_sizes:
-            ancient_samples_subset = ancient_samples[:ancient_sample_size]
-            non_ancient_muts = np.isin(
-                sim.tables.sites.position, modern_ts.tables.sites.position
+            samples_subset = np.concatenate([modern_samples, ancient_samples[:ancient_sample_size]])
+            sample_data = tsinfer.formats.SampleData.from_tree_sequence(
+                sim.simplify(samples=samples_subset), use_times=False,
             )
-            ancient_genos = sim.genotype_matrix()[non_ancient_muts, :][
-                :, ancient_samples_subset
-            ]
-            sample_data = tsinfer.load(path_to_file + ".samples")
+            sample_data_indiv_times = sample_data.copy()
+            sample_data_indiv_times.individuals_time[:] = np.array(
+                sim.tables.nodes.time[samples_subset]
+            )
+            sample_data_indiv_times.finalise()
 
-            ancient_sample_times = sim.tables.nodes.time[ancient_samples_subset]
-            constr_sample_data, constr_sites = evaluation.constrain_with_ancient(
-                sample_data,
-                tsdate_dates,
+            # Constrain, reinfer, and redate
+            (
                 inferred_ts,
-                ancient_genos,
-                ancient_sample_times[:ancient_sample_size],
-            )
-            iter_infer, iter_dates = evaluation.iteration_tsdate(
-                constr_sample_data,
-                constr_sites,
+                tsdate_ages,
+                constrained_mut_ages,
+                iter_infer,
+                iter_dates,
+            ) = iteration.iter_infer(
+                sample_data_indiv_times,
+                path_to_file + str(ancient_sample_size) + ".iteroutput",
                 row["Ne"],
                 row["mut_rate"],
-                adjust_priors=True,
+                num_threads=1,
+                progress=False
             )
+            iter_dates = iter_dates[0] * 2 * row["Ne"]
 
             compare_df = evaluation.compare_mutations_iterative(
                 ancient_sample_size,
@@ -962,15 +967,15 @@ class SimulateVanillaAncient(DataGeneration):
                 modern_ts,
                 inferred_ts,
                 sample_data,
-                tsdate_dates,
-                constr_sample_data,
+                tsdate_ages,
+                constrained_mut_ages,
                 iter_infer,
                 iter_dates,
                 inferred_ts_keep_times,
                 tsdate_keep_times,
                 tsdate_true_topo,
             )
-            master_df = pd.concat([master_df, compare_df])
+            master_df = pd.concat([master_df, compare_df], sort=False)
         return index, row, master_df
 
     def run_multiprocessing(self, function, num_processes=1):
@@ -992,14 +997,11 @@ class SimulateVanillaAncient(DataGeneration):
                 processes=num_processes, maxtasksperchild=10
             ) as pool:
 
-                for index, row, mutations_df in tqdm(
-                    pool.imap_unordered(function, self.data.iterrows()),
-                    desc="Inference Run",
-                    total=self.data.shape[0],
-                ):
+                for index, row, mutations_df in pool.imap_unordered(function, self.data.iterrows()):
+                    logging.info("Running inference")
                     self.data.loc[index] = row
                     self.summarize()
-                    master_df = pd.concat([master_df, mutations_df])
+                    master_df = pd.concat([master_df, mutations_df], sort=False)
         else:
             # When we have only one process it's easier to keep everything in the
             # same process for debugging.
@@ -1008,11 +1010,7 @@ class SimulateVanillaAncient(DataGeneration):
                 logging.info("Running inference")
                 self.data.loc[index] = row
                 self.summarize()
-                if index != 0:
-                    master_df = pd.read_csv(output_fn, index_col=0)
-                    pd.concat([master_df, mutations_df]).to_csv(output_fn)
-                else:
-                    master_df.to_csv(output_fn)
+                master_df = pd.concat([master_df, mutations_df], sort=False)
         master_df.to_csv(output_fn)
 
 
@@ -1053,7 +1051,7 @@ class OOA_Chr20_ancient(DataGeneration):
         for index, seed in tqdm(enumerate(seeds), desc="Running Simulations"):
             # randomly sample ancient times
             ancient_sample_times = evaluation.sample_times(
-                row_data["sample_size_ancient"], GENERATION_TIME
+                row_data["sample_size_ancient"], constants.GENERATION_TIME
             )
             samples = [
                 msprime.Sample(population=0, time=0)
