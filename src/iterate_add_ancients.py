@@ -11,27 +11,27 @@ import msprime
 import numpy as np
 import iteration
 
-def run(input_ts_prefix, ancient_samples, modern_samples, num_threads, output_fn, progress):
+def run(input_ts_prefix, samples, num_threads, output_fn, progress):
     """
     Script to take a dated tree sequence inferred from modern samples and add ancients as ancestors
     at the correct times.
     """
-    ts = tskit.load(input_ts_prefix + ".trees").simplify()
+    ts = tskit.load(input_ts_prefix + ".dated.trees").simplify()
     centromere = run_snip_centromere(ts, "centromeres.csv", "chr20")
-    modern_sampledata = tsinfer.load(modern_samples)
-    other_sites =  ~np.isin(modern_sampledata.sites_position[:], ts.tables.sites.position)
-    deleted_sampledata = modern_sampledata.delete(sites=other_sites)
-    deleted_sampledata_copy = deleted_sampledata.copy(output_fn + ".consistent_ancients.samples")
-    deleted_sampledata_copy.finalise()
-    modern_samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", "../yanwong/tsinfer-benchmarking/recomb-hg38/genetic_map_GRCh38_chr20.txt")
-    base_rec_prob = np.quantile(rho, 0.5)
-    ancient_samples = tsinfer.load(ancient_samples)
     dates = pickle.load(open(input_ts_prefix + ".dates.p", "rb"))
-    first_pos = ts.tables.sites.position[0]
-    last_pos = ts.tables.sites.position[-1]
-    ts = ts.keep_intervals([[first_pos, last_pos]])
-    sample_data_constrained, merged_age = iteration.get_ancient_constraints(ancient_samples, modern_samples, dates, ts, output_fn, centromere)
-    iteration.tsinfer_second_pass(sample_data_constrained, ancient_samples, rho[1:], base_rec_prob * 0.1, 0.01, 13, output_fn, num_threads, progress)
+    sampledata = tsinfer.load(samples)
+    other_sites =  ~np.isin(sampledata.sites_position[:], ts.tables.sites.position)
+    if np.any(other_sites):
+        deleted_sampledata = sampledata.delete(sites=other_sites)
+        deleted_sampledata_copy = deleted_sampledata.copy(output_fn + ".consistent_ancients.samples")
+        deleted_sampledata_copy.finalise()
+        print(deleted_sampledata_copy.num_sites, sampledata.num_sites, ts.num_sites)
+        samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", "../yanwong/tsinfer-benchmarking/recomb-hg38/genetic_map_GRCh38_chr20.txt")
+    else:
+        samples, rho, prefix, _ = setup_sample_file(samples, "../yanwong/tsinfer-benchmarking/recomb-hg38/genetic_map_GRCh38_chr20.txt")
+    base_rec_prob = np.quantile(rho, 0.5)
+    sample_data_constrained, merged_age = iteration.get_ancient_constraints(samples, dates, ts, output_fn, centromere)
+    iteration.tsinfer_second_pass(sample_data_constrained, rho, base_rec_prob * 0.1, base_rec_prob * 0.1, 13, output_fn, num_threads, progress)
 
 
 def physical_to_genetic(recombination_map, input_physical_positions):
@@ -108,8 +108,6 @@ if __name__ == "__main__":
             " centromere and the material before first site and after last.")
     parser.add_argument("ancient_samples", default=None,
         help="File containing ancient samples.")
-    parser.add_argument("modern_samples", default=None,
-        help="File containing modern samples.")
     parser.add_argument("-t", "--num_threads", type=int, default=0,
         help="The number of threads to use in inference")
     parser.add_argument("output_fn", default=None,
@@ -117,4 +115,4 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--progress', action='store_true',
         help="Show progress bar.")
     args = parser.parse_args()
-    run(args.input_ts, args.ancient_samples, args.modern_samples, args.num_threads, args.output_fn, args.progress)
+    run(args.input_ts, args.ancient_samples, args.num_threads, args.output_fn, args.progress)
