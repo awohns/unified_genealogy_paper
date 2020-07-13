@@ -35,8 +35,9 @@ def run(input_ts_prefix, samples, num_threads, output_fn, progress):
         sampledata_copy.finalise()
         samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", None)
     base_rec_prob = np.quantile(rho, 0.5)
-    sample_data_constrained, _, _ = iteration.get_ancient_constraints(samples, dates, inferred_ts, output_fn, centromere)
-    iteration.tsinfer_second_pass(sample_data_constrained, rho, base_rec_prob * 0.1, base_rec_prob * 0.1, 13, output_fn, num_threads, progress)
+    sample_data_constrained, constr_mut_pos, _ = iteration.get_ancient_constraints(samples, dates, inferred_ts, output_fn, centromere)
+    reinferred_ts = iteration.tsinfer_second_pass(sample_data_constrained, rho, base_rec_prob * 0.1, base_rec_prob * 0.1, 13, output_fn, num_threads, progress)
+    iter_dates = iteration.tsdate_second_pass(reinferred_ts, sample_data_constrained, 10000, 1e-8, output_fn=output_fn + ".iterdates", constr_sites=constr_mut_pos, adjust_priors=True, num_threads=num_threads, progress=progress)
 
 
 def physical_to_genetic(recombination_map, input_physical_positions):

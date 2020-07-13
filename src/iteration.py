@@ -467,8 +467,8 @@ def tsinfer_second_pass(
     #    ) = evaluation.remove_ancients_mutations(iter_infer, modern_samples)
     logging.debug(
         "STEP FOUR: Reinferred tree sequence with {} modern samples and {} ancients.".format(
-            np.sum(binned_sd.individuals_time[:] == 0),
-            np.sum(binned_sd.individuals_time[:] != 0),
+            np.sum(modern_samples_constrained.individuals_time[:] == 0),
+            np.sum(modern_samples_constrained.individuals_time[:] != 0),
         )
     )
     #    logging.debug(
@@ -484,6 +484,7 @@ def tsinfer_second_pass(
 
 def tsdate_second_pass(
     inferred_ts,
+    samples,
     Ne,
     mut_rate,
     output_fn=None,
@@ -493,10 +494,11 @@ def tsdate_second_pass(
     progress=False,
 ):
     """
-    Infer tree sequence topology with modern and ancient samples.
-    Then simplify so tree sequence only contains moderns.
+    Input is tree sequence with modern and ancient samples.
+    Simplify so tree sequence only contains moderns and date.
     """
-    inferred_ts = inferred_ts.simplify()
+    modern_samples = np.where(samples.individuals_time[:][samples.samples_individual] == 0)[0]
+    inferred_ts = inferred_ts.simplify(samples=modern_samples)
     if inferred_ts.num_samples > 1000:
         approximate_priors=True
     else:
@@ -518,7 +520,7 @@ def tsdate_second_pass(
                 mut_node, : (np.abs(priors.timepoints * 2 * Ne - limit)).argmin()
             ] = 0
         added_ancestors = np.where(
-            inferred_ts.tables.nodes.flags == tsinfer.NODE_IS_SAMPLE_ANCESTOR
+            inferred_ts.tables.nodes.flags & tsinfer.NODE_IS_SAMPLE_ANCESTOR
         )[0]
         for added_anc in added_ancestors:
             ancient_time = inferred_ts.tables.nodes.time[added_anc]
@@ -564,9 +566,9 @@ def tsdate_second_pass(
     return iter_dates
 
 
-def bin_sd_times(sampledata, output_fn=None):
+def bin_sampledata(sampledata, output_fn=None):
     if output_fn is not None:
-        sd = sampledata.copy(output_fn)
+        sd = sampledata.copy(output_fn + ".binned.samples")
     else:
         sd = sampledata.copy()
 
