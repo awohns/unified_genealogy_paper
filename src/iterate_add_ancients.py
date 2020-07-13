@@ -4,7 +4,6 @@ import csv
 import re
 import pickle
 
-import tsdate
 import tskit
 import tsinfer
 import stdpopsim
@@ -23,12 +22,12 @@ def run(input_ts_prefix, samples, num_threads, output_fn, progress):
     #dates = pickle.load(open(input_ts_prefix + ".dates.p", "rb"))
     sampledata = tsinfer.load(samples)
     dates, inferred_ts = iteration.tsdate_first_pass(ts, sampledata, 10000, 1e-8, output_fn + "dates", progress=progress)
+    pickle.dump(dates, open(output_fn + '.dates.p', 'wb'))
     other_sites =  ~np.isin(sampledata.sites_position[:], inferred_ts.tables.sites.position)
     if np.any(other_sites):
         deleted_sampledata = sampledata.delete(sites=other_sites)
         deleted_sampledata_copy = deleted_sampledata.copy(output_fn + ".consistent_ancients.samples")
         deleted_sampledata_copy.finalise()
-        print(deleted_sampledata_copy.num_sites, sampledata.num_sites, inferred_ts.num_sites)
         samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", None)
     else:
         sampledata_copy = sampledata.copy(output_fn + ".consistent_ancients.samples")

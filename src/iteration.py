@@ -10,6 +10,7 @@ import tskit
 
 import utility as util
 import evaluation
+import constants
 
 import tsdate
 
@@ -17,6 +18,8 @@ logging.basicConfig(filename="iteration.log", filemode="w", level=logging.DEBUG)
 
 """
 Infer tree sequences from modern and ancient samples.
+Ancient sample ages MUST be specified in the SampleData file using the individuals_time
+array. Ancient sample ages should be specified in years. 
 Input is a sampledata file with moderns (and optionally ancients).
 """
 
@@ -166,7 +169,7 @@ def get_ancient_constraints(
     # First make ancient mut df from ancient sampledata file
     sampledata_ages = sampledata.individuals_time[:][sampledata.samples_individual[:]]
     ancient_samples_bool = sampledata_ages != 0
-    ancient_ages = sampledata_ages[ancient_samples_bool]
+    ancient_ages = sampledata_ages[ancient_samples_bool] / constants.GENERATION_TIME
     ancient_genotypes = sampledata.sites_genotypes[:][:, ancient_samples_bool]
     ancient_sites_bool = np.any(ancient_genotypes == 1, axis=1)
     ancient_genotypes = ancient_genotypes[ancient_sites_bool]
@@ -297,7 +300,7 @@ def ancients_as_ancestors(sample_data, ancestor_data, output_fn=None, progress=F
     sample_metadata = sample_data.individuals_metadata[:][
         sample_data.samples_individual[:]
     ]
-    ancient_ages = sample_ages[sample_ages != 0]
+    ancient_ages = sample_ages[sample_ages != 0] / constants.GENERATION_TIME
     ancient_metadata = sample_metadata[sample_ages != 0]
     ancient_samples = np.where(sample_ages != 0)[0]
     # Ancients could be out of order timewise, argsort them
@@ -505,20 +508,25 @@ def tsdate_second_pass(
         approximate_priors=False
     priors = tsdate.build_prior_grid(inferred_ts, progress=progress, approximate_priors=approximate_priors)
     if adjust_priors and constr_sites is not None:
+        inferred_times = inferred_ts.tables.nodes.time[:]
         for mut_pos, limit in constr_sites.items():
-            infer_site_pos = (
+            constrained_mutations_nodes = inferred_ts.tables.mutations.node[np.where(
                 inferred_ts.tables.sites.position[inferred_ts.tables.mutations.site]
                 == mut_pos
-            )
-            mut_node = (
-                inferred_ts.tables.mutations.node[infer_site_pos]
-                - inferred_ts.num_samples
-            )
-            # Remove mutations above sample nodes
-            mut_node = mut_node[mut_node > 0]
-            priors.grid_data[
-                mut_node, : (np.abs(priors.timepoints * 2 * Ne - limit)).argmin()
-            ] = 0
+            )[0]]
+            # Only constrain the oldest mutation at this site
+            oldest_mut_age = 0
+            oldest_mut_node = 0
+            for mut_node in constrained_mutations_nodes:
+                if inferred_times[mut_node] > oldest_mut_age:
+                    oldest_mut_age = inferred_times[mut_node]
+                    oldest_mut_node = mut_node
+
+            # Only constrain mutations which are not above sample nodes
+            if inferred_times[mut_node] > 0:
+                priors.grid_data[
+                    mut_node - inferred_ts.num_samples, : (np.abs(priors.timepoints * 2 * Ne - limit)).argmin()
+                ] = 0
         added_ancestors = np.where(
             inferred_ts.tables.nodes.flags & tsinfer.NODE_IS_SAMPLE_ANCESTOR
         )[0]
@@ -545,14 +553,17 @@ def tsdate_second_pass(
             ]
             for pos, time in constr_sites.items()
         }
-        tsdate_ages_df_nodup = tsdate_ages_df.loc[
-            ~tsdate_ages_df.index.duplicated(keep=False)
-        ]
+        #tsdate_ages_df_nodup = tsdate_ages_df.loc[
+        #    ~tsdate_ages_df.index.duplicated(keep=False)
+        #]
+        # Remove singletons
+        tsdate_ages_df = tsdate_ages_df.loc[iter_dates[0][tsdate_ages_df["Node"]] > 0]
+        tsdate_ages_df.to_csv(output_fn + ".tsdatesecondpass.nosingletons.csv")
         assert np.all(
             [
                 val >= constr_site_timepoint[pos]
                 for pos, val in zip(
-                    tsdate_ages_df_nodup.index, tsdate_ages_df_nodup["SecondPassDates"]
+                    tsdate_ages_df.index, tsdate_ages_df["SecondPassDates"]
                 )
                 if pos in constr_site_timepoint
             ]
