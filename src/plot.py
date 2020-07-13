@@ -453,23 +453,23 @@ class IterateNoAncients(Figure):
             self.save("iterative_accuracy_noancients")
 
 
-class IterateAncientsVanilla(Figure):
+class IterateAncientsVanillaMsle(Figure):
     """
     Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model.
+    and vanilla demographic model. Plots MSLE results.
     """
 
-    name = "iterate_ancients_vanilla"
+    name = "iterate_ancients_vanilla_msle"
     data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations"]
-    plt_title = "Vanilla Simulations"
+    filename = ["simulate_vanilla_ancient_mutations.msle"]
+    plt_title = "Vanilla Simulations MSLE"
 
     def __init__(self):
         super().__init__()
-        # self.filenmae = "
+        self.data = self.data[0]
 
     def plot(self):
-        muts = self.data[0]
+        muts = self.data
         widths = [0.5, 0.5, 3, 0.5]
         heights = [3]
         gs_kw = dict(width_ratios=widths, height_ratios=heights)
@@ -491,7 +491,7 @@ class IterateAncientsVanilla(Figure):
             ax=ax[2],
         )
         # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
-        sns.boxplot(x=muts["SimulatedTopoTime"], orient="v", ax=ax[3])
+        sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
         # ax[0].set_xlabel("Date \nTree Seq")
         # ax[0].set_xticklabels(["Date \nTree Sequence"])
         ax[1].set_ylabel("")
@@ -510,12 +510,83 @@ class IterateAncientsVanilla(Figure):
         # ax[2].set_xlabel('Simulated \nTopo')
         # plt.xlabel("Ancient Sample Size")
         plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
-        plt.ylim(0.3, 0.8)
-        plt.tight_layout()
-        plt.savefig(self.filename[0] + ".pdf")
+        #plt.ylim(0.05, 0.8)
+        #plt.tight_layout()
+        #plt.savefig(self.filename[0] + ".pdf")
+        self.save(self.name)
+
+class IterateAncientsVanillaPearsonR(IterateAncientsVanillaMsle):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model. Plots MSLE results.
+    """
+
+    name = "iterate_ancients_vanilla_pearsonr"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_mutations.pearsonr"]
+    plt_title = "Vanilla Simulations Pearson R"
+
+    def __init__(self):
+        super().__init__()
+
+class IterateAncientsVanillaSpearmanR(IterateAncientsVanillaMsle):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model. Plots MSLE results.
+    """
+
+    name = "iterate_ancients_vanilla_spearmanr"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_mutations.spearmanr"]
+    plt_title = "Vanilla Simulations Spearman R"
+
+    def __init__(self):
+        super().__init__()
+
+class IterateAncientsVanillaMsleError(IterateAncientsVanillaMsle):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model. Plots MSLE results with empirical error.
+    """
+
+    name = "iterate_ancients_vanilla_msle_error"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_mutations.msle.empiricalerror"]
+    plt_title = "Vanilla Simulations MSLE Empirical Error"
+
+    def __init__(self):
+        super().__init__()
+
+class IterateAncientsVanillaPearsonRError(IterateAncientsVanillaMsle):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model. Plots Pearson R results with empirical error.
+    """
+
+    name = "iterate_ancients_vanilla_pearsonr_error"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_mutations.pearsonr.empiricalerror"]
+    plt_title = "Vanilla Simulations Pearson R Empirical Error"
+
+    def __init__(self):
+        super().__init__()
+
+class IterateAncientsVanillaSpearmanRError(IterateAncientsVanillaMsle):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model. Plots Spearman R results with empirical error.
+    """
+
+    name = "iterate_ancients_vanilla_spearmanr_error"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_mutations.spearmanr.empiricalerror"]
+    plt_title = "Vanilla Simulations Spearman R Empirical Error"
+
+    def __init__(self):
+        super().__init__()
 
 
-class IterateAncientsOOA(IterateAncientsVanilla):
+class IterateAncientsOOA(IterateAncientsVanillaMsle):
     """
     Figure to show accuracy of iterative approach on Chromosome 20.
     Using the Out of Africa Model
@@ -525,6 +596,79 @@ class IterateAncientsOOA(IterateAncientsVanilla):
     data_path = "simulated-data"
     filename = ["ooa_chr20_mutations"]
     plt_title = "Chromosome 20 Out of Africa"
+
+    def __init__(self):
+        super().__init__()
+
+class IterateAncientsVanillaKC(Figure):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model.
+    """
+
+    name = "iterate_ancients_vanilla_kc"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_kc_distances"]
+    plt_title = "KC Distances between Simulated and Inferred Tree Sequences"
+
+    def __init__(self):
+        super().__init__()
+
+    def plot(self):
+        kc_distances = self.data[0]
+        widths = [0.5, 0.5, 3, 0.5]
+        heights = [3, 3]
+        gs_kw = dict(width_ratios=widths, height_ratios=heights)
+        gs_kw.update(wspace=0.03)
+        fig, ax = plt.subplots(
+            ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+        )
+        lambda_0 = kc_distances[kc_distances["lambda_param"] == 0]
+        lambda_1 = kc_distances[kc_distances["lambda_param"] == 1]
+        for ax_index, lambda_results in zip([0, 1], [lambda_0, lambda_1]):
+            sns.boxplot(x=lambda_results[lambda_results["ancient_sample_size"] == 0]["tsdateTime"], orient="v", ax=ax[ax_index, 0])
+
+            sns.boxplot(
+                x=lambda_results[lambda_results["ancient_sample_size"] == 0]["IterationTime"],
+                orient="v",
+                ax=ax[ax_index, 1],
+            )
+            sns.lineplot(
+                x="ancient_sample_size",
+                y="IterationTime",
+                data=lambda_results[lambda_results["ancient_sample_size"] != 0],
+                ax=ax[ax_index, 2],
+            )
+            sns.boxplot(x=lambda_results["tsinfer_keep_time"], orient="v", ax=ax[ax_index, 3])
+            ax[ax_index, 1].set_ylabel("")
+            ax[ax_index, 2].set_xlim(0, 100)
+            ax[ax_index, 2].set_xlabel("Ancient Sample Size")
+            ax[ax_index, 3].set_ylabel("")
+            ax[ax_index, 1].tick_params(left="off")
+            ax[ax_index, 2].tick_params(left="off")
+            ax[ax_index, 3].tick_params(left="off")
+            ax[ax_index, 0].set_title("i")
+            ax[ax_index, 1].set_title("ii")
+            ax[ax_index, 2].set_title("iii")
+            ax[ax_index, 3].set_title("iv")
+
+        ax[0, 0].set_ylabel("KC Distance, Lambda=0")
+        ax[1, 0].set_ylabel("KC Distance, Lambda=1")
+        plt.suptitle(self.plt_title)
+        #plt.ylim(0.05, 0.8)
+        self.save(self.name)
+
+
+class IterateAncientsVanillaKC(IterateAncientsVanillaKC):
+    """
+    Figure to show accuracy of iterative approach with ancient samples
+    and vanilla demographic model.
+    """
+
+    name = "iterate_ancients_vanilla_kc_error"
+    data_path = "simulated-data"
+    filename = ["simulate_vanilla_ancient_kc_distances.empiricalerror"]
+    plt_title = "KC Distances between Simulated and Inferred Tree Sequences"
 
     def __init__(self):
         super().__init__()
@@ -1047,6 +1191,23 @@ class RecurrentMutations(Figure):
         fig.tight_layout()
         # plt.suptitle("Recurrent Mutations in 1000g Tree Sequence (without singletons included)")
         self.save(self.name)
+
+
+class HgdpRecurrentMutations(RecurrentMutations):
+    """
+    Figure showing number of recurrent mutations in HGDP tree sequence inferred by 
+    tsinfer. 
+    """
+
+    name = "hgdp_recurrent_mutations"
+    data_path = "data"
+    filename = [
+        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts",
+        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts_nosamples",
+        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts_nodouble",
+        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts_nosamples_two_muts",
+    ]
+    plt_title = "hgdp_recurrent_mutations_fig"
 
 
 ######################################

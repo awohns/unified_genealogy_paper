@@ -11,6 +11,7 @@ import io
 import csv
 import itertools
 import os.path
+from functools import reduce
 
 import tskit
 import tsinfer
@@ -517,72 +518,147 @@ def run_snip_centromere(args):
 def run_combine_sampledata(args):
     """
     Combine a list of SampleData files. Similar to a database outer join. 
+    Use tskit.MISSING_DATA where data does not appear in one file.
     """
+    def make_site_df(samples, file_index):
+        ancestral_alleles = [allele[0] for allele in samples.sites_alleles[:]]
+        derived_alleles = [allele[1] if len(allele) > 1 else np.nan for allele in samples.sites_alleles[:]]
+        df = pd.DataFrame({str(file_index) + " Site ID": np.arange(0, samples.num_sites),
+            "Position": samples.sites_position[:],
+            "Ancestral Allele": ancestral_alleles,
+            "Derived Allele": derived_alleles})
+        df = df.astype({str(file_index) + " Site ID": "int32"})
+        return df
+
     sampledata_files = list()
+    sampledata_pos_dfs = list()
     sequence_length = None
     total_samples = 0
 
+    # Load all the sampledata files into a list
     with open(args.input, "r") as sampledata_fn:
         for index, fn in enumerate(sampledata_fn):
             fn = fn.rstrip("\n")
-            sampledata_files.append(tsinfer.load(fn))
+            cur_file = tsinfer.load(fn)
+            sampledata_files.append(cur_file)
             total_samples += sampledata_files[index].num_samples
             if sequence_length:
                 assert sequence_length == sampledata_files[index].sequence_length
             else:
                 sequence_length = sampledata_files[index].sequence_length
+            # Create a dataframe of sites from this sampledata file
+            sampledata_pos_dfs.append(make_site_df(cur_file, index))
 
+    # Create merged sampledata file
     with tsinfer.SampleData(
             path=args.output, num_flush_threads=2,
             sequence_length=sequence_length) as samples:
         population_id_map = {}
         for sampledata in sampledata_files:
             for pop in sampledata.populations_metadata[:]:
-                pop_id = samples.add_population({"name": pop["name"]})
+                #pop_id = samples.add_population({"name": pop["name"]})
+                pop_id = samples.add_population(pop)
                 population_id_map[pop["name"]] = pop_id
         for sampledata in sampledata_files:
             for indiv in sampledata.individuals():
                 samples.add_individual(metadata=indiv.metadata,
                         population=population_id_map[sampledata.populations_metadata[:][sampledata.samples_population[indiv.id * 2]]['name']],
+                        time=indiv.time,
                         ploidy=2)
-        combined_pos = np.unique(np.sort(
-            np.concatenate([sampledata.sites_position[:] for sampledata in sampledata_files])))
-        num_sites = len(combined_pos)
+#        combined_pos = np.unique(np.sort(
+#            np.concatenate([sampledata.sites_position[:] for sampledata in sampledata_files])))
+        #combined_pos_df = reduce(lambda df0, df1: pd.merge(df0, df1, how="outer", on=["Position", "Ancestral Allele"]), sampledata_pos_dfs)
+        for index, df in enumerate(sampledata_pos_dfs):
+            if index == 0:
+                combined_pos_df = df
+                continue
+            else:
+                combined_pos_df = pd.merge(combined_pos_df, df, how="outer", suffixes=("", index), on=["Position", "Ancestral Allele"])
+                combined_pos_df["Derived Allele"] = combined_pos_df["Derived Allele"].fillna(combined_pos_df["Derived Allele" + str(index)])
+                derived_allele_exists = ~pd.isna(combined_pos_df["Derived Allele" + str(index)])
+                multiallelic = combined_pos_df["Derived Allele"] != combined_pos_df["Derived Allele" + str(index)]
+                
+#                multiallelic = np.logical_and(derived_allele_exists, multiallelic)
+#                a = np.array(combined_pos_df[['Derived Allele','Derived Allele' + str(index)]][multiallelic].values)
+#                combined_pos_df.loc[multiallelic, "Derived Allele"] = a
+                #combined_pos_df.loc[multiallelic, "Derived Allele"] = np.hstack((a[:, 0], a[:, 1])).tolist()
+                #np.hstack((combined_pos_df["Derived Allele"][multiallelic], combined_pos_df["Derived Allele" + str(index)][multiallelic]))
+
+        combined_pos_df = combined_pos_df.sort_values(by=["Position"])
+        num_sites = combined_pos_df.shape[0]
         num_files = len(sampledata_files)
         combined_genos = np.full((num_sites, total_samples), tskit.MISSING_DATA, dtype=np.int8)
-        combined_alleles = np.full((num_sites, num_files * 2), "")
+
+        combined_alleles = np.full((num_sites, 2), "")
+        combined_alleles = combined_pos_df[["Ancestral Allele", "Derived Allele"]].to_numpy()
         combined_metadata = np.full((num_sites, num_files), {})
         cur_sample = 0
+        print(np.unique(combined_pos_df[["Position"]]).shape)
         for index, sampledata in enumerate(sampledata_files):
-            pos_bool = np.isin(combined_pos, sampledata.sites_position[:])
+            #pos_bool = np.isin(combined_pos, sampledata.sites_position[:])
+            cur_file_sites = combined_pos_df[[str(index) + " Site ID"]]
+            pos_bool = np.where(~np.isnan(cur_file_sites))[0]
             num_samps = sampledata.num_samples
-            combined_genos[
-                pos_bool, cur_sample:cur_sample + num_samps] = sampledata.sites_genotypes[:]
-            combined_alleles[np.isin(
-                combined_pos, sampledata.sites_position[:]), index * 2:(index *2)+ 2] = np.stack(
-                        sampledata.sites_alleles[:], axis=0)[:, 0:2] 
-            combined_metadata[np.isin(
-                combined_pos, sampledata.sites_position[:]), index] = sampledata.sites_metadata[:]
+            if index != 0:
+                # Mark sites as missing anywhere they have a "new" derived allele
+                derived_allele_exists = ~pd.isna(combined_pos_df["Derived Allele" + str(index)])
+                multiallelic = combined_pos_df["Derived Allele"] != combined_pos_df["Derived Allele" + str(index)]
+                multiallelic = np.logical_and(derived_allele_exists, multiallelic)
+                genos = sampledata.sites_genotypes[:]
+                multiallelic_site_id = cur_file_sites[multiallelic].astype(int)
+                multi_genos = genos[multiallelic_site_id]
+                multiallelic_derived = np.where(multi_genos == 1)
+                multi_genos[multiallelic_derived] = tskit.MISSING_DATA
+                genos[multiallelic_site_id] = multi_genos
+                combined_genos[pos_bool, cur_sample:cur_sample + num_samps] = genos
+            elif index == 0:
+                combined_genos[pos_bool, cur_sample:cur_sample + num_samps] = sampledata.sites_genotypes[:] 
+            combined_metadata[pos_bool, index] = sampledata.sites_metadata[:]
             cur_sample += num_samps
        
         # We assume reference alleles match (see convert.py)
-        biallelic_sites = list()
-        alleles = list()
-        ref_alleles = combined_alleles[:, np.arange(0, num_files * 2) % 2 == 0]
-        alt_alleles = combined_alleles[:, np.arange(0, num_files * 2) % 2 != 0]
-        for ref, alt in zip(ref_alleles, alt_alleles):
-            non_missing = (alt != '')
-            if np.all(alt[non_missing][0] == alt[non_missing][1:]):
-                biallelic_sites.append(True)
-                alleles.append([ref[ref != ''][0], alt[non_missing][0]])
-            else:
-                biallelic_sites.append(False)
-        biallelic_sites = np.array(biallelic_sites)
+#        biallelic_sites = list()
+#        alleles = list()
+#        ref_alleles = combined_alleles[:, np.arange(0, num_files * 2) % 2 == 0]
+#        alt_alleles = combined_alleles[:, np.arange(0, num_files * 2) % 2 != 0]
+#        for ref, alt in zip(ref_alleles, alt_alleles):
+#            non_missing = (alt != '')
+#            if np.all(alt[non_missing][0] == alt[non_missing][1:]):
+#                biallelic_sites.append(True)
+#                alleles.append([ref[ref != ''][0], alt[non_missing][0]])
+#            else:
+#                biallelic_sites.append(False)
+#        biallelic_sites = np.array(biallelic_sites)
         for row in tqdm.tqdm(zip(
-            combined_pos[biallelic_sites], combined_genos[biallelic_sites], alleles, combined_metadata[biallelic_sites]),
-            total=np.sum(biallelic_sites)):
-            samples.add_site(position=row[0], genotypes=row[1], alleles=row[2], metadata=row[3][0])
+            combined_pos_df[["Position"]].values, combined_genos, combined_alleles, combined_metadata),
+            total=np.sum(combined_pos_df.shape[0])):
+            samples.add_site(position=float(row[0]), genotypes=row[1], alleles=list(row[2]), metadata=row[3][0])
 
+def make_sampledata_compatible(args):
+    """
+    Make a list of sampledata files compatible with the first file.
+    """
+    sampledata_files = list()
+    new_names = list()
+
+    # Load all the sampledata files into a list
+    with open(args.input, "r") as sampledata_fn:
+        for index, fn in enumerate(sampledata_fn):
+            fn = fn.rstrip("\n")
+            if index == 0:
+                target_sd = tsinfer.load(fn)
+                continue
+            cur_sd = tsinfer.load(fn)
+            delete_sites = np.where(~np.isin(cur_sd.sites_position[:], target_sd.sites_position[:]))[0]
+            small_cur_sd = cur_sd.delete(sites=delete_sites)
+            small_cur_sd_copy = small_cur_sd.copy(fn[:-len(".samples")] + "deleted.samples")
+            new_names.append(fn[:-len(".samples")] + "deleted.samples")
+            small_cur_sd_copy.finalise()
+            sampledata_files.append(small_cur_sd_copy)
+
+    with open(args.output, "r") as newfile:
+        newfile.writelines(new_names)
+   
 
 def run_merge_sampledata(args):
     """
@@ -745,6 +821,11 @@ def main():
     subparser.add_argument("output", type=str, help="Output merged sample data file")
     subparser.set_defaults(func=run_merge_sampledata)
 
+    subparser = subparsers.add_parser("make-sampledata-compatible")
+    subparser.add_argument("input", type=str, help="Input sample files to merge. \
+            The path to each SampleData file should be a row in a text file.")
+    subparser.add_argument("output", type=str, help="Output compatible sample data files")
+    subparser.set_defaults(func=make_sampledata_compatible)
 
     daiquiri.setup(level="INFO")
 

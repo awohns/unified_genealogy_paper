@@ -84,17 +84,13 @@ def reinfer_1kg(input_fn, output_fn):
     dates_all_constrained = dates_all["constrained_tsdate"].fillna(
         dates_all["tsdate_age"] * constants.GENERATION_TIME
     )
-    #chr20_samples = tsinfer.load(
-    #    "/home/wilderwohns/treeseq-inference/human-data/1kg_chr20.samples"
-    #)
     chr20_samples = tsinfer.load(input_fn)
-    #chr20_samples_copy = chr20_samples.copy(
-    #    "all-data/oldtsinfer_1kg_chr20_constrained_ages.samples"
-    #)
     chr20_samples_copy = chr20_samples.copy(output_fn)
     samples_index_bool = np.isin(dates_all.index, chr20_samples.sites_position[:])
     # Round the age to the nearest 10. This will speed up inference with minimal cost to precision
-    chr20_samples_copy.sites_time[:] = np.round(dates_all_constrained[samples_index_bool].values, -1)
+    chr20_samples_copy.sites_time[:] = np.round(
+        dates_all_constrained[samples_index_bool].values, -1
+    )
     chr20_samples_copy.finalise()
 
 
@@ -107,10 +103,8 @@ def main():
     parser.add_argument(
         "name", type=str, help="figure name", choices=list(name_map.keys())
     )
-    parser.add_argument(
-            "input_fn", type=str, help="input sampledata file")
-    parser.add_argument(
-            "output_fn", type=str, help="output filename")
+    parser.add_argument("input_fn", type=str, help="input sampledata file")
+    parser.add_argument("output_fn", type=str, help="output filename")
 
     args = parser.parse_args()
     name_map[args.name](args.input_fn, args.output_fn)

@@ -7,6 +7,7 @@ import pickle
 import tsdate
 import tskit
 import tsinfer
+import stdpopsim
 import msprime
 import numpy as np
 import iteration
@@ -16,21 +17,25 @@ def run(input_ts_prefix, samples, num_threads, output_fn, progress):
     Script to take a dated tree sequence inferred from modern samples and add ancients as ancestors
     at the correct times.
     """
-    ts = tskit.load(input_ts_prefix + ".dated.trees").simplify()
-    centromere = run_snip_centromere(ts, "centromeres.csv", "chr20")
-    dates = pickle.load(open(input_ts_prefix + ".dates.p", "rb"))
+    ts = tskit.load(input_ts_prefix + ".trees")
+    #centromere = run_snip_centromere(ts, "centromeres.csv", "chr20")
+    centromere=None
+    #dates = pickle.load(open(input_ts_prefix + ".dates.p", "rb"))
     sampledata = tsinfer.load(samples)
-    other_sites =  ~np.isin(sampledata.sites_position[:], ts.tables.sites.position)
+    dates, inferred_ts = iteration.tsdate_first_pass(ts, sampledata, 10000, 1e-8, output_fn + "dates", progress=progress)
+    other_sites =  ~np.isin(sampledata.sites_position[:], inferred_ts.tables.sites.position)
     if np.any(other_sites):
         deleted_sampledata = sampledata.delete(sites=other_sites)
         deleted_sampledata_copy = deleted_sampledata.copy(output_fn + ".consistent_ancients.samples")
         deleted_sampledata_copy.finalise()
-        print(deleted_sampledata_copy.num_sites, sampledata.num_sites, ts.num_sites)
-        samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", "../yanwong/tsinfer-benchmarking/recomb-hg38/genetic_map_GRCh38_chr20.txt")
+        print(deleted_sampledata_copy.num_sites, sampledata.num_sites, inferred_ts.num_sites)
+        samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", None)
     else:
-        samples, rho, prefix, _ = setup_sample_file(samples, "../yanwong/tsinfer-benchmarking/recomb-hg38/genetic_map_GRCh38_chr20.txt")
+        sampledata_copy = sampledata.copy(output_fn + ".consistent_ancients.samples")
+        sampledata_copy.finalise()
+        samples, rho, prefix, _ = setup_sample_file(output_fn + ".consistent_ancients.samples", None)
     base_rec_prob = np.quantile(rho, 0.5)
-    sample_data_constrained, merged_age = iteration.get_ancient_constraints(samples, dates, ts, output_fn, centromere)
+    sample_data_constrained, _, _ = iteration.get_ancient_constraints(samples, dates, inferred_ts, output_fn, centromere)
     iteration.tsinfer_second_pass(sample_data_constrained, rho, base_rec_prob * 0.1, base_rec_prob * 0.1, 13, output_fn, num_threads, progress)
 
 
@@ -53,7 +58,7 @@ def setup_sample_file(sample_fn, genetic_map):
 
     match = re.search(r'(chr\d+)', sample_fn)
     if match or genetic_map is not None:
-        if map is not None:
+        if genetic_map is not None:
             chr_map = msprime.RecombinationMap.read_hapmap(genetic_map)
         else:
             chr = match.group(1)

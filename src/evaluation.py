@@ -14,7 +14,7 @@ from functools import reduce
 import numpy as np
 import pandas as pd
 import scipy
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, pearsonr, spearmanr
 from sklearn.metrics import mean_squared_error, mean_squared_log_error
 
 import msprime
@@ -22,10 +22,9 @@ import tsinfer
 import tskit
 import stdpopsim
 
-import constants
 import utility
 
-sys.path.insert(0, "/home/wilderwohns/tsdate_paper/tsdate/")
+#sys.path.insert(0, "/home/wilderwohns/tsdate_paper/tsdate/")
 import tsdate  # NOQA
 
 relate_executable = os.path.join("tools", "relate", "bin", "Relate")
@@ -42,12 +41,7 @@ TSDATE = "tsdate"
 RELATE = "Relate"
 GEVA = "GEVA"
 
-"""
-Code to run simulations testing accuracy of tsdate
-
-Run:
-python date.py
-"""
+empirical_error_probs = pd.read_csv("/home/wilderwohns/tsdate_paper/data/EmpiricalErrorPlatinum1000G.csv", index_col=0)
 
 
 def make_no_errors(g, error_prob):
@@ -184,7 +178,7 @@ def generate_samples(ts, fn, aa_error="0", seq_error="0", empirical_seq_err_name
                 bits_flipped / (n_variants * ts.sample_size), n_variants, bad_ancestors
             )
         )
-
+    sample_data.individuals_time[:] = np.array(ts.tables.nodes.time[ts.samples()])
     sample_data.finalise()
     return sample_data
 
@@ -299,11 +293,12 @@ def run_neutral_ancients(
     )
 
 
-def remove_ancients(ts):
+def remove_ancients(ts, modern_samples=None):
     """
-    Remove all ancient samples from simulated tree sequence
+    Remove all ancient samples and sites from simulated tree sequence
     """
-    modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
+    if modern_samples is None:
+        modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
     modern_ts = ts.simplify(samples=modern_samples, keep_unary=True)
 
     del_sites = list()
@@ -407,7 +402,6 @@ def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=
     Given a list of tree sequences, return a pandas dataframe with the age
     estimates for each mutation via each method (tsdate, tsinfer + tsdate,
     relate, geva etc.)
-
     :param list method_names: list of strings naming methods to be compared
     :param list ts_list: The list of tree sequences
     :param pandas.DataFrame geva_ages: mutation age estimates from geva
@@ -563,7 +557,6 @@ def compare_mutations_iterative(
     ts,
     modern_ts,
     inferred,
-    sample_data,
     tsdate_dates,
     constrained_ages,
     iter_infer,
@@ -598,7 +591,14 @@ def compare_mutations_iterative(
             "IterationTime",
         ],
     )
-    dfs = [simulated_df, tsdate_df, constr_df, iter_df, keep_times_df, simulated_topo_df]
+    dfs = [
+        simulated_df,
+        tsdate_df,
+        constr_df,
+        iter_df,
+        keep_times_df,
+        simulated_topo_df,
+    ]
     mut_df["ancient_sample_size"] = ancient_sample_size
     run_results = reduce(
         lambda left, right: pd.merge(
@@ -606,27 +606,27 @@ def compare_mutations_iterative(
         ),
         dfs,
     )
-
-    run_results = pd.DataFrame(
-        [
-            ancient_sample_size,
-            mean_squared_log_error(run_results["TrueTime"], run_results["tsdateTime"]),
-            mean_squared_log_error(run_results["TrueTime"], run_results["ConstrainedTime"]),
-            mean_squared_log_error(run_results["TrueTime"], run_results["IterationTime"]),
-            mean_squared_log_error(run_results["TrueTime"], run_results["keeptimeTime"]),
-            mean_squared_log_error(run_results["TrueTime"], run_results["simulatedTopoTime"]),
-        ],
-        index=[
+    msle_results_list = [ancient_sample_size] 
+    pearsonr_results_list = [ancient_sample_size] 
+    spearmanr_results_list = [ancient_sample_size] 
+    for results in [run_results["tsdateTime"], run_results["ConstrainedTime"], run_results["IterationTime"], run_results["keeptimeTime"], run_results["simulatedTopoTime"]]:
+       msle_results_list.append(mean_squared_log_error(run_results["TrueTime"], results)) 
+       pearsonr_results_list.append(pearsonr(run_results["TrueTime"], results)[0]) 
+       spearmanr_results_list.append(spearmanr(run_results["TrueTime"], results)[0]) 
+    index=[
             "ancient_sample_size",
             "tsdateTime",
             "ConstrainedTime",
             "IterationTime",
             "tsinfer_keep_time",
             "SimulatedTopoTime",
-        ],
-    ).T
+        ]
 
-    return run_results
+    msle_run_results = pd.DataFrame(msle_results_list,index=index).T
+    pearsonr_run_results = pd.DataFrame(pearsonr_results_list,index=index).T
+    spearmanr_run_results= pd.DataFrame(spearmanr_results_list,index=index).T
+
+    return msle_run_results, pearsonr_run_results, spearmanr_run_results
 
 
 def find_tmrcas_snps(ts_dict):
@@ -730,18 +730,6 @@ def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
     return name
 
 
-def run_tsdate_get_dates(inferred, Ne, mutation_rate):
-    """
-    Return dates of the inferred tree sequence
-    """
-
-    dates, _, timepoints, eps, nds = tsdate.get_dates(
-        inferred, Ne=Ne, mutation_rate=mutation_rate
-    )
-
-    return dates * 2 * Ne
-
-
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
         cmd = [sys.executable, tsdate_executable, input_fn, ts_out.name, str(Ne)]
@@ -749,6 +737,172 @@ def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
         cpu_time, memory_use = time_cmd(cmd)
         dated_ts = tskit.load(ts_out.name)
     return dated_ts, cpu_time, memory_use
+
+
+def run_tsdate_posterior_ts(
+    ts, Ne, mut_rate, method="inside_outside", priors=None
+):
+    """
+    Simple wrapper to get dated tree sequence and posterior NodeGridValues
+    """
+    dates, posterior, timepoints, eps, nds = tsdate.get_dates(
+        ts,
+        Ne=Ne,
+        mutation_rate=mut_rate,
+        method=method,
+        priors=priors,
+    )
+    constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
+    tables = ts.dump_tables()
+    tables.nodes.time = constrained * 2 * Ne
+    tables.sort()
+    dated_ts = tables.tree_sequence()
+    return dated_ts, dates * 2 * Ne, posterior
+
+
+def get_dated_ts(
+    ts, dates, Ne, eps
+):
+    """
+    Simple wrapper to get dated tree sequence from unconstrained dates
+    NOTE: dates are assumed to be in generations
+    """
+    constrained = tsdate.constrain_ages_topo(ts, dates, eps)
+    tables = ts.dump_tables()
+    tables.nodes.time = constrained
+    tables.sort()
+    dated_ts = tables.tree_sequence()
+    return dated_ts
+
+
+def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
+    """
+    Rerun tsdate, using posterior of previous run as prior.
+    """
+    priors.grid_data = posterior.grid_data
+    dates, posterior, timepoints, eps, nds = tsdate.get_dates(
+        ts,
+        Ne=Ne,
+        mutation_rate=mut_rate,
+        method=method,
+        priors=priors,
+    )
+    constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
+    tables = ts.dump_tables()
+    tables.nodes.time = constrained * 2 * Ne
+    tables.sort()
+    iter_dated = tables.tree_sequence()
+    return iter_dated, dates * 2 * Ne, posterior
+
+
+def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=None):
+    """
+    Given a list of tree sequences, return a pandas dataframe with the age
+    estimates for each mutation via each method (tsdate, tsinfer + tsdate,
+    relate, geva etc.)
+    """
+
+    # Load tree sequences: simulated, dated (topo), dated(inferred)
+    ts = ts_list[0]
+    dated_ts = ts_list[1]
+    dated_inferred_ts = ts_list[2]
+
+    # Load age of mutations for each tree sequence
+    print("Number of mutations", ts.num_mutations)
+    mut_ages = utility.get_mut_pos_df(ts, "simulated_ts", ts.tables.nodes.time[:])
+    print("Number of mutations with true dates", mut_ages.shape[0])
+    mut_dated_ages = utility.get_mut_pos_df(
+        dated_ts, "tsdate", dated_ts.tables.nodes.time[:]
+    )
+    print("Number of mutations dated by tsdate", mut_dated_ages.shape[0])
+    run_results = pd.merge(
+        mut_ages, mut_dated_ages, how="left", left_index=True, right_index=True
+    )
+    mut_inferred_dated_ages = utility.get_mut_pos_df(
+        dated_inferred_ts, "tsdate_inferred", exclude_root=True
+    )
+    print(
+        "Number of mutations dated by tsinfer + tsdate",
+        mut_inferred_dated_ages.shape[0],
+    )
+    run_results = pd.merge(
+        run_results,
+        mut_inferred_dated_ages,
+        how="left",
+        left_index=True,
+        right_index=True,
+    )
+
+    # If Relate and GEVA were run, load mutation ages as pandas dataframe
+    # Create an "age" column for both
+    if relate_ages is not None:
+        # remove mutations that relate can't date or flipped
+        relate_ages = relate_ages[relate_ages["is_flipped"] == 0]
+        relate_ages = relate_ages[relate_ages["is_not_mapping"] == 0]
+        relate_ages["relate"] = (relate_ages["age_begin"] + relate_ages["age_end"]) / 2
+        relate = relate_ages[["pos_of_snp", "relate"]].copy()
+        relate = relate.rename(columns={"pos_of_snp": "position"}).set_index("position")
+        print("Number of mutations dated by relate", relate.shape[0])
+        run_results = pd.merge(
+            run_results, relate, how="left", left_index=True, right_index=True
+        )
+
+    if geva_ages is not None and geva_positions is not None:
+        # Merge the GEVA position indices and age estimates
+        geva = pd.merge(
+            geva_ages["PostMean"],
+            geva_positions["Position"],
+            how="left",
+            left_index=True,
+            right_index=True,
+        )
+        # For GEVA, we use PostMean as the age estimate
+        geva = geva.rename(
+            columns={"PostMean": "geva", "Position": "position"}
+        ).set_index("position")
+        print("Number of mutations dated by GEVA", geva.shape[0])
+        run_results = pd.merge(
+            run_results, geva, how="left", left_index=True, right_index=True
+        )
+
+    return run_results
+
+
+def compare_mutations_tslist(ts_list, dates_list, method_names):
+    """
+    Given a list of tree sequences and a list of names of how they were generated,
+    return a pandas dataframe with the age estimates for each mutation via each 
+    method (tsdate, tsinfer + tsdate, tsdate iterations) 
+    """
+
+    # Load tree sequences: simulated, dated (topo), dated(inferred)
+    first_ts = ts_list[0]
+    results = utility.get_mut_pos_df(
+        first_ts, method_names[0], dates_list[0]
+    )
+    for ts, dates, method_name in zip(ts_list[1:], dates_list[1:], method_names[1:]):
+        # Load age of mutations for each tree sequence
+        mut_ages = utility.get_mut_pos_df(ts, method_name, dates)
+        results = pd.merge(
+            results, mut_ages, how="inner", left_index=True, right_index=True
+        )
+    return results
+
+
+def get_kc_distances(ts_list, method_names):
+    """
+    Get kc_distances between a list of tree sequences with lambda at 0 and 1.
+    Simulated tree sequence must be first in the list.
+    """
+
+    # Load tree sequences
+    first_ts = ts_list[0]
+    results_lambda_0 = dict()
+    results_lambda_1 = dict()
+    for ts, method_name in zip(ts_list[1:], method_names[1:]):
+        results_lambda_0[method_name] = first_ts.kc_distance(ts, lambda_=0)
+        results_lambda_1[method_name] = first_ts.kc_distance(ts, lambda_=1)
+    return results_lambda_0, results_lambda_1 
 
 
 def iteration_tsdate(
@@ -1194,6 +1348,7 @@ def run_multiprocessing(function, params, output, num_replicates, num_processes)
     np.savetxt("data/" + output + "_tmrcas", master_tmrca_df, delimiter=",")
     # print(kc_distances)
     return master_mutation_df
+
 
 def time_cmd(cmd, stdout=sys.stdout):
     """

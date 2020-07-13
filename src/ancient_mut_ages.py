@@ -178,6 +178,8 @@ def get_tsdate_tgp_age_df():
     tsdate_ages.to_csv("all-data/tsdate_ages_tgp_chr20_ma0.1_ms0.01_p13.csv")
     # Only choose the oldest mutation at each position
     sort_upper_bound = tsdate_ages.sort_values(by=["tsdate_upper_bound"], ascending=False, kind='mergesort')
+    # Ignore back mutations
+    sort_upper_bound = sort_upper_bound[sort_upper_bound["tsdate_derived_allele"] != sort_upper_bound["tsdate_ancestral_allele"]] 
     tsdate_ages = sort_upper_bound.groupby('position', as_index=False).first() 
     return tsdate_ages
 
