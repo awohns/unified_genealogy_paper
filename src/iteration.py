@@ -2,10 +2,12 @@ import argparse
 import csv
 import numpy as np
 import json
+import pickle
 import logging
 import pandas as pd
 import re
 from tqdm import tqdm
+import time
 
 import msprime
 import tsinfer
@@ -31,8 +33,8 @@ def iter_infer(
     samples,
     Ne,
     mutation_rate,
-    ma_mis=None,
-    ms_mis=None,
+    mismatch_rate=None,
+    precision=None,
     recombination_rate=None,
     num_threads=1,
     output_fn=None,
@@ -48,20 +50,48 @@ def iter_infer(
     Runs all steps in iterative approach.
     Input is a sampledata file (optionally with ancient samples).
     """
+    if recombination_rate is not None:
+        av_rho = np.quantile(recombination_rate, 0.5)
+        mismatch_rate = av_rho * mismatch_rate
 
+    print(
+        "Starting iterative approach with {} samples, {} sites, using {} mismatch_rate and {} precision".format(
+            samples.num_samples, samples.num_sites, mismatch_rate, precision
+        )
+    )
     # Step 1: tsinfer first pass
+    start = time.time()
     if inferred_ts is None:
         inferred_ts = tsinfer_first_pass(
-            samples, output_fn, modern_only_first_pass, num_threads, progress
+            samples,
+            output_fn=output_fn,
+            recombination_rate=recombination_rate,
+            mismatch_rate=mismatch_rate,
+            precision=precision,
+            num_threads=num_threads,
+            progress=progress,
         )
     else:
         inferred_ts = tskit.load(inferred_ts)
+    end = time.time()
+    print(
+        "Step 1, Inferring Tree Sequence, done in {} minutes".format((end - start) / 60)
+    )
+    print(
+        "Inferred ts has {} nodes, {} edges, {} mutations and {} trees".format(
+            inferred_ts.num_nodes,
+            inferred_ts.num_edges,
+            inferred_ts.num_mutations,
+            inferred_ts.num_trees,
+        )
+    )
 
     # Snip centromere and telomeres from inferred_ts if chr in title of sampledata file
     if chrom is not None:
         inferred_ts, centromere = run_snip_centromere_telomeres(inferred_ts, chrom)
 
     # Step 2: tsdate first pass
+    start = time.time()
     tsdate_ages, modern_inferred_ts = tsdate_first_pass(
         inferred_ts,
         samples,
@@ -71,24 +101,47 @@ def iter_infer(
         num_threads=num_threads,
         progress=progress,
     )
+    end = time.time()
+    print("Step 2, Dating Tree Sequence, {} minutes".format((end - start) / 60))
 
-    # Step 3: Constrain with ancients
-    samples_constrained, constr_mut_pos, constrained_ages = get_ancient_constraints(
+    # Step 3: Add dates to sampledata file
+    start = time.time()
+    samples_constrained, constr_mut_pos, constrained_ages = get_dated_sampledata(
         samples, tsdate_ages, modern_inferred_ts, output_fn=output_fn
+    )
+    end = time.time()
+    print(
+        "Step 3, Adding times to sampledata file, {} minutes".format((end - start) / 60)
     )
 
     # Step 4: tsinfer second pass
+    start = time.time()
     reinferred_ts = tsinfer_second_pass(
         samples_constrained,
         recombination_rate=recombination_rate,
-        ma_mis=ma_mis,
-        ms_mis=ms_mis,
+        mismatch_rate=mismatch_rate,
+        precision=precision,
         output_fn=output_fn,
         num_threads=num_threads,
-        progress=progress
+        progress=progress,
+    )
+    end = time.time()
+    print("Step 4, Re-Inferring Tree Sequence, {} minutes".format((end - start) / 60))
+    print(
+        "Re-Inferred ts has {} nodes, {} edges, {} mutations and {} trees".format(
+            reinferred_ts.num_nodes,
+            reinferred_ts.num_edges,
+            reinferred_ts.num_mutations,
+            reinferred_ts.num_trees,
+        )
     )
 
+    # Snip centromere and telomeres from inferred_ts if chr in title of sampledata file
+    if chrom is not None:
+        reinferred_ts, centromere = run_snip_centromere_telomeres(reinferred_ts, chrom)
+
     # Step 5: tsdate second pass
+    start = time.time()
     iter_dates, modern_reinferred_ts = tsdate_second_pass(
         reinferred_ts,
         samples_constrained,
@@ -98,31 +151,67 @@ def iter_infer(
         constr_sites=constr_mut_pos,
         adjust_priors=True,
         num_threads=num_threads,
-        progress=progress
+        progress=progress,
+    )
+    end = time.time()
+    print(
+        "Step 5, Dating Re-Inferred Tree Sequence, {} minutes".format(
+            (end - start) / 60
+        )
     )
     if return_trees:
         inferred_dated_ts = get_dated_ts(modern_inferred_ts, tsdate_ages, Ne, 1e-6)
         reinferred_dated_ts = get_dated_ts(modern_reinferred_ts, iter_dates, Ne, 1e-6)
-        return modern_inferred_ts, tsdate_ages, constrained_ages, modern_reinferred_ts, iter_dates, inferred_dated_ts, reinferred_dated_ts
+        return (
+            modern_inferred_ts,
+            tsdate_ages,
+            constrained_ages,
+            modern_reinferred_ts,
+            iter_dates,
+            inferred_dated_ts,
+            reinferred_dated_ts,
+        )
     else:
-        return modern_inferred_ts, tsdate_ages, constrained_ages, modern_reinferred_ts, iter_dates
+        return (
+            modern_inferred_ts,
+            tsdate_ages,
+            constrained_ages,
+            modern_reinferred_ts,
+            iter_dates,
+        )
 
 
 def tsinfer_first_pass(
-    samples, output_fn=None, modern_only=False, num_threads=1, progress=False
+    samples,
+    recombination_rate=None,
+    mismatch_rate=None,
+    precision=None,
+    output_fn=None,
+    modern_only=False,
+    num_threads=1,
+    progress=False,
 ):
     """
     Infer tree sequence topology with modern and ancient samples.
     Then simplify so tree sequence only contains moderns.
     """
     if progress:
-        progress=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1)
+        progress = tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1)
         inferred_ts = tsinfer.infer(
-            samples, simplify=True, num_threads=num_threads, progress_monitor=progress
+            samples,
+            recombination_rate=recombination_rate,
+            mismatch_rate=mismatch_rate,
+            simplify=False,
+            num_threads=num_threads,
+            progress_monitor=progress,
         )
     else:
         inferred_ts = tsinfer.infer(
-            samples, simplify=True, num_threads=num_threads
+            samples,
+            recombination_rate=recombination_rate,
+            mismatch_rate=mismatch_rate,
+            simplify=False,
+            num_threads=num_threads,
         )
 
     if output_fn is not None:
@@ -144,17 +233,30 @@ def tsdate_first_pass(
     Date the inferred tree sequence, simplyging any ancient samples out before dating.
     """
     ancient_indivs = np.where(samples.individuals_time[:] != 0)[0]
-    ancient_nodes = np.where(np.isin(inferred_ts.tables.nodes.individual[:], ancient_indivs))[0]
+    ancient_nodes = np.where(
+        np.isin(inferred_ts.tables.nodes.individual[:], ancient_indivs)
+    )[0]
     # Assert that all ancient nodes are samples
     assert np.all(np.isin(ancient_nodes, inferred_ts.samples()))
-    modern_inferred_ts = inferred_ts.simplify(samples=inferred_ts.samples()[~np.isin(inferred_ts.samples(),
-        ancient_nodes)])
-    tsdate_ages = tsdate.get_dates(modern_inferred_ts, Ne, mutation_rate, method=method, num_threads=num_threads, progress=progress)
+    modern_inferred_ts = inferred_ts.simplify(
+        samples=inferred_ts.samples()[~np.isin(inferred_ts.samples(), ancient_nodes)]
+    )
+    tsdate_ages = tsdate.get_dates(
+        modern_inferred_ts,
+        Ne,
+        mutation_rate,
+        method=method,
+        num_threads=num_threads,
+        progress=progress,
+    )
 
     tsdate_ages = tsdate_ages[0] * 2 * Ne
-    tsdate_ages_df = util.get_mut_pos_df(modern_inferred_ts, "FirstPassAges", tsdate_ages)
+    tsdate_ages_df = util.get_mut_pos_df(
+        modern_inferred_ts, "FirstPassAges", tsdate_ages
+    )
     if output_fn is not None:
         tsdate_ages_df.to_csv(output_fn + ".tsdatefirstpass.csv")
+        pickle.dump(tsdate_ages, open(output_fn + ".tsdatefirstpass.dates.p", "wb"))
     logging.debug(
         "STEP TWO: Dated inferred tree sequence with {} mutations.".format(
             inferred_ts.num_mutations
@@ -163,7 +265,7 @@ def tsdate_first_pass(
     return tsdate_ages, modern_inferred_ts
 
 
-def get_ancient_constraints(
+def get_dated_sampledata(
     sampledata, tsdate_ages, inferred_ts, output_fn=None, centromere=None
 ):
     """
@@ -318,9 +420,12 @@ def ancients_as_ancestors(sample_data, ancestor_data, output_fn=None, progress=F
         index = 0
         added_ancients_indices = list()
         added_ancients_metadata = list()
-        for cur_index, ancestor in tqdm(enumerate(ancestor_data.ancestors()),
-            total=ancestor_data.num_ancestors, disable=not progress,
-                desc="Add ancient ancestors"):
+        for cur_index, ancestor in tqdm(
+            enumerate(ancestor_data.ancestors()),
+            total=ancestor_data.num_ancestors,
+            disable=not progress,
+            desc="Add ancient ancestors",
+        ):
             if cur_index in add_ancient_indices:
                 for ancient_index in np.where(cur_index == add_ancient_indices)[0]:
                     # Add ancient sample as ancestor at appropriate time
@@ -370,13 +475,14 @@ def ancients_as_ancestors(sample_data, ancestor_data, output_fn=None, progress=F
     return (
         ancestor_data_ancients,
         np.array(added_ancients_indices),
-        added_ancients_metadata)
+        added_ancients_metadata,
+    )
+
 
 def tsinfer_second_pass(
     samples_constrained,
     recombination_rate=None,
-    ma_mis=None,
-    ms_mis=None,
+    mismatch_rate=None,
     precision=None,
     output_fn=None,
     num_threads=1,
@@ -396,8 +502,13 @@ def tsinfer_second_pass(
             tables.nodes.metadata, tables.nodes.metadata_offset
         )
         for index, ancestor_index in enumerate(added_ancients_indices):
-            flag_array[ancestor_index] = np.bitwise_or(tsinfer.NODE_IS_SAMPLE_ANCESTOR, tskit.NODE_IS_SAMPLE)
-            metadata_array[ancestor_index] = json.dumps(added_ancients_metadata[index]).encode()
+            flag_array[ancestor_index] = np.bitwise_or(
+                flag_array[ancestor_index],
+                np.bitwise_or(tsinfer.NODE_IS_SAMPLE_ANCESTOR, tskit.NODE_IS_SAMPLE),
+            )
+            metadata_array[ancestor_index] = json.dumps(
+                added_ancients_metadata[index]
+            ).encode()
         md, md_offset = tskit.pack_bytes(metadata_array)
         tables.nodes.set_columns(
             flags=flag_array,
@@ -408,6 +519,7 @@ def tsinfer_second_pass(
             metadata_offset=md_offset,
         )
         return tables.tree_sequence()
+
     if progress is True:
         progress = tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1)
     else:
@@ -421,48 +533,55 @@ def tsinfer_second_pass(
         output_str = output_fn + ".ancestors"
     else:
         output_str = None
-    (
-        ancestors_w_ancients,
-        added_ancient_indices,
-        added_ancient_metadata,
-    ) = ancients_as_ancestors(
-        binned_sd, ancestors_data, output_fn, progress=progress
-    )
+    # If there are ancient samples, add them as ancestors
+    if np.any(samples_constrained.individuals_time[:] > 0):
+        ancients_present = True
+    else:
+        ancients_present = False
+    if ancients_present:
+        (
+            ancestors_data,
+            added_ancient_indices,
+            added_ancient_metadata,
+        ) = ancients_as_ancestors(
+            binned_sd, ancestors_data, output_fn, progress=progress
+        )
     extra_params = dict(
-            num_threads=num_threads,
-            recombination_rate=recombination_rate,
-            precision=precision,
-            progress_monitor=progress
+        num_threads=num_threads,
+        recombination_rate=recombination_rate,
+        precision=precision,
+        progress_monitor=progress,
     )
-    inferred_anc_ts = tsinfer.match_ancestors( 
+    inferred_anc_ts = tsinfer.match_ancestors(
         binned_sd,
-        ancestors_w_ancients,
-        mismatch_rate=ma_mis,
+        ancestors_data,
+        mismatch_rate=mismatch_rate,
         path_compression=False,
-        **extra_params
+        **extra_params,
     )
-
-    inferred_anc_ts = add_ancestors_flags(
-        inferred_anc_ts, added_ancient_indices, added_ancient_metadata
-    )
+    if ancients_present:
+        inferred_anc_ts = add_ancestors_flags(
+            inferred_anc_ts, added_ancient_indices, added_ancient_metadata
+        )
     if output_fn is not None:
         inferred_anc_ts.dump(output_fn + ".iter.tsinferred.atrees")
-
-    modern_samples_constrained = binned_sd.delete(samples=np.where(binned_sd.individuals_time[:][binned_sd.samples_individual] != 0)[0])
+#    if ancients_present:
+#        ancient_samples = np.where(binned_sd.individuals_time[:][binned_sd.samples_individual] != 0)[0]
+#        print("Matching Samples without the following ancient samples: {}".format(ancient_samples))
+#        modern_samples_constrained = binned_sd.delete(samples=ancient_samples)
+#    else:
+    modern_samples_constrained = binned_sd
     iter_infer = tsinfer.match_samples(
         modern_samples_constrained,
         inferred_anc_ts,
-        mismatch_rate=ms_mis,
+        mismatch_rate=mismatch_rate,
         path_compression=False,
         simplify=False,
-        **extra_params
+        **extra_params,
     )
     if output_fn is not None:
         iter_infer.dump(output_fn + ".iter.tsinferred.trees")
 
-    modern_samples = np.where(iter_infer.tables.nodes.time[iter_infer.samples()] == 0)[
-        0
-    ]
     logging.debug(
         "STEP FOUR: Reinferred tree sequence with {} modern samples and {} ancients.".format(
             np.sum(modern_samples_constrained.individuals_time[:] == 0),
@@ -487,20 +606,31 @@ def tsdate_second_pass(
     Input is tree sequence with modern and ancient samples.
     Simplify so tree sequence only contains moderns and date.
     """
-    modern_samples = np.where(samples.individuals_time[:][samples.samples_individual] == 0)[0]
+    modern_samples = np.where(
+        samples.individuals_time[:][samples.samples_individual] == 0
+    )[0]
     modern_inferred_ts = inferred_ts.simplify(samples=modern_samples)
     if modern_inferred_ts.num_samples > 1000:
-        approximate_priors=True
+        approximate_priors = True
     else:
-        approximate_priors=False
-    priors = tsdate.build_prior_grid(modern_inferred_ts, progress=progress, approximate_priors=approximate_priors)
+        approximate_priors = False
+    priors = tsdate.build_prior_grid(
+        modern_inferred_ts, progress=progress, approximate_priors=approximate_priors
+    )
+    # If there are no ancient samples, don't adjust priors
+    if np.all(samples.individuals_time[:] == 0):
+        adjust_priors = False
     if adjust_priors and constr_sites is not None:
         inferred_times = modern_inferred_ts.tables.nodes.time[:]
         for mut_pos, limit in constr_sites.items():
-            constrained_mutations_nodes = modern_inferred_ts.tables.mutations.node[np.where(
-                modern_inferred_ts.tables.sites.position[modern_inferred_ts.tables.mutations.site]
-                == mut_pos
-            )[0]]
+            constrained_mutations_nodes = modern_inferred_ts.tables.mutations.node[
+                np.where(
+                    modern_inferred_ts.tables.sites.position[
+                        modern_inferred_ts.tables.mutations.site
+                    ]
+                    == mut_pos
+                )[0]
+            ]
             # Only constrain the oldest mutation at this site
             oldest_mut_age = 0
             oldest_mut_node = 0
@@ -512,7 +642,8 @@ def tsdate_second_pass(
             # Only constrain mutations which are not above sample nodes
             if inferred_times[mut_node] > 0:
                 priors.grid_data[
-                    mut_node - modern_inferred_ts.num_samples, : (np.abs(priors.timepoints * 2 * Ne - limit)).argmin()
+                    mut_node - modern_inferred_ts.num_samples,
+                    : (np.abs(priors.timepoints * 2 * Ne - limit)).argmin(),
                 ] = 0
         added_ancestors = np.where(
             modern_inferred_ts.tables.nodes.flags & tsinfer.NODE_IS_SAMPLE_ANCESTOR
@@ -524,13 +655,19 @@ def tsdate_second_pass(
                 (np.abs(priors.timepoints * 2 * Ne - ancient_time)).argmin(),
             ] = 1
     iter_dates = tsdate.get_dates(
-        modern_inferred_ts, Ne, mut_rate, priors=priors, num_threads=num_threads, progress=progress
+        modern_inferred_ts,
+        Ne,
+        mut_rate,
+        priors=priors,
+        num_threads=num_threads,
+        progress=progress,
     )
     tsdate_ages_df = util.get_mut_pos_df(
         modern_inferred_ts, "SecondPassDates", iter_dates[0] * 2 * Ne
     )
     if output_fn is not None:
         tsdate_ages_df.to_csv(output_fn + ".tsdatesecondpass.csv")
+        pickle.dump(iter_dates[0] * 2 * Ne, open(output_fn + ".tsdatesecondpass.dates.p", "wb"))
     # Ensure that all dates are greater than the timepoint closest to the lower
     # bound ancient time constraint
     if constr_sites is not None:
@@ -570,23 +707,26 @@ def bin_sampledata(sampledata, output_fn=None):
     times = sd.sites_time[:]
 
     for j, variant in enumerate(sd.variants(inference_sites=True)):
-            time = variant.site.time
-            if time == tsinfer.constants.TIME_UNSPECIFIED:
-                counts = tsinfer.formats.allele_counts(variant.genotypes)
-                # Non-variable sites have no obvious freq-as-time values
-                assert counts.known != counts.derived
-                assert counts.known != counts.ancestral
-                assert counts.known > 0 
-                # Time = freq of *all* derived alleles. Note that if n_alleles > 2 this
-                # may not be sensible: https://github.com/tskit-dev/tsinfer/issues/228
-                times[variant.site.id] = counts.derived / counts.known
-    
-    sd.sites_time[:] = np.round(times)
+        time = variant.site.time
+        if time == tsinfer.constants.TIME_UNSPECIFIED:
+            counts = tsinfer.formats.allele_counts(variant.genotypes)
+            # Non-variable sites have no obvious freq-as-time values
+            assert counts.known != counts.derived
+            assert counts.known != counts.ancestral
+            assert counts.known > 0
+            # Time = freq of *all* derived alleles. Note that if n_alleles > 2 this
+            # may not be sensible: https://github.com/tskit-dev/tsinfer/issues/228
+            times[variant.site.id] = counts.derived / counts.known
+
+    # Round times to the nearest 10, excluding times less than 5
+    times[times > 5] = np.round(times[times > 5], -1)
+    sd.sites_time[:] = times
     print(
         "Number of samples:",
         sd.num_samples,
         ". Number of discrete times:",
-        len(np.unique(sd.sites_time[:])))
+        len(np.unique(sd.sites_time[:])),
+    )
     sd.finalise()
     return sd
 
@@ -603,6 +743,7 @@ def get_dated_ts(ts, dates, Ne, eps):
     dated_ts = tables.tree_sequence()
     return dated_ts
 
+
 def setup_sample_file(args):
     """
     Return a Thousand Genomes Project sample data file, the
@@ -615,7 +756,7 @@ def setup_sample_file(args):
     sd = tsinfer.load(filename)
     inference_pos = sd.sites_position[:][sd.sites_inference[:]]
 
-    match = re.search(r'(chr\d+)', filename)
+    match = re.search(r"(chr\d+)", filename)
     if match is not None:
         chrom = match.group(1)
     else:
@@ -636,15 +777,17 @@ def setup_sample_file(args):
     else:
         inference_distances = inference_pos
         d = np.diff(inference_distances)
-        rho = np.concatenate(
-            ([0.0], d/sd.sequence_length))
+        rho = np.concatenate(([0.0], d / sd.sequence_length))
 
-    return sd, rho, filename[:-len(".samples")], chrom
+    return sd, rho, filename[: -len(".samples")], chrom
+
 
 def physical_to_genetic(recombination_map, input_physical_positions):
     map_pos = recombination_map.get_positions()
     map_rates = recombination_map.get_rates()
-    map_genetic_positions = np.insert(np.cumsum(np.diff(map_pos) * map_rates[:-1]), 0, 0)
+    map_genetic_positions = np.insert(
+        np.cumsum(np.diff(map_pos) * map_rates[:-1]), 0, 0
+    )
     return np.interp(input_physical_positions, map_pos, map_genetic_positions)
 
 
@@ -668,13 +811,27 @@ def run_snip_centromere_telomeres(ts, chrom):
     # be useful in UKBB, since it's perfectly possible that the largest
     # gap between sites isn't in the centromere.
     X = position[s_index : e_index + 1]
-    j = np.argmax(X[1:] - X[:-1])
-    real_start = X[j] + 1
-    real_end = X[j + 1]
+    if len(X) > 0:
+        j = np.argmax(X[1:] - X[:-1])
+        real_start = X[j] + 1
+        real_end = X[j + 1]
+        print(
+            "Snipping inferred tree sequence. Centromere is {} to {}".format(
+                real_start, real_end
+            )
+        )
+        ts_snipped = ts.delete_intervals([[real_start, real_end]])
+    else:
+        real_start = start
+        real_end = end
     first_pos = position[0]
-    last_pos = position[-1]
-    print("Snipping inferred tree sequence. Centromere is {} to {}. First position is {}, last position is {}. Total sequence length is {}".format(real_start, real_end, first_pos, last_pos, ts.get_sequence_length()))
-    ts_snipped = ts.keep_intervals([[first_pos, real_start], [real_end, last_pos]])
+    last_pos = position[-1] + 1
+    print(
+        "First position is {}, last position is {}. Total sequence length is {}".format(
+            first_pos, last_pos, ts.get_sequence_length()
+        )
+    )
+    ts_snipped = ts.keep_intervals([[first_pos, last_pos]])
     return ts_snipped, (real_start, real_end)
 
 
@@ -692,26 +849,58 @@ def main():
     parser.add_argument("output", type=str, help="Output dated tree sequence.")
     parser.add_argument("Ne", type=int, help="Estimated effective population size.")
     parser.add_argument("mutation_rate", type=float, help="Estimated mutation rate.")
-    parser.add_argument("-m", "--genetic_map", default=None,
-            help="An alternative genetic map to be used for this analysis, in the format"
-                "expected by msprime.RecombinationMap.read_hapmap")
+    parser.add_argument(
+        "-m",
+        "--genetic-map",
+        default=None,
+        help="An alternative genetic map to be used for this analysis, in the format"
+        "expected by msprime.RecombinationMap.read_hapmap",
+    )
+    parser.add_argument(
+        "--mismatch-rate",
+        type=float,
+        default=0.1,
+        help="The mismatch probability used in tsinfer,"
+        " as a fraction of the median recombination probability between sites",
+    )
+    parser.add_argument(
+        "-p",
+        "--precision",
+        type=int,
+        default=None,
+        help="The precision, as a number of decimal places, which will affect the speed"
+        " of the matching algorithm (higher precision = lower speed). If None,"
+        " calculate the smallest of the recombination rates or mismatch rates, and"
+        " use the negative exponent of that number plus one. E.g. if the smallest"
+        " recombination rate is 2.5e-6, use precision = 6+3 = 7",
+    )
+
     parser.add_argument(
         "--inferred-ts",
         type=str,
         default=None,
         help="Path to inferred ts (first pass) \
             If user already has an inferred ts to perform iteration on. \
-            This causes the first step to be skipped"
+            This causes the first step to be skipped",
     )
     parser.add_argument("--num-threads", type=int, default=16)
-    parser.add_argument('-p', '--progress', action='store_true', 
-            help="Show progress bar.")
+    parser.add_argument("--progress", action="store_true", help="Show progress bar.")
 
     args = parser.parse_args()
     sampledata, rho, prefix, chrom = setup_sample_file(args)
-    iter_infer(sampledata, args.Ne, args.mutation_rate, output_fn=args.output,
-            recombination_rate=rho, inferred_ts=args.inferred_ts, chrom=chrom, progress=args.progress,
-            num_threads=args.num_threads)
+    iter_infer(
+        sampledata,
+        args.Ne,
+        args.mutation_rate,
+        output_fn=args.output,
+        recombination_rate=rho,
+        mismatch_rate=args.mismatch_rate,
+        precision=args.precision,
+        inferred_ts=args.inferred_ts,
+        chrom=chrom,
+        progress=args.progress,
+        num_threads=args.num_threads,
+    )
 
 
 if __name__ == "__main__":
