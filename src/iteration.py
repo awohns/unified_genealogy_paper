@@ -50,13 +50,11 @@ def iter_infer(
     Runs all steps in iterative approach.
     Input is a sampledata file (optionally with ancient samples).
     """
-    if recombination_rate is not None:
-        av_rho = np.quantile(recombination_rate, 0.5)
-        mismatch_rate = av_rho * mismatch_rate
 
     print(
-        "Starting iterative approach with {} samples, {} sites, using {} mismatch_rate and {} precision".format(
-            samples.num_samples, samples.num_sites, mismatch_rate, precision
+        "Starting iterative approach with {} samples, {} sites, using {} mismatch_rate," 
+        "{} average rho, and {} precision".format(
+            samples.num_samples, samples.num_sites, mismatch_rate, np.quantile(recombination_rate, 0.5), precision
         )
     )
     # Step 1: tsinfer first pass
@@ -74,17 +72,9 @@ def iter_infer(
     else:
         inferred_ts = tskit.load(inferred_ts)
     end = time.time()
-    print(
-        "Step 1, Inferring Tree Sequence, done in {} minutes".format((end - start) / 60)
+    print("Step 1, Inferring Tree Sequence, done in {} minutes".format((end - start) / 60)
     )
-    print(
-        "Inferred ts has {} nodes, {} edges, {} mutations and {} trees".format(
-            inferred_ts.num_nodes,
-            inferred_ts.num_edges,
-            inferred_ts.num_mutations,
-            inferred_ts.num_trees,
-        )
-    )
+
 
     # Snip centromere and telomeres from inferred_ts if chr in title of sampledata file
     if chrom is not None:
@@ -201,6 +191,7 @@ def tsinfer_first_pass(
             samples,
             recombination_rate=recombination_rate,
             mismatch_rate=mismatch_rate,
+            precision=precision,
             simplify=False,
             num_threads=num_threads,
             progress_monitor=progress,
@@ -210,12 +201,22 @@ def tsinfer_first_pass(
             samples,
             recombination_rate=recombination_rate,
             mismatch_rate=mismatch_rate,
+            precision=precision,
             simplify=False,
             num_threads=num_threads,
         )
 
     if output_fn is not None:
         inferred_ts.dump(output_fn + ".tsinferred.trees")
+    #print("Starting with av rho {} (mean {}, median {},  nonzero min {},  2.5% quantile {}) precision {}").format( 
+    print(
+        "Inferred ts has {} nodes, {} edges, {} mutations and {} trees".format(
+            inferred_ts.num_nodes,
+            inferred_ts.num_edges,
+            inferred_ts.num_mutations,
+            inferred_ts.num_trees,
+        )
+    )
     return inferred_ts
 
 
@@ -888,14 +889,33 @@ def main():
 
     args = parser.parse_args()
     sampledata, rho, prefix, chrom = setup_sample_file(args)
+    av_rho = np.quantile(rho, 0.5)
+
+    if rho is not None:
+        av_rho = np.quantile(rho, 0.5)
+        mismatch_rate = av_rho * args.mismatch_rate
+    else:
+        mismatch_rate = None
+
+
+    if args.precision is None:
+        # Smallest nonzero recombination rate
+        min_rho = int(np.ceil(-np.min(np.log10(rho[rho > 0]))))
+        # Smallest mean
+        av_min = int(np.ceil(-np.log10(mismatch_rate)))
+        precision = max(min_rho, av_min) + 3
+    else:
+        precision = args.precision
+
+    print(np.quantile(rho, 0.5))
     iter_infer(
         sampledata,
         args.Ne,
         args.mutation_rate,
         output_fn=args.output,
         recombination_rate=rho,
-        mismatch_rate=args.mismatch_rate,
-        precision=args.precision,
+        mismatch_rate=mismatch_rate,
+        precision=precision,
         inferred_ts=args.inferred_ts,
         chrom=chrom,
         progress=args.progress,
