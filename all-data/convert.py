@@ -6,7 +6,9 @@ import subprocess
 import os
 import sys
 import math
+import re
 
+import allel
 import numpy as np
 import tsinfer
 import attr
@@ -20,6 +22,7 @@ import tskit
 
 try:
     import bgen_reader
+
     # Local module used to work around slow genotype access in bgen_reader
     import simplebgen
 except ImportError:
@@ -35,36 +38,68 @@ class Site(object):
     metadata = attr.ib({})
     inference = attr.ib(None)
 
+
 def run_multiprocessing(args, function):
     """
     Run multiprocessing of sampledata files.
+    We use multiple threads by splitting the VCF file into chunks and using the vcf_subset
+    function of cyvcf2.
     """
     vcf_fn = args.data_file
     num_processes = args.num_threads
     if num_processes > 1:
         # Split the VCF into chunks
-        positions = subprocess.check_output(["bcftools", "query", "-f", "'%CHROM %POS\n'", vcf_fn])
-        pos_list = positions.decode("ascii").replace("'", "").replace(" ", ":").split("\n")
+        callset = allel.read_vcf(vcf_fn, fields=["variants/CHROM", "variants/POS"])
+        pos_list = callset["variants/POS"]
+        chroms = callset["variants/CHROM"]
+        assert np.all(chroms == chroms[0])
+        # match = re.search(r'(chr\d+)', vcf_fn)
+        # chrom = match.group(1)[3:]
+        chrom = str(chroms[0])
 
-        def get_chunks(lst, num_processes):
+        def get_chromosome_chunks(lst, num_processes):
             length = len(lst)
             n = math.ceil(length / num_processes)
             chunks = list()
             for index, i in enumerate(range(0, length, n)):
                 if index != num_processes - 1:
-                    chunks.append((args, args.output_file + str(index), (lst[i] + "-" + lst[i + n].split(":")[1])))
+                    chunks.append(
+                        (
+                            args,
+                            args.output_file + str(index),
+                            (chrom + ":" + str(lst[i]) + "-" + str(lst[i + n])),
+                        )
+                    )
                 else:
-                    chunks.append((args, args.output_file + str(index), (lst[i] + "-" + lst[-2].split(":")[1])))
+                    chunks.append(
+                        (
+                            args,
+                            args.output_file + str(index),
+                            (chrom + ":" + str(lst[i]) + "-" + str(lst[-1])),
+                        )
+                    )
             return chunks
-        chunks = iter(get_chunks(pos_list, num_processes))
-        with multiprocessing.Pool(
-                processes=num_processes, maxtasksperchild=10
-                ) as pool:
-            for row in pool.imap_unordered(function, chunks):
-                print("done with chunk")
-               
+
+        chunks = get_chromosome_chunks(pos_list, num_processes)
+        chunks_iter = iter(chunks)
+        reports = list()
+        completed_files = list()
+        with multiprocessing.Pool(processes=num_processes, maxtasksperchild=10) as pool:
+            for index, row in enumerate(pool.map(function, chunks_iter)):
+                reports.append(row)
+                print("Processed Chunk {}: {} with {} sites added.".format(index, chunks[index][2], row["num_sites"]))
+                if row["num_sites"] > 0:
+                    completed_files.append(index)
+
+        # Combine reports and print
+        master_report = reports[0]
+        for report in reports[1:]:
+            for var_type, val in report.items():
+                master_report[var_type] += val
+        print(master_report)
+
         # Combine sampledata files
-        filenames = np.arange(0, num_processes) 
+        filenames = completed_files
         samples = tsinfer.load(args.output_file + "0")
         copy = samples.copy(args.output_file)
         for sampledata_file in filenames[1:]:
@@ -84,20 +119,22 @@ def run_multiprocessing(args, function):
 
 
 def make_sampledata(args):
-    if len(args) > 1:
+    if isinstance(args, tuple):
         vcf_subset = args[2]
         args[0].output_file = str(args[1])
-    args = args[0]
+        args = args[0]
+    else:
+        vcf_subset = None
     git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"])
     git_provenance = {
         "repo": "git@github.com:mcveanlab/treeseq-inference.git",
         "hash": git_hash.decode().strip(),
         "dir": "human-data",
-        "notes:": (
-            "Use the Makefile to download and process the upstream data files")}
+        "notes:": ("Use the Makefile to download and process the upstream data files"),
+    }
     data_provenance = {
         "ancestral_states_url": args.ancestral_states_url,
-        "reference_name": args.reference_name
+        "reference_name": args.reference_name,
     }
 
     # Get the ancestral states.
@@ -115,29 +152,43 @@ def make_sampledata(args):
         "hgdp": HgdpConverter,
         "max-planck": MaxPlanckConverter,
         "afanasievo": AfanasievoConverter,
-        "1240k": ReichConverter}
+        "1240k": ReichConverter,
+    }
     try:
         with tsinfer.SampleData(
-                path=args.output_file, num_flush_threads=2,
-                sequence_length=sequence_length) as samples:
+            path=args.output_file, num_flush_threads=2, sequence_length=sequence_length
+        ) as samples:
             converter = converter_class[args.source](
-                    args.data_file, ancestral_states, samples)
+                args.data_file, ancestral_states, samples
+            )
             if args.metadata_file:
                 converter.process_metadata(args.metadata_file, args.progress)
             else:
                 converter.process_metadata(args.progress)
             if vcf_subset is not None:
-                converter.process_sites(vcf_subset=vcf_subset, show_progress=args.progress,
-                        max_sites=args.max_variants)
+                report = converter.process_sites(
+                    vcf_subset=vcf_subset,
+                    show_progress=args.progress,
+                    max_sites=args.max_variants,
+                )
             else:
-                converter.process_sites(show_progress=args.progress,
-                        max_sites=args.max_variants)
+                report = converter.process_sites(
+                    show_progress=args.progress, max_sites=args.max_variants
+                )
             samples.record_provenance(
-                command=sys.argv[0], args=sys.argv[1:], git=git_provenance,
-                data=data_provenance)
+                command=sys.argv[0],
+                args=sys.argv[1:],
+                git=git_provenance,
+                data=data_provenance,
+            )
     except Exception as e:
         os.unlink(args.output_file)
+        if report["num_sites"] == 0:
+            return report
         raise e
+    if report["num_sites"] == 0:
+        os.unlink(args.output_file)
+    return report
 
 
 def filter_duplicates(vcf):
@@ -164,11 +215,13 @@ class Converter(object):
     """
     Superclass of converters.
     """
+
     def __init__(self, data_file, ancestral_states, samples):
         self.data_file = data_file
         self.ancestral_states = ancestral_states
         self.samples = samples
         self.num_samples = -1
+        self.num_sites = 0
         # ancestral states counters.
         self.num_no_ancestral_state = 0
         self.num_low_confidence_ancestral_state = 0
@@ -183,15 +236,20 @@ class Converter(object):
         self.num_nmo_tons = 0
 
     def report(self):
-        print("unphased                       :", self.num_unphased)
-        print("missing_data                   :", self.num_missing_data)
-        print("invariant                      :", self.num_invariant)
-        print("num_indels                     :", self.num_indels)
-        print("non_biallelic                  :", self.num_non_biallelic)
-        print("no_ancestral_state             :", self.num_no_ancestral_state)
-        print("low_confidence_ancestral_state :", self.num_low_confidence_ancestral_state)
-        print("num_singletons                 :", self.num_singletons)
-        print("num_(n - 1)_tons               :", self.num_nmo_tons)
+        report_dict = {}
+        report_dict["num_sites"] = self.num_sites
+        report_dict["unphased"] = self.num_unphased
+        report_dict["missing_data"] = self.num_missing_data
+        report_dict["invariant"] = self.num_invariant
+        report_dict["num_indels"] = self.num_indels
+        report_dict["non_biallelic"] = self.num_non_biallelic
+        report_dict["no_ancestral_state"] = self.num_no_ancestral_state
+        report_dict[
+            "low_confidence_ancestral_state"
+        ] = self.num_low_confidence_ancestral_state
+        report_dict["num_singletons"] = self.num_singletons
+        report_dict["num_(n - 1)_tons"] = self.num_nmo_tons
+        return report_dict
 
     def process_metadata(self, metadata_file):
         pass
@@ -222,7 +280,6 @@ class Converter(object):
 
 
 class VcfConverter(Converter):
-
     def convert_genotypes(self, row, ancestral_state, phased=True):
         ret = None
         num_diploids = self.num_samples // 2
@@ -237,9 +294,10 @@ class VcfConverter(Converter):
             if "|" in bases[j]:
                 alleles = bases[j].split("|")
             else:
+                self.num_unphased += 1
                 alleles = bases[j].split("/")
             if len(alleles) != 2:
-                self.num_unphased += 1
+                self.num_non_biallelic += 1
                 break
             for allele in alleles:
                 if allele == ".":
@@ -250,7 +308,7 @@ class VcfConverter(Converter):
             a[2 * j + 1] = alleles[1] != ancestral_state_upper
         else:
             freq = np.sum(a)
-            inference=None
+            inference = None
             all_alleles.remove(ancestral_state_upper)
             if len(all_alleles) == 0:
                 alleles = [ancestral_state_upper]
@@ -262,28 +320,34 @@ class VcfConverter(Converter):
                 self.num_invariant += 1
             if any(len(allele) != 1 for allele in all_alleles):
                 self.num_indels += 1
-                inference=False
+                inference = False
             if len(all_alleles) > 2:
                 self.num_non_biallelic += 1
             if freq == 1:
                 self.num_singletons += 1
             if freq == self.num_samples - 1:
                 self.num_nmo_tons += 1
-                inference=False
+                inference = False
             if ancestral_state.lower() == ancestral_state:
-                inference=False
-            
+                inference = False
+
             metadata = {"ID": row.ID, "REF": row.REF}
             ret = Site(
-                position=row.POS, alleles=alleles, genotypes=a, metadata=metadata, inference=inference)
+                position=row.POS,
+                alleles=alleles,
+                genotypes=a,
+                metadata=metadata,
+                inference=inference,
+            )
         return ret
 
     def process_sites(self, vcf_subset=None, show_progress=False, max_sites=None):
-        num_data_sites = int(subprocess.check_output(
-            ["bcftools", "index", "--nrecords", self.data_file]))
+        num_data_sites = int(
+            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
+        )
         progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
 
-        num_sites = 0
+        self.num_sites = 0
         if vcf_subset is None:
             vcf = cyvcf2.VCF(self.data_file)
         else:
@@ -295,20 +359,28 @@ class VcfConverter(Converter):
                 if site is not None:
                     if site.inference is not None:
                         self.samples.add_site(
-                            position=site.position, genotypes=site.genotypes,
-                            alleles=site.alleles, metadata=site.metadata, inference=site.inference)
+                            position=site.position,
+                            genotypes=site.genotypes,
+                            alleles=site.alleles,
+                            metadata=site.metadata,
+                            inference=site.inference,
+                        )
                     else:
                         self.samples.add_site(
-                            position=site.position, genotypes=site.genotypes,
-                            alleles=site.alleles, metadata=site.metadata)
+                            position=site.position,
+                            genotypes=site.genotypes,
+                            alleles=site.alleles,
+                            metadata=site.metadata,
+                        )
 
-                    progress.set_postfix(used=str(num_sites))
-                    num_sites += 1
-                    if num_sites == max_sites:
+                    progress.set_postfix(used=str(self.num_sites))
+                    self.num_sites += 1
+                    if self.num_sites == max_sites:
                         break
             progress.update()
         progress.close()
-        self.report()
+        report_dict = self.report()
+        return report_dict
 
 
 class ThousandGenomesConverter(VcfConverter):
@@ -328,8 +400,11 @@ class ThousandGenomesConverter(VcfConverter):
             ["CHS", "Southern Han Chinese", "EAS"],
             ["CDX", "Chinese Dai in Xishuangbanna, China", "EAS"],
             ["KHV", "Kinh in Ho Chi Minh City, Vietnam", "EAS"],
-            ["CEU", "Utah Residents (CEPH) with Northern and Western European Ancestry",
-                "EUR"],
+            [
+                "CEU",
+                "Utah Residents (CEPH) with Northern and Western European Ancestry",
+                "EUR",
+            ],
             ["TSI", "Toscani in Italia", "EUR"],
             ["FIN", "Finnish in Finland", "EUR"],
             ["GBR", "British in England and Scotland", "EUR"],
@@ -354,7 +429,8 @@ class ThousandGenomesConverter(VcfConverter):
         population_id_map = {}
         for pop in populations:
             pop_id = self.samples.add_population(
-                dict(zip(["name", "description", "super_population"], pop)))
+                dict(zip(["name", "description", "super_population"], pop))
+            )
             population_id_map[pop[0]] = pop_id
 
         with open(metadata_file, "r") as ped_file:
@@ -384,111 +460,8 @@ class ThousandGenomesConverter(VcfConverter):
         # Add in the metadata rows in the order of the VCF.
         for name in individual_names:
             self.samples.add_individual(
-                metadata=metadata[name], population=populations[name], ploidy=2)
-
-#    def convert_genotypes(self, row, ancestral_state, phased=True):
-#        ret = None
-#        num_diploids = self.num_samples // 2
-#        a = np.zeros(self.num_samples, dtype=np.uint8)
-#        all_alleles = set([ancestral_state])
-#        # Fill in a with genotypes.
-#        bases = np.array(row.gt_bases)
-#        for j in range(num_diploids):
-#            if phased:
-#                alleles = bases[j].split("|")
-#            else:
-#                alleles = bases[j].split("/")
-#            if len(alleles) != 2:
-#                self.num_unphased += 1
-#                break
-#            for allele in alleles:
-#                if allele == ".":
-#                    self.num_missing_data += 1
-#                    break
-#                all_alleles.add(allele)
-#            a[2 * j] = alleles[0] != ancestral_state
-#            a[2 * j + 1] = alleles[1] != ancestral_state
-#        else:
-#            freq = np.sum(a)
-#            # The loop above exited without breaking, so we have valid data.
-#            
-#            all_alleles.remove(ancestral_state)
-#            if len(all_alleles) == 0:
-#                alleles = [ancestral_state]
-#            else:
-#                alleles = [ancestral_state, all_alleles.pop()]
-#            metadata = {"ID": row.ID, "REF": row.REF}
-#            inference = None
-#            if freq == self.num_samples or freq == 0:
-#                self.num_invariant += 1
-#            if ancestral_state == ancestral_state.lower():
-#               inference = False 
-#            if any(len(allele) != 1 for allele in all_alleles):
-#                self.num_indels += 1
-#            if len(all_alleles) > 2:
-#                self.num_non_biallelic += 1
-#            if freq == 1:
-#                self.num_singletons += 1
-#            if freq == self.num_samples - 1:
-#                inference = False 
-#                self.num_nmo_tons += 1
-#            ret = Site(
-#                position=row.POS, alleles=alleles, genotypes=a, metadata=metadata, inference=inference)
-#        return ret
-#
-#    def process_sites(self, show_progress=False, max_sites=None):
-#        num_data_sites = int(subprocess.check_output(
-#            ["bcftools", "index", "--nrecords", self.data_file]))
-#        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
-#
-#        num_sites = 0
-#        for row in filter_duplicates(cyvcf2.VCF(self.data_file)):
-#            ancestral_state = self.get_ancestral_state(row.POS)
-#            if ancestral_state is not None:
-#                site = self.convert_genotypes(row, ancestral_state)
-#                if site is not None:
-#                    if site.inference is not None:
-#                        self.samples.add_site(
-#                            position=site.position, genotypes=site.genotypes,
-#                            alleles=site.alleles, metadata=site.metadata, inference=site.inference)
-#                    else:
-#                        self.samples.add_site(
-#                            position=site.position, genotypes=site.genotypes,
-#                            alleles=site.alleles, metadata=site.metadata)
-#
-#                    progress.set_postfix(used=str(num_sites))
-#                    num_sites += 1
-#                    if num_sites == max_sites:
-#                        break
-#            progress.update()
-#        progress.close()
-#        self.report()
-
-#    def get_ancestral_state(self, position):
-#        # From the ancestral states README:
-#        # The convention for the sequence is:
-#        #    ACTG : high-confidence call, ancestral state supproted by the other two sequences
-#        #    actg : low-confindence call, ancestral state supported by one sequence only
-#        #    N    : failure, the ancestral state is not supported by any other sequence
-#        #    -    : the extant species contains an insertion at this postion
-#        #    .    : no coverage in the alignment
-#
-#        ret = None
-#        # NB: we assume that this array is modified so that the 1-indexed coordinates
-#        # work correctly!
-#        ancestral_state = self.ancestral_states[position]
-#        if ancestral_state in [".", "N", "-"]:
-#            self.num_no_ancestral_state += 1
-#        elif ancestral_state.lower() == ancestral_state:
-#            self.num_low_confidence_ancestral_state += 1
-#            assert ancestral_state in ["a", "c", "t", "g"]
-#            ret = ancestral_state
-#        else:
-#            assert ancestral_state in ["A", "C", "T", "G"]
-#            ret = ancestral_state
-#        return ret
-#
-
+                metadata=metadata[name], population=populations[name], ploidy=2
+            )
 
 
 class SgdpConverter(VcfConverter):
@@ -648,7 +621,8 @@ class SgdpConverter(VcfConverter):
         population_id_map = {}
         for name in sorted(region_map.keys()):
             pop_id = self.samples.add_population(
-                {"name": name, "region": region_map[name]})
+                {"name": name, "region": region_map[name]}
+            )
             population_id_map[name] = pop_id
 
         # The file contains some non UTF-8 codepoints for a contributors name.
@@ -658,7 +632,7 @@ class SgdpConverter(VcfConverter):
             j = sane_names.index("sample_id(aliases)")
             sane_names[j] = "aliases"
             for j, name in enumerate(sane_names):
-                if name.startswith("\"sgdp-lite category"):
+                if name.startswith('"sgdp-lite category'):
                     # There's a very long key that doesn't impart any information here.
                     # Remove it.
                     sane_names[j] = "DELETE"
@@ -673,7 +647,9 @@ class SgdpConverter(VcfConverter):
                 populations[name] = population_id_map[population_name]
                 rows[name] = metadata
                 location = [
-                    float(metadata.pop("latitude")), float(metadata.pop("longitude"))]
+                    float(metadata.pop("latitude")),
+                    float(metadata.pop("longitude")),
+                ]
                 locations[name] = location
                 if metadata["town"] == "?":
                     metadata["town"] = None
@@ -687,8 +663,11 @@ class SgdpConverter(VcfConverter):
         for name in individual_names:
             metadata = rows[name]
             self.samples.add_individual(
-                metadata=metadata, location=locations[name], ploidy=2,
-                population=populations[name])
+                metadata=metadata,
+                location=locations[name],
+                ploidy=2,
+                population=populations[name],
+            )
 
 
 class HgdpConverter(VcfConverter):
@@ -760,7 +739,8 @@ class HgdpConverter(VcfConverter):
         population_id_map = {}
         for name in sorted(region_map.keys()):
             pop_id = self.samples.add_population(
-                {"name": name, "region": region_map[name]})
+                {"name": name, "region": region_map[name]}
+            )
             population_id_map[name] = pop_id
 
         # The file contains some non UTF-8 codepoints for a contributors name.
@@ -777,7 +757,9 @@ class HgdpConverter(VcfConverter):
                 populations[name] = population_id_map[population_name]
                 rows[name] = metadata
                 location = [
-                    float(metadata.pop("latitude")), float(metadata.pop("longitude"))]
+                    float(metadata.pop("latitude")),
+                    float(metadata.pop("longitude")),
+                ]
                 locations[name] = location
 
         vcf = cyvcf2.VCF(self.data_file)
@@ -789,8 +771,11 @@ class HgdpConverter(VcfConverter):
         for name in individual_names:
             metadata = rows[name]
             self.samples.add_individual(
-                metadata=metadata, location=locations[name], ploidy=2,
-                population=populations[name])
+                metadata=metadata,
+                location=locations[name],
+                ploidy=2,
+                population=populations[name],
+            )
 
     def convert_genotypes(self, row, ancestral_state):
         def return_genotype(allele, ancestral_state):
@@ -798,6 +783,7 @@ class HgdpConverter(VcfConverter):
                 return tskit.MISSING_DATA
             else:
                 return allele != ancestral_state
+
         ret = None
         num_diploids = self.num_samples // 2
         a = np.zeros(self.num_samples, dtype=np.int8)
@@ -809,14 +795,15 @@ class HgdpConverter(VcfConverter):
             if "|" in bases[j]:
                 alleles = bases[j].split("|")
             else:
+                self.num_unphased += 1
                 alleles = bases[j].split("/")
             if len(alleles) != 2:
-                self.num_unphased += 1
+                self.num_non_biallelic += 1
                 break
             for allele in alleles:
                 if allele == ".":
                     self.num_missing_data += 1
-                    missing= True
+                    missing = True
                 else:
                     all_alleles.add(allele)
             a[2 * j] = alleles[0] != ancestral_state
@@ -846,7 +833,8 @@ class HgdpConverter(VcfConverter):
                 genotypes = tskit.util.safe_np_int_cast(a, dtype=np.int8)
                 metadata = {"ID": row.ID, "REF": row.REF}
                 ret = Site(
-                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
+                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata
+                )
         return ret
 
 
@@ -861,7 +849,7 @@ class MaxPlanckConverter(VcfConverter):
         """
         with open(metadata_file, "r") as max_planck_metadata:
             # Parse the individual metadata out of the file.
-            lines = max_planck_metadata.read().splitlines() 
+            lines = max_planck_metadata.read().splitlines()
             metadata = {}
             row = lines[1].split(" ")
             name = row[0]
@@ -873,69 +861,9 @@ class MaxPlanckConverter(VcfConverter):
         vcf.close()
         self.num_samples = len(individual_names) * 2
         pop_id = self.samples.add_population(
-                {"name": population, "super_population": "Max Planck"})
-        self.samples.add_individual(
-            metadata=metadata, population=pop_id, ploidy=2)
-
-#    def convert_genotypes(self, row, ancestral_state):
-#        ret = None
-#        num_diploids = self.num_samples // 2
-#        a = np.zeros(self.num_samples, dtype=np.uint8)
-#        all_alleles = set([ancestral_state])
-#        # Fill in a with genotypes.
-#        bases = np.array(row.gt_bases)
-#        for j in range(num_diploids):
-#            alleles = bases[j].split("/")
-#            if len(alleles) != 2:
-#                self.num_unphased += 1
-#                break
-#            for allele in alleles:
-#                if allele == ".":
-#                    self.num_missing_data += 1
-#                    break
-#                all_alleles.add(allele)
-#            a[2 * j] = alleles[0] != ancestral_state
-#            a[2 * j + 1] = alleles[1] != ancestral_state
-#        else:
-#            freq = np.sum(a)
-#            # the loop above exited without breaking, so we have valid data.
-#            if freq == 0:
-#                self.num_invariant += 1
-#            elif any(len(allele) != 1 for allele in all_alleles):
-#                self.num_indels += 1
-#            elif len(all_alleles) > 2:
-#                self.num_non_biallelic += 1
-#
-#            else:
-#                all_alleles.remove(ancestral_state)
-#                alleles = [ancestral_state, all_alleles.pop()]
-#                metadata = {"id": row.id, "ref": row.ref}
-#                ret = site(
-#                    position=row.pos, alleles=alleles, genotypes=a, metadata=metadata)
-#        return ret
-
-#    def process_sites(self, show_progress=False, max_sites=None):
-#        num_data_sites = int(subprocess.check_output(
-#            ["bcftools", "index", "--nrecords", self.data_file]))
-#        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
-#        seen_positions = list()
-#        num_sites = 0
-#        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
-#            ancestral_state = self.get_ancestral_state(row.POS)
-#            if ancestral_state is not None:
-#                site = self.convert_genotypes(row, ancestral_state)
-#                if site is not None and 1 in site.genotypes:
-#                    self.samples.add_site(
-#                        position=site.position, genotypes=site.genotypes,
-#                        alleles=site.alleles, metadata=site.metadata)
-#                    seen_positions.append(site.position)
-#                    progress.set_postfix(used=str(num_sites))
-#                    num_sites += 1
-#                    if num_sites == max_sites:
-#                        break
-#            progress.update()
-#
-#        progress.close()
+            {"name": population, "super_population": "Max Planck"}
+        )
+        self.samples.add_individual(time=max_planck_metadata["age"], metadata=metadata, population=pop_id, ploidy=2)
 
 
 class AfanasievoConverter(VcfConverter):
@@ -948,7 +876,8 @@ class AfanasievoConverter(VcfConverter):
         Adds the Afanasievo metadata.
         """
         pop_id = self.samples.add_population(
-                {"name": "Afanasievo", "super_population": "Afanasievo"})
+            {"name": "Afanasievo", "super_population": "Afanasievo"}
+        )
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
         vcf.close()
@@ -956,76 +885,15 @@ class AfanasievoConverter(VcfConverter):
             metadata = {}
             metadata["name"] = name
             metadata["age"] = 5500
-            self.samples.add_individual(
-                metadata=metadata, population=pop_id, ploidy=2)
+            self.samples.add_individual(metadata=metadata, time=5500, population=pop_id, ploidy=2)
         self.num_samples = len(individual_names) * 2
-        
-    def convert_genotypes(self, row, ancestral_state):
-        ret = None
-        num_diploids = self.num_samples // 2
-        a = np.zeros(self.num_samples, dtype=np.uint8)
-        all_alleles = set([ancestral_state])
-        # Fill in a with genotypes.
-        bases = np.array(row.gt_bases)
-        for j in range(num_diploids):
-            alleles = bases[j].split("|")
-            if len(alleles) != 2:
-                self.num_unphased += 1
-                break
-            for allele in alleles:
-                if allele == ".":
-                    self.num_missing_data += 1
-                    break
-                all_alleles.add(allele)
-            a[2 * j] = alleles[0] != ancestral_state
-            a[2 * j + 1] = alleles[1] != ancestral_state
-        else:
-            freq = np.sum(a)
-            # The loop above exited without breaking, so we have valid data.
-            if any(len(allele) != 1 for allele in all_alleles):
-                self.num_indels += 1
-            elif len(all_alleles) > 2:
-                self.num_non_biallelic += 1
-
-            else:
-                all_alleles.remove(ancestral_state)
-                try:
-                    alleles = [ancestral_state, all_alleles.pop()]
-                except:
-                    alleles = [ancestral_state]
-                metadata = {"ID": row.ID, "REF": row.REF}
-                ret = Site(
-                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
-        return ret
-
-#    def process_sites(self, show_progress=False, max_sites=None):
-#        num_data_sites = int(subprocess.check_output(
-#            ["bcftools", "index", "--nrecords", self.data_file]))
-#        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
-#        seen_positions = list()
-#        num_sites = 0
-#        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
-#            ancestral_state = self.get_ancestral_state(row.POS)
-#            if ancestral_state is not None:
-#                site = super().convert_genotypes(row, ancestral_state)
-#                if site is not None: 
-#                    self.samples.add_site(
-#                        position=site.position, genotypes=site.genotypes,
-#                        alleles=site.alleles, metadata=site.metadata)
-#                    seen_positions.append(site.position)
-#                    progress.set_postfix(used=str(num_sites))
-#                    num_sites += 1
-#                    if num_sites == max_sites:
-#                        break
-#            progress.update()
-#
-#        progress.close()
 
 
 class ReichConverter(Converter):
     """
     Convert data from 1240K array to SampleData file.
     """
+
     def process_metadata(self, metadata_file, show_progress=False):
         metadata_df = pd.read_csv(metadata_file, delimiter="\t")
         # Add populations
@@ -1035,14 +903,18 @@ class ReichConverter(Converter):
             country = row["Country"]
             if country not in seen_populations:
                 pop_id = self.samples.add_population(
-                        {'name': country, "locality": row["Locality"]})
+                    {"name": country, "locality": row["Locality"]}
+                )
                 population_id_map[country] = pop_id
                 seen_populations.append(country)
 
         # The file contains some non UTF-8 codepoints for a contributors name.
         with open(metadata_file, "r") as md_file:
             columns = next(md_file).split("\t")
-            sane_names = [col.lower().split(" (")[0].split(" [")[0].replace(" ", "_") for col in columns]
+            sane_names = [
+                col.lower().split(" (")[0].split(" [")[0].replace(" ", "_")
+                for col in columns
+            ]
             rows = {}
             populations = {}
             locations = {}
@@ -1052,11 +924,13 @@ class ReichConverter(Converter):
                 population_name = metadata.pop("country")
                 populations[name] = population_id_map[population_name]
                 age = metadata.pop("average_of_95.4%_date_range_in_calbp")
-                metadata["age"] = age 
+                metadata["age"] = age
                 rows[name] = metadata
                 try:
                     location = [
-                        float(metadata.pop("lat.")), float(metadata.pop("long."))]
+                        float(metadata.pop("lat.")),
+                        float(metadata.pop("long.")),
+                    ]
                 except:
                     pass
                 locations[name] = location
@@ -1069,9 +943,11 @@ class ReichConverter(Converter):
         for name in individual_names:
             metadata = rows[name]
             self.samples.add_individual(
-                metadata=metadata, location=locations[name], ploidy=2,
-                population=populations[name])
-
+                metadata=metadata,
+                location=locations[name],
+                ploidy=2,
+                population=populations[name],
+            )
 
     def convert_genotypes(self, row, ancestral_state):
         ret = None
@@ -1087,16 +963,16 @@ class ReichConverter(Converter):
                 break
             missing = False
             for allele in alleles:
-                if allele == '.':
-                   missing = True 
+                if allele == ".":
+                    missing = True
                 else:
                     all_alleles.add(allele)
             a[2 * j] = alleles[0] != ancestral_state
             a[2 * j + 1] = alleles[1] != ancestral_state
             if missing:
-                if alleles[0] == '.':
+                if alleles[0] == ".":
                     a[2 * j] = tskit.MISSING_DATA
-                if alleles[1] == '.':
+                if alleles[1] == ".":
                     a[2 * j + 1] = tskit.MISSING_DATA
         else:
             freq = np.sum(a)
@@ -1112,12 +988,14 @@ class ReichConverter(Converter):
                 alleles = [ancestral_state, all_alleles.pop()]
                 metadata = {"ID": row.ID, "REF": row.REF}
                 ret = Site(
-                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata)
+                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata
+                )
         return ret
 
     def process_sites(self, show_progress=False, max_sites=None):
-        num_data_sites = int(subprocess.check_output(
-            ["bcftools", "index", "--nrecords", self.data_file]))
+        num_data_sites = int(
+            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
+        )
         progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
         seen_positions = list()
         num_sites = 0
@@ -1125,10 +1003,13 @@ class ReichConverter(Converter):
             ancestral_state = self.get_ancestral_state(row.POS)
             if ancestral_state is not None:
                 site = self.convert_genotypes(row, ancestral_state)
-                if site is not None: 
+                if site is not None:
                     self.samples.add_site(
-                        position=site.position, genotypes=site.genotypes,
-                        alleles=site.alleles, metadata=site.metadata)
+                        position=site.position,
+                        genotypes=site.genotypes,
+                        alleles=site.alleles,
+                        metadata=site.metadata,
+                    )
                     seen_positions.append(site.position)
                     progress.set_postfix(used=str(num_sites))
                     num_sites += 1
@@ -1140,14 +1021,13 @@ class ReichConverter(Converter):
 
 
 class UkbbConverter(Converter):
-
     def process_metadata(self, metadata_file, show_progress=False):
         # TODO Should make this an explicit requirement rather than hardcoding.
-        withdrawn_ids = set() 
+        withdrawn_ids = set()
         with open("ukbb_withdrawn.csv") as f:
             for line in f:
                 withdrawn_ids.add(int(line))
-            
+
         # The sample IDs aren't in the BGEN file so we have to match by the Order
         # field, which gives the order that each sample is at in the BGEN (0 based).
         metadata_df = pd.read_csv(metadata_file)
@@ -1155,10 +1035,11 @@ class UkbbConverter(Converter):
         metadata_df = metadata_df.set_index("Order")
 
         bgen = bgen_reader.read_bgen(self.data_file, verbose=False)
-        sample_df = bgen['samples']
+        sample_df = bgen["samples"]
         keep_samples = []
         row_iter = tqdm.tqdm(
-            metadata_df.iterrows(), total=len(metadata_df), disable=not show_progress)
+            metadata_df.iterrows(), total=len(metadata_df), disable=not show_progress
+        )
         for index, row in row_iter:
             if not pd.isnull(index):
                 order = int(index)
@@ -1215,54 +1096,71 @@ class UkbbConverter(Converter):
                     else:
                         metadata = {"ID": rsid[j], "REF": ref}
                         self.samples.add_site(
-                            position=float(position[j]), genotypes=genotypes[self.keep_index],
-                            alleles=alleles, metadata=metadata)
+                            position=float(position[j]),
+                            genotypes=genotypes[self.keep_index],
+                            alleles=alleles,
+                            metadata=metadata,
+                        )
             if j == max_sites:
                 break
         self.report()
- 
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Script to convert VCF files into tsinfer input.")
+        description="Script to convert VCF files into tsinfer input."
+    )
     parser.add_argument(
-        "source", choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck",
-            "afanasievo", "1240k"],
-        help="The source of the input data.")
+        "source",
+        choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck", "afanasievo", "1240k"],
+        help="The source of the input data.",
+    )
+    parser.add_argument("data_file", help="The input data file pattern.")
     parser.add_argument(
-        "data_file", help="The input data file pattern.")
+        "ancestral_states_file", help="A vcf file containing ancestral allele states. "
+    )
+    parser.add_argument("output_file", help="The tsinfer output file")
     parser.add_argument(
-        "ancestral_states_file",
-        help="A vcf file containing ancestral allele states. ")
+        "-m",
+        "--metadata_file",
+        default=None,
+        help="The metadata file containing population and sample data",
+    )
     parser.add_argument(
-        "output_file",
-        help="The tsinfer output file")
+        "-n",
+        "--max-variants",
+        default=None,
+        type=int,
+        help="Keep only the first n variants",
+    )
     parser.add_argument(
-        "-m", "--metadata_file", default=None,
-        help="The metadata file containing population and sample data")
+        "-p",
+        "--progress",
+        action="store_true",
+        help="Show progress bars and output extra information when done",
+    )
     parser.add_argument(
-        "-n", "--max-variants", default=None, type=int,
-        help="Keep only the first n variants")
+        "--ancestral-states-url",
+        default=None,
+        help="The source of ancestral state information for provenance.",
+    )
     parser.add_argument(
-        "-p", "--progress", action="store_true",
-        help="Show progress bars and output extra information when done")
+        "--reference-name",
+        default=None,
+        help="The name of the reference for provenance.",
+    )
     parser.add_argument(
-        "--ancestral-states-url", default=None,
-        help="The source of ancestral state information for provenance.")
-    parser.add_argument(
-        "--reference-name", default=None,
-        help="The name of the reference for provenance.")
-    parser.add_argument(
-        "--num-threads", type=int, default=1,
-        help="Number of threads to use.")
+        "--num-threads", type=int, default=1, help="Number of threads to use."
+    )
 
     args = parser.parse_args()
 
     if args.num_threads > 1:
         run_multiprocessing(args, make_sampledata)
     else:
-        make_sampledata(args)
-    
+        report = make_sampledata(args)
+        print(report)
+
 
 if __name__ == "__main__":
     main()
