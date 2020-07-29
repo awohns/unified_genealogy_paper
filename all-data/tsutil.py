@@ -1,4 +1,5 @@
 """
+    print(args.chrom)
 Various utilities for manipulating tree sequences and running tsinfer.
 """
 import argparse
@@ -10,6 +11,7 @@ import sys
 import csv
 import itertools
 import os.path
+import re
 from functools import reduce
 
 import tskit
@@ -135,167 +137,6 @@ def run_benchmark_vcf(args):
         count += 1
     duration = time.perf_counter() - before
     print("Read {} VCF records in {:.2f} seconds".format(count, duration))
-
-
-def run_combine_ukbb_1kg(args):
-    ukbb_samples_file = "ukbb_{}.samples".format(args.chromosome)
-    tg_ancestors_ts_file = "1kg_{}.trees".format(args.chromosome)
-    ancestors_ts_file = "1kg_ukbb_{}.ancestors.trees".format(args.chromosome)
-    samples_file = "1kg_ukbb_{}.samples".format(args.chromosome)
-
-    ukbb_samples = tsinfer.load(ukbb_samples_file)
-    tg_ancestors_ts = tskit.load(tg_ancestors_ts_file)
-    print("Loaded ts:", tg_ancestors_ts.num_nodes, tg_ancestors_ts.num_edges)
-
-    # Subset the sites down to the UKBB sites.
-    tables = tg_ancestors_ts.dump_tables()
-    ukbb_sites = set(ukbb_samples.sites_position[:])
-    ancestors_sites = set(tables.sites.position[:])
-    intersecting_sites = ancestors_sites & ukbb_sites
-
-    print("Intersecting sites = ", len(intersecting_sites))
-    tables.sites.clear()
-    tables.mutations.clear()
-    for site in tg_ancestors_ts.sites():
-        if site.position in intersecting_sites:
-            # Sites must be 0/1 for the ancestors ts.
-            site_id = tables.sites.add_row(position=site.position, ancestral_state="0")
-            assert len(site.mutations) == 1
-            mutation = site.mutations[0]
-            tables.mutations.add_row(
-                site=site_id, node=mutation.node, derived_state="1"
-            )
-
-    # Reduce this to the site topology now to make things as quick as possible.
-    tables.simplify(reduce_to_site_topology=True, filter_sites=False)
-    reduced_ts = tables.tree_sequence()
-    # Rewrite the nodes so that 0 is one older than all the other nodes.
-    nodes = tables.nodes.copy()
-    tables.nodes.clear()
-    tables.nodes.add_row(flags=1, time=np.max(nodes.time) + 2)
-    tables.nodes.append_columns(
-        flags=np.bitwise_or(nodes.flags, 1),  # Everything is a sample.
-        time=nodes.time + 1,  # Make sure that all times are > 0
-        population=nodes.population,
-        individual=nodes.individual,
-        metadata=nodes.metadata,
-        metadata_offset=nodes.metadata_offset,
-    )
-    # Add one to all node references to account for this.
-    tables.edges.set_columns(
-        left=tables.edges.left,
-        right=tables.edges.right,
-        parent=tables.edges.parent + 1,
-        child=tables.edges.child + 1,
-    )
-    tables.mutations.set_columns(
-        node=tables.mutations.node + 1,
-        site=tables.mutations.site,
-        parent=tables.mutations.parent,
-        derived_state=tables.mutations.derived_state,
-        derived_state_offset=tables.mutations.derived_state_offset,
-        metadata=tables.mutations.metadata,
-        metadata_offset=tables.mutations.metadata_offset,
-    )
-
-    trees = reduced_ts.trees()
-    tree = next(trees)
-    left = 0
-    root = tree.root
-    for tree in trees:
-        if tree.root != root:
-            tables.edges.add_row(left, tree.interval[0], 0, root + 1)
-            root = tree.root
-            left = tree.interval[0]
-    tables.edges.add_row(left, reduced_ts.sequence_length, 0, root + 1)
-    tables.sort()
-    ancestors_ts = tables.tree_sequence()
-    print("Writing ancestors_ts")
-    ancestors_ts.dump(ancestors_ts_file)
-
-    # Now create a new samples file to get rid of the missing sites.
-    git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"])
-    git_provenance = {
-        "repo": "git@github.com:mcveanlab/treeseq-inference.git",
-        "hash": git_hash.decode().strip(),
-        "dir": "human-data",
-        "notes:": ("Use the Makefile to download and process the upstream data files"),
-    }
-
-    n = args.num_individuals
-    if n is None:
-        n = ukbb_samples.num_individuals
-    with tsinfer.SampleData(
-        path=samples_file,
-        num_flush_threads=4,
-        sequence_length=ukbb_samples.sequence_length,
-    ) as samples:
-
-        iterator = tqdm.tqdm(
-            itertools.islice(tqdm.tqdm(ukbb_samples.individuals()), n), total=n
-        )
-        for ind in iterator:
-            samples.add_individual(
-                ploidy=2, location=ind.location, metadata=ind.metadata
-            )
-
-        for variant in tqdm.tqdm(ukbb_samples.variants(), total=ukbb_samples.num_sites):
-            if variant.site.position in intersecting_sites:
-                samples.add_site(
-                    position=variant.site.position,
-                    alleles=variant.alleles,
-                    genotypes=variant.genotypes[: 2 * n],
-                    metadata=variant.site.metadata,
-                )
-
-        for timestamp, record in ukbb_samples.provenances():
-            samples.add_provenance(timestamp, record)
-        samples.record_provenance(
-            command=sys.argv[0], args=sys.argv[1:], git=git_provenance
-        )
-
-    print(samples)
-
-
-def run_compute_1kg_ukbb_gnn(args):
-    ts = tskit.load(args.input)
-    tables = ts.tables
-    reference_sets = []
-    population_names = []
-    for pop in ts.populations():
-        reference_sets.append(
-            np.where(tables.nodes.population == pop.id)[0].astype(np.int32)
-        )
-        name = json.loads(pop.metadata.decode())["name"]
-        population_names.append(name)
-
-    ind_metadata = [None for _ in range(ts.num_individuals)]
-    for ind in ts.individuals():
-        ind_metadata[ind.id] = json.loads(ind.metadata.decode())
-
-    cols = {
-        "centre": [
-            ind_metadata[ts.node(u).individual]["CentreName"] for u in ts.samples()
-        ],
-        "sample_id": [
-            ind_metadata[ts.node(u).individual]["SampleID"] for u in ts.samples()
-        ],
-        "ethnicity": [
-            ind_metadata[ts.node(u).individual]["Ethnicity"] for u in ts.samples()
-        ],
-    }
-    print("Computing GNNs")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        ts.samples(), reference_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    for j, name in enumerate(population_names):
-        cols[name] = A[:, j]
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
 
 
 def get_augmented_samples(tables):
@@ -489,8 +330,10 @@ def run_compute_hgdp_gnn(args):
 def run_snip_centromere(args):
     with open(args.centromeres) as csvfile:
         reader = csv.DictReader(csvfile)
+        match = re.search(r'(chr\d+)', args.chrom)
+        chrom = match.group(1)
         for row in reader:
-            if row["chrom"] == args.chrom:
+            if row["chrom"] == chrom:
                 start = int(row["start"])
                 end = int(row["end"])
                 break
@@ -507,12 +350,16 @@ def run_snip_centromere(args):
     # be useful in UKBB, since it's perfectly possible that the largest
     # gap between sites isn't in the centromere.
     X = position[s_index : e_index + 1]
-    j = np.argmax(X[1:] - X[:-1])
-    real_start = X[j] + 1
-    real_end = X[j + 1]
-    print("Centromere at", start, end, "Snipping topology from ", real_start, real_end)
-    snipped_ts = tsinfer.snip_centromere(ts, real_start, real_end)
-    snipped_ts.dump(args.output)
+    if len(X) > 0:
+        j = np.argmax(X[1:] - X[:-1])
+        real_start = X[j] + 1
+        real_end = X[j + 1]
+        print("Centromere at", start, end, "Snipping topology from ", real_start, real_end)
+        snipped_ts = ts.delete_intervals([[real_start, real_end]])
+        snipped_ts.dump(args.output)
+    else:
+        print("No gap detected")
+        ts.dump(args.output)
 
 
 def run_combine_sampledata(args):
@@ -666,22 +513,27 @@ def make_sampledata_compatible(args):
     new_names = list()
 
     # Load all the sampledata files into a list
+    print("Subset sites with {} sampledata files".format(len(args.input_sampledata) - 1))
     for index, fn in enumerate(args.input_sampledata):
         fn = fn.rstrip("\n")
         if index == 0:
             target_sd = tsinfer.load(fn)
+            print("Loaded First sampledata file")
             continue
         cur_sd = tsinfer.load(fn)
-        delete_sites = np.where(
-            ~np.isin(cur_sd.sites_position[:], target_sd.sites_position[:])
+        print("Loaded sampledata file # {}".format(index))
+        keep_sites = np.where(
+            np.isin(cur_sd.sites_position[:], target_sd.sites_position[:])
         )[0]
-        small_cur_sd = cur_sd.delete(sites=delete_sites)
-        newname = fn[: -len(".samples")] + ".deleted.samples"
+        print("Subsetting to {} sites".format(len(keep_sites)))
+        small_cur_sd = cur_sd.subset(sites=keep_sites)
+        print("Done with subset")
+        newname = fn[: -len(".samples")] + ".subset.samples"
         small_cur_sd_copy = small_cur_sd.copy(newname)
         small_cur_sd_copy.finalise()
         sampledata_files.append(small_cur_sd_copy)
-        print("Deleted {} sites from {}. Output can be found at {}.".format(
-            len(delete_sites), fn, newname))
+        print("Subsetted to {} sites from {}. Output can be found at {}.".format(
+            len(keep_sites), fn, newname))
 
 
 def run_merge_sampledata(args):
@@ -815,6 +667,25 @@ def add_indiv_times(args):
     copy.finalise()
 
 
+def merge_sampledata_files(args):
+    samples = []
+    for cur_sample in args.input_sampledata:
+        samples.append(tsinfer.load(cur_sample))
+    merged_samples = samples[0]
+    for other_samples in samples[1:]:
+        intersect_sites = np.isin(merged_samples.sites_position[:], other_samples.sites_position[:])
+        other_intersect_sites = np.where(np.isin(other_samples.sites_position[:], merged_samples.sites_position[:]))[0]
+        other_samples_metadata = other_samples.sites_metadata[:]
+        for site_index, site_metadata in zip(other_intersect_sites, merged_samples.sites_metadata[:][intersect_sites]):
+            other_samples_metadata[site_index] = site_metadata
+        other_samples_copy = other_samples.copy()
+        other_samples_copy.sites_metadata[:] = other_samples_metadata
+        other_samples_copy.finalise()
+        merged_samples = merged_samples.merge(other_samples_copy)
+    merged_copy = merged_samples.copy(args.output)
+    merged_copy.finalise()
+
+
 def main():
 
     parser = argparse.ArgumentParser()
@@ -832,13 +703,6 @@ def main():
     subparser.add_argument("--num-threads", type=int, default=0)
     subparser.add_argument("--seed", type=int, default=1)
     subparser.set_defaults(func=run_sequential_augment)
-
-    subparser = subparsers.add_parser("combine-ukbb-1kg")
-    subparser.add_argument("chromosome", type=str, help="chromosome stem")
-    subparser.add_argument(
-        "--num-individuals", type=int, help="number of individuals to use", default=None
-    )
-    subparser.set_defaults(func=run_combine_ukbb_1kg)
 
     subparser = subparsers.add_parser("benchmark-tskit")
     subparser.add_argument("input", type=str, help="Input tree sequence")
@@ -859,12 +723,6 @@ def main():
         help="Number of variants to benchmark genotypes decoding performance on",
     )
     subparser.set_defaults(func=run_benchmark_vcf)
-
-    subparser = subparsers.add_parser("compute-1kg-ukbb-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_1kg_ukbb_gnn)
 
     subparser = subparsers.add_parser("compute-ukbb-gnn")
     subparser.add_argument("input", type=str, help="Input tree sequence")
@@ -942,6 +800,21 @@ def main():
         help="Add individuals times to sampledata file.",
     )
     subparser.set_defaults(func=add_indiv_times)
+
+    subparser = subparsers.add_parser("merge-sampledata-files")
+    subparser.add_argument(
+        "--input-sampledata",
+        type=str,
+        nargs='+',
+        help="Input sample files to merge.",
+        required=True
+    )
+    subparser.add_argument(
+        "--output",
+        type=str,
+        required=True
+    )
+    subparser.set_defaults(func=merge_sampledata_files)
 
 
     daiquiri.setup(level="INFO")

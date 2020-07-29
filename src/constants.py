@@ -2,7 +2,7 @@
 Define constants used in this paper.
 """
 
-GENERATION_TIME = 30
+GENERATION_TIME = 28 
 colors = {
     "tsdate": "blue",
     "tsinfer": "purple",
