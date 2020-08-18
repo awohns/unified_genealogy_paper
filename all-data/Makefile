@@ -19,7 +19,7 @@ simplebgen: setup.py simplebgenmodule.c
 
 # Any implicit targets that are built will be deleted unless we make them as 'precious'.
 .PRECIOUS: \
-	%.ancestors %.ancestors.trees %.nosimplify.trees %.nosimplify.nopc.trees %.trees %.trees.gz\
+	%.ancestors %.atrees %.nosimplify.trees %.nosimplify.nopc.trees %.trees %.trees.gz\
 	%.bcf.csi %.vcf.gz.csi \
 	chr%_ancestral_states.fa \
 	1kg_%_genotypes.bcf 1kg_%.samples
@@ -31,20 +31,39 @@ simplebgen: setup.py simplebgenmodule.c
 %.binned.samples: %.samples
 	python3 bin_missing.py $^ $@
 
-%.simplified.trees: %.samples
-	python3 run_inference.py $^ -t ${NUM_THREADS}
+%.ancestors: %.samples
+	python3 -m tsinfer ga -vp -t ${NUM_THREADS} $^
 
-%.GRCh38.tsinferred.trees: %.samples
-	python3 run_inference.py $^ -t ${NUM_THREADS} -m recomb-hg38/genetic_map_GRCh38_
+%.atrees: %.ancestors
+	python3 run_inference.py $*.samples $^ -t ${NUM_THREADS} -A 0.1 --precision 13
 
-%.snipped.trees: %.simplified.trees ${CENTROMERES_CSV}
-	python3 tsutil.py snip-centromere $< $@ $* ${CENTROMERES_CSV}
+%.GRCh38.atrees: %.ancestors
+	python3 run_inference.py $*.samples $^ -t ${NUM_THREADS} -A 0.1 -m recomb-hg38/genetic_map_GRCh38_
 
-%.dates.p: %.simplified.trees
-	python3 date_ts.py $^ 10000 1e-8 -t ${NUM_THREADS} --no-constrain
+%.trees: %.samples %.ancestors %.atrees
+	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^)
+
+%.modern.trees: %.samples %.ancestors %.atrees
+	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^) --modern-samples-match
+
+%.modern.dated.trees: %.modern.trees
+	python3 -m tsdate preprocess $^ $*.preprocessed.trees
+	python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p
+
+%.dated.samples: %.samples %.modern.dated.trees
+	python3 tsutil.py dated_samples $^
+
+%.dated.ancestors: %.dated.samples
+	python3 -m tsinfer ga -vp -t ${NUM_THREADS} $^
+
+%.dated.atrees: %.dated.ancestors
+	python3 run_inference.py $*.dated.samples $^ -t ${NUM_THREADS} -A 0.1 --ancient-ancestors
+
+%.historic.trees: %.samples %.ancestors %.dated.atrees
+	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^) --ancient-ancestors
 
 %.modern.dated.trees %.modern.dates.p %.modern.simplified.trees: %.simplified.trees %.samples
-	python3 date_ts.py $< 10000 1e-8 -t ${NUM_THREADS} --simplify-ancients $(word 2,$^)
+	python3 ../src/date_ts.py $< 10000 1e-8 -t ${NUM_THREADS} --simplify-ancients $(word 2,$^)
 
 %.dated.samples: %.samples %.modern.dated.trees %.modern.dates.p
 	python3 get_dated_sampledata.py $^
@@ -554,7 +573,11 @@ reich_%.samples: 1240k/v42.4.1240K_%.vcf.gz %_ancestral_states_37.fa 1240k/v42.4
 		-m 1240k/v42.4.1240K.anno \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads=${NUM_THREADS}\
 		$@ > $@.report
+
+reich_ancients_%.samples: reich_%.samples
+	python tsutil.py remove-moderns-reich $^ $@
 
 #############################################
 # Merged Sampledata Files 
@@ -568,10 +591,13 @@ tgp_archaics_afanasievo_%.samples: 1kg_%.samples afanasievo_GRCh38.%.samples den
 	python tsutil.py make-sampledata-compatible --input-sampledata $^
 	python tsutil.py combine-sampledata --input-sampledata $< afanasievo_GRCh38.$*.deleted.samples denisovan_GRCh38_$*.deleted.samples vindija_GRCh38_$*.deleted.samples chagyrskaya_GRCh38_$*.deleted.samples altai_GRCh38_$*.deleted.samples --output $@
 
-1kg_afanasievo_%.samples: 1kg_%.samples afanasievo_%.samples 
-	python tsutil.py make-sampledata-compatible --input-sampledata $^
-	python tsutil.py merge-sampledata-files --input-sampledata $< afanasievo_$*.subset.samples --output $@
+#1kg_afanasievo_%.samples: 1kg_%.samples afanasievo_%.samples 
+#	python tsutil.py make-sampledata-compatible --input-sampledata $^
+#	python tsutil.py merge-sampledata-files --input-sampledata $< afanasievo_$*.subset.samples --output $@
 
 1kg_afanasievo_allsites_%.samples: 1kg_%.samples afanasievo_allsites_%.samples 
 	python tsutil.py make-sampledata-compatible --input-sampledata $^
 	python tsutil.py merge-sampledata-files --input-sampledata $< afanasievo_allsites_$*.subset.samples --output $@
+
+sgdp_reich_%.samples: sgdp_%.samples reich_ancients_chr20.samples
+	python tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
