@@ -16,6 +16,7 @@ from functools import reduce
 
 import tskit
 import tsinfer
+import tsdate
 import daiquiri
 import numpy as np
 import pandas as pd
@@ -28,6 +29,16 @@ def run_simplify(args):
     ts = tskit.load(args.input)
     ts = ts.simplify()
     ts.dump(args.output)
+
+
+def run_get_dated_samples(args):
+    samples = tsinfer.load(args.samples)
+    ts = tskit.load(args.ts)
+    assert args.samples.endswith(".samples")
+    prefix = args.samples[0:-len(".samples")]
+    copy = samples.copy(prefix + ".dated.samples")
+    copy.sites_time[:] = tsdate.get_site_times(ts)
+    copy.finalise()
 
 
 def run_augment(sample_data, ancestors_ts, subset, num_threads):
@@ -326,6 +337,44 @@ def run_compute_hgdp_gnn(args):
     df = pd.DataFrame(cols)
     df.to_csv(args.output)
 
+def run_compute_hgdp_1kg_sgdp_gnn(args):
+    ts = tskit.load(args.input)
+
+    population_name = []
+    region_name = []
+
+    for population in ts.populations():
+        md = json.loads(population.metadata.decode())
+        name = md["name"]
+        population_name.append(name)
+
+        if "super_population" in md:
+            region_name.append(md["super_population"])
+        elif "region" in md:
+            region_name.append(md["region"])
+
+    population = []
+    region = []
+    for j, u in enumerate(ts.samples()):
+        node = ts.node(u)
+        ind = json.loads(ts.individual(node.individual).metadata.decode())
+        population.append(population_name[node.population])
+        region.append(region_name[node.population])
+
+    sample_sets = [ts.samples(pop) for pop in range(ts.num_populations)]
+    print("Computing GNNs")
+    before = time.time()
+    A = ts.genealogical_nearest_neighbours(
+        ts.samples(), sample_sets, num_threads=args.num_threads
+    )
+    duration = time.time() - before
+    print("Done in {:.2f} mins".format(duration / 60))
+
+    cols = {population_name[j]: A[:, j] for j in range(ts.num_populations)}
+    cols["population"] = population
+    cols["region"] = region
+    df = pd.DataFrame(cols)
+    df.to_csv(args.output)
 
 def run_snip_centromere(args):
     with open(args.centromeres) as csvfile:
@@ -439,6 +488,14 @@ def merge_sampledata_files(args):
     merged_copy = merged_samples.copy(args.output)
     merged_copy.finalise()
 
+def remove_moderns_reich(args):
+    samples = tsinfer.load(args.input)
+    ancients = samples.subset(individuals=np.where(samples.individuals_time[:] != 0)[0])
+    genos = ancients.sites_genotypes[:]
+    sites = np.where(np.sum(genos == 1, axis=1) != 0)[0]
+    ancients_pruned = samples.subset(sites=sites)
+    copy = ancients_pruned.copy(args.output)
+    copy.finalise()
 
 def main():
 
@@ -451,6 +508,11 @@ def main():
     subparser.add_argument("input", type=str, help="Input tree sequence")
     subparser.add_argument("output", type=str, help="Input tree sequence")
     subparser.set_defaults(func=run_simplify)
+
+    subparser = subparsers.add_parser("dated_samples")
+    subparser.add_argument("samples", type=str, help="Input sampledata") 
+    subparser.add_argument("ts", type=str, help="Input dated tree sequence")
+    subparser.set_defaults(func=run_get_dated_samples)
 
     subparser = subparsers.add_parser("sequential-augment")
     subparser.add_argument("input", type=str, help="Input tree sequence")
@@ -502,6 +564,12 @@ def main():
     subparser.add_argument("--num-threads", type=int, default=16)
     subparser.set_defaults(func=run_compute_hgdp_gnn)
 
+    subparser = subparsers.add_parser("compute-hgdp-1kg-sgdp-gnn")
+    subparser.add_argument("input", type=str, help="Input tree sequence")
+    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
+    subparser.add_argument("--num-threads", type=int, default=16)
+    subparser.set_defaults(func=run_compute_hgdp_1kg_sgdp_gnn)
+
     subparser = subparsers.add_parser("snip-centromere")
     subparser.add_argument("input", type=str, help="Input tree sequence")
     subparser.add_argument("output", type=str, help="Output tree sequence")
@@ -540,6 +608,16 @@ def main():
     )
     subparser.add_argument("--output", type=str, required=True)
     subparser.set_defaults(func=merge_sampledata_files)
+
+    subparser = subparsers.add_parser("remove-moderns-reich")
+    subparser.add_argument(
+        "input",
+        type=str,
+        help="Input reich sampledata file with moderns and ancients.",
+    )
+    subparser.add_argument("output", type=str, help="Output sampledata file name")
+    subparser.set_defaults(func=remove_moderns_reich)
+
 
     daiquiri.setup(level="INFO")
 
