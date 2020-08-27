@@ -35,7 +35,7 @@ relatefileformat_executable = os.path.join(
     "tools", "relate_v1.1.2_x86_64_dynamic", "bin", "RelateFileFormats"
 )
 relate_popsize_executable = os.path.join(
-    "tools", "relate_v1.1.2_x86_64_dynamic", "scripts", "EstimatePopulationSize"
+    "tools", "relate_v1.1.2_x86_64_dynamic", "scripts", "EstimatePopulationSize", "EstimatePopulationSize.sh"
 )
 geva_executable = os.path.join("tools", "geva", "geva_v1beta")
 geva_hmm_initial_probs = os.path.join("tools", "geva", "hmm", "hmm_initial_probs.txt")
@@ -367,7 +367,8 @@ def sampledata_to_vcf(sample_data, filename):
     return df
 
 
-def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=None):
+def compare_mutations(ts_list, relate_ages=None, relate_reinfer=None, geva_ages=None,
+                      geva_positions=None):
     """
     Given a list of tree sequences, return a pandas dataframe with the age
     estimates for each mutation via each method (tsdate, tsinfer + tsdate,
@@ -435,17 +436,24 @@ def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=
 
     # If Relate and GEVA were run, load mutation ages as pandas dataframe
     # Create an "age" column for both
-    if relate_ages is not None:
+    def get_relate_df(relate_ages, run_results, col_name):
         # remove mutations that relate can't date or flipped
         relate_ages = relate_ages[relate_ages["is_flipped"] == 0]
         relate_ages = relate_ages[relate_ages["is_not_mapping"] == 0]
-        relate_ages["relate"] = (relate_ages["age_begin"] + relate_ages["age_end"]) / 2
-        relate = relate_ages[["pos_of_snp", "relate"]].copy()
+        relate_ages[col_name] = np.sqrt(relate_ages["age_begin"] * relate_ages["age_end"]) 
+        relate = relate_ages[["pos_of_snp", col_name]].copy()
         relate = relate.rename(columns={"pos_of_snp": "position"}).set_index("position")
-        print("Number of mutations dated by relate", relate.shape[0])
+        print("Number of mutations dated by " + col_name + ": ", relate.shape[0])
         run_results = pd.merge(
             run_results, relate, how="left", left_index=True, right_index=True
         )
+        return run_results
+
+    if relate_ages is not None:
+        run_results = get_relate_df(relate_ages, run_results, col_name="relate")
+    if relate_reinfer is not None:
+        run_results = get_relate_df(relate_ages, run_results, col_name="relate_reage")
+
     if geva_ages is not None and geva_positions is not None:
         # Merge the GEVA position indices and age estimates
         geva = pd.merge(
@@ -460,9 +468,11 @@ def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=
             columns={"PostMean": "geva", "Position": "position"}
         ).set_index("position")
         print("Number of mutations dated by GEVA", geva.shape[0])
+        print(geva)
         run_results = pd.merge(
             run_results, geva, how="left", left_index=True, right_index=True
         )
+        print(run_results)
 
     return run_results
 
@@ -1049,6 +1059,7 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
     if not os.path.isdir(working_dir):
         os.mkdir(working_dir)
     os.chdir(working_dir)
+    print(ts, output)
     create_poplabels(ts, output)
     print(ts, path_to_files, mutation_rate, output, working_dir)
     with tempfile.NamedTemporaryFile("w+") as relate_out:
@@ -1058,7 +1069,7 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
                 "-i",
                 path_to_files,
                 "-m",
-                mutation_rate,
+                str(mutation_rate),
                 "--poplabels",
                 output + ".poplabels",
                 "-o",
@@ -1079,6 +1090,8 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
 
     new_ages = pd.read_csv(output + ".mut", sep=";")
     new_relate_ts = tskit.load(output + ".trees")
+    os.chdir(cur_dir)
+    return new_ages, new_relate_ts
 
 
 
@@ -1086,6 +1099,7 @@ def run_geva(file_name, Ne, mut_rate, rec_rate):
     """
     Perform GEVA age estimation on a given vcf
     """
+    print(file_name)
     subprocess.check_output(
         [
             geva_executable,

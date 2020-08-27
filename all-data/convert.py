@@ -98,7 +98,11 @@ def run_multiprocessing(args, function):
 
         # Combine sampledata files
         filenames = completed_files
-        all_samples = [tsinfer.load(args.output_file + str(name)) for name in filenames]
+        all_samples = []
+        for name in filenames:
+            all_samples.append(tsinfer.load(args.output_file + str(name))) 
+            os.remove(args.output_file + str(name))
+
         samples = all_samples[0].copy(args.output_file)
         samples.append_sites(*all_samples[1:])
         samples.finalise()
@@ -113,8 +117,6 @@ def run_multiprocessing(args, function):
 #            copy.data["sites/inference"].append(cur_sampledata.sites_inference[:])
 #            copy.data["sites/metadata"].append(cur_sampledata.sites_metadata[:])
 #            copy.data["sites/time"].append(cur_sampledata.sites_time[:])
-#            os.remove(args.output_file + str(sampledata_file))
-#        for sampledata_file in completed_files:
 #            os.remove(args.output_file + str(sampledata_file))
 #        copy.finalise()
         assert np.all(np.diff(samples.sites_position[:]) > 0) 
@@ -441,6 +443,7 @@ class ThousandGenomesConverter(VcfConverter):
             ["STU", "Sri Lankan Tamil from the UK", "SAS"],
             ["ITU", "Indian Telugu from the UK", "SAS"],
         ]
+
         population_id_map = {}
         for pop in populations:
             pop_id = self.samples.add_population(
@@ -910,7 +913,7 @@ class AfanasievoConverter(MaxPlanckConverter):
         self.num_samples = len(individual_names) * 2
 
 
-class ReichConverter(Converter):
+class ReichConverter(VcfConverter):
     """
     Convert data from 1240K array to SampleData file.
     """
@@ -964,81 +967,82 @@ class ReichConverter(Converter):
         for name in individual_names:
             metadata = rows[name]
             self.samples.add_individual(
+                time=metadata["age"],
                 metadata=metadata,
                 location=locations[name],
                 ploidy=2,
                 population=populations[name],
             )
 
-    def convert_genotypes(self, row, ancestral_state):
-        ret = None
-        num_diploids = self.num_samples // 2
-        a = np.zeros(self.num_samples, dtype=np.int8)
-        all_alleles = set([ancestral_state])
-        # Fill in a with genotypes.
-        bases = np.array(row.gt_bases)
-        for j in range(num_diploids):
-            alleles = bases[j].split("/")
-            if len(alleles) != 2:
-                self.num_unphased += 1
-                break
-            missing = False
-            for allele in alleles:
-                if allele == ".":
-                    missing = True
-                else:
-                    all_alleles.add(allele)
-            a[2 * j] = alleles[0] != ancestral_state
-            a[2 * j + 1] = alleles[1] != ancestral_state
-            if missing:
-                if alleles[0] == ".":
-                    a[2 * j] = tskit.MISSING_DATA
-                if alleles[1] == ".":
-                    a[2 * j + 1] = tskit.MISSING_DATA
-        else:
-            freq = np.sum(a)
-            # The loop above exited without breaking, so we have valid data.
-            if freq == 0:
-                self.num_invariant += 1
-            elif any(len(allele) != 1 for allele in all_alleles):
-                self.num_indels += 1
-            elif len(all_alleles) != 2:
-                self.num_non_biallelic += 1
-            else:
-                all_alleles.remove(ancestral_state)
-                alleles = [ancestral_state, all_alleles.pop()]
-                metadata = {"ID": row.ID, "REF": row.REF}
-                ret = Site(
-                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata
-                )
-        return ret
-
-    def process_sites(self, show_progress=False, max_sites=None):
-        num_data_sites = int(
-            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
-        )
-        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
-        seen_positions = list()
-        num_sites = 0
-        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
-            ancestral_state = self.get_ancestral_state(row.POS)
-            if ancestral_state is not None:
-                site = self.convert_genotypes(row, ancestral_state)
-                if site is not None:
-                    self.samples.add_site(
-                        position=site.position,
-                        genotypes=site.genotypes,
-                        alleles=site.alleles,
-                        metadata=site.metadata,
-                    )
-                    seen_positions.append(site.position)
-                    progress.set_postfix(used=str(num_sites))
-                    num_sites += 1
-                    if num_sites == max_sites:
-                        break
-            progress.update()
-
-        progress.close()
+#    def convert_genotypes(self, row, ancestral_state):
+#        ret = None
+#        num_diploids = self.num_samples // 2
+#        a = np.zeros(self.num_samples, dtype=np.int8)
+#        all_alleles = set([ancestral_state])
+#        # Fill in a with genotypes.
+#        bases = np.array(row.gt_bases)
+#        for j in range(num_diploids):
+#            alleles = bases[j].split("/")
+#            if len(alleles) != 2:
+#                self.num_unphased += 1
+#                break
+#            missing = False
+#            for allele in alleles:
+#                if allele == ".":
+#                    missing = True
+#                else:
+#                    all_alleles.add(allele)
+#            a[2 * j] = alleles[0] != ancestral_state
+#            a[2 * j + 1] = alleles[1] != ancestral_state
+#            if missing:
+#                if alleles[0] == ".":
+#                    a[2 * j] = tskit.MISSING_DATA
+#                if alleles[1] == ".":
+#                    a[2 * j + 1] = tskit.MISSING_DATA
+#        else:
+#            freq = np.sum(a)
+#            # The loop above exited without breaking, so we have valid data.
+#            if freq == 0:
+#                self.num_invariant += 1
+#            elif any(len(allele) != 1 for allele in all_alleles):
+#                self.num_indels += 1
+#            elif len(all_alleles) != 2:
+#                self.num_non_biallelic += 1
+#            else:
+#                all_alleles.remove(ancestral_state)
+#                alleles = [ancestral_state, all_alleles.pop()]
+#                metadata = {"ID": row.ID, "REF": row.REF}
+#                ret = Site(
+#                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata
+#                )
+#        return ret
+#
+#    def process_sites(self, show_progress=False, max_sites=None):
+#        num_data_sites = int(
+#            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
+#        )
+#        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
+#        seen_positions = list()
+#        num_sites = 0
+#        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
+#            ancestral_state = self.get_ancestral_state(row.POS)
+#            if ancestral_state is not None:
+#                site = self.convert_genotypes(row, ancestral_state)
+#                if site is not None:
+#                    self.samples.add_site(
+#                        position=site.position,
+#                        genotypes=site.genotypes,
+#                        alleles=site.alleles,
+#                        metadata=site.metadata,
+#                    )
+#                    seen_positions.append(site.position)
+#                    progress.set_postfix(used=str(num_sites))
+#                    num_sites += 1
+#                    if num_sites == max_sites:
+#                        break
+#            progress.update()
+#
+#        progress.close()
 
 
 class UkbbConverter(Converter):
