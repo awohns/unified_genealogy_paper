@@ -15,6 +15,7 @@ import random
 import shutil
 from tqdm import tqdm
 import scipy
+from sklearn.metrics import mean_squared_log_error
 
 import tskit
 import tsinfer
@@ -28,6 +29,7 @@ import constants
 import iteration
 import utility
 import run_inference
+import error_generation 
 
 
 
@@ -105,22 +107,28 @@ class DataGeneration:
                 # Create sampledata file
                 samples = tsinfer.formats.SampleData.from_tree_sequence(
                     sim,
-                    path=os.path.join(self.data_dir, filename + ".samples"),
                     use_times=False,
                 )
+                sample_data_indiv_times = samples.copy(
+                    path=os.path.join(self.data_dir, filename + ".samples")
+                )
+                sample_data_indiv_times.individuals_time[:] = np.array(
+                    sim.tables.nodes.time[sim.samples()]
+                )
+                sample_data_indiv_times.finalise()
 
                 # Add error to sampledata file
                 if self.empirical_error:
-                    error_samples = evaluation.add_errors(
-                        samples
+                    error_samples = error_generation.add_errors(
+                       sample_data_indiv_times 
                     )
                     copy = error_samples.copy(os.path.join(self.data_dir, filename + ".error.samples"))
                     copy.finalise()
 
                 # Add error to sampledata file
                 if self.ancestral_state_error:
-                    anc_error_samples = evaluation.add_errors(
-                        samples,
+                    anc_error_samples = error_generation.add_errors(
+                        sample_data_indiv_times,
                         ancestral_allele_error=0.01
                     )
                     copy = anc_error_samples.copy(os.path.join(self.data_dir, filename + ".ancestral_state.error.samples"))
@@ -400,6 +408,9 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "relate", "geva"]
+        self.output_suffixes = ["_mutations.csv", "_error_mutations.csv",
+                           "_anc_error_mutations.csv", "_kc_distances.csv",
+                           "_error_kc_distances.csv", "_anc_error_kc_distances.csv"]
         self.sim_cols = self.sim_cols
         self.default_replicates = 30
         self.num_rows = self.default_replicates
@@ -408,11 +419,12 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
         self.empirical_error = False 
         self.ancestral_state_error = False 
         self.tsinfer_mismatch = False
+        self.tsinfer_iterate = False
         self.relate_reinfer = False
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
-        row_data["sample_size"] = 250 
+        row_data["sample_size"] = 500
         row_data["Ne"] = 10000
         row_data["length"] = 5e6
         row_data["mut_rate"] = 1e-8
@@ -442,24 +454,9 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
             logging.error("Must run with --setup flag first")
 
         output_names = []
-        output_suffixes = ["_mutations.csv", "_error_mutations.csv",
-                           "_anc_error_mutations.csv", "_kc_distances.csv",
-                           "_error_kc_distances.csv", "_anc_error_kc_distances.csv"]
-        for name in output_suffixes:
+        for name in self.output_suffixes:
             output_names.append(os.path.join(self.data_dir, self.name + name))
-        #mutation_output_fn = os.path.join(self.data_dir, self.name + "_mutations.csv")
-        #error_mutation_output_fn = os.path.join(self.data_dir, self.name + "_error_mutations.csv")
-        #anc_error_mutation_output_fn = os.path.join(self.data_dir, self.name + "_anc_error_mutations.csv")
-        #kc_output_fn = os.path.join(self.data_dir, self.name + "_kc_distances.csv")
-        #error_kc_output_fn = os.path.join(self.data_dir, self.name + "_error_kc_distances.csv")
-        #anc_error_kc_output_fn = os.path.join(self.data_dir, self.name + "_anc_error_kc_distances.csv")
-        master_dfs = [pd.DataFrame(columns=self.columns) for index in range(len(output_suffixes))]
-#        master_mutation_df = pd.DataFrame(columns=self.columns)
-#        master_error_mutation_df = pd.DataFrame(columns=self.columns)
-#        master_anc_error_mutation_df = pd.DataFrame(columns=self.columns)
-#        master_kc_df = pd.DataFrame(columns=self.columns)
-#        master_error_kc_df = pd.DataFrame(columns=self.columns)
-#        master_anc_error_kc_df = pd.DataFrame(columns=self.columns)
+        master_dfs = [pd.DataFrame(columns=self.columns) for index in range(len(self.output_suffixes))]
         if num_processes > 1:
             logging.info(
                 "Setting up using multiprocessing ({} processes)".format(num_processes)
@@ -475,40 +472,24 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 ):
                     self.data.loc[index] = row
                     self.summarize()
-                    for index, df in enumerate(dfs):
+                    for index, (name, df) in enumerate(dfs.items()):
                         master_dfs[index] = pd.concat([master_dfs[index], df], sort=False)
-                    #master_mutation_df = pd.concat([master_mutation_df, mutations_df], sort=False)
-                    #master_error_mutation_df = pd.concat([master_error_mutation_df, error_mutations_df], sort=False)
-                    #master_anc_error_mutation_df = pd.concat([master_anc_error_mutation_df, anc_error_mutations_df], sort=False)
-                    #master_kc_df = pd.concat([master_kc_df, kc_df], sort=False)
-                    #master_error_kc_df = pd.concat([master_error_kc_df, error_kc_df], sort=False)
-                    #master_anc_error_kc_df = pd.concat([master_anc_error_kc_df, anc_error_kc_df], sort=False)
-
+        
         else:
             # When we have only one process it's easier to keep everything in the
             # same process for debugging.
             logging.info("Setting up using a single process")
-            for index, row, mutations_df, kc_df, error_mutations_df, error_kc_df, anc_error_mutations_df, anc_error_kc_df in tqdm(
+            for index, row, dfs in tqdm(
                 map(function, self.data.iterrows()), total=self.data.shape[0]
             ):
                 logging.info("Running inference")
                 self.data.loc[index] = row
                 self.summarize()
-                master_mutation_df = pd.concat([master_mutation_df, mutations_df], sort=False)
-                master_error_mutation_df = pd.concat([master_error_mutation_df, error_mutations_df], sort=False)
-                master_anc_error_mutation_df = pd.concat([master_anc_error_mutation_df, anc_error_mutations_df], sort=False)
-                master_kc_df = pd.concat([master_kc_df, kc_df], sort=False)
-                master_error_kc_df = pd.concat([master_error_kc_df, error_kc_df], sort=False)
-                master_anc_error_kc_df = pd.concat([master_anc_error_kc_df, anc_error_kc_df], sort=False)
+                for index, (name, df) in enumerate(dfs.items()):
+                    master_dfs[index] = pd.concat([master_dfs[index], df], sort=False)
 
         for master_df, output_name in zip(master_dfs, output_names):
             master_df.to_csv(output_name)
-#        master_mutation_df.to_csv(mutation_output_fn)
-#        master_kc_df.to_csv(kc_output_fn)
-#        master_error_mutation_df.to_csv(error_mutation_output_fn)
-#        master_error_kc_df.to_csv(error_kc_output_fn)
-#        master_anc_error_mutation_df.to_csv(anc_error_mutation_output_fn)
-#        master_anc_error_kc_df.to_csv(anc_error_kc_output_fn)
 
 
     def inference(self, row_data):
@@ -527,6 +508,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
 
         sample_data = tsinfer.load(path_to_file + ".samples")
         def run_all_inference(sim, dated_ts, samples, output_fn, tsinfer_mismatch=False, relate_reinfer=False):
+            compare_ts_dict = {"simulated_ts": sim, "tsdate": dated_ts}
             if self.tsinfer_mismatch:
                 _, inferred_ts = evaluation.infer_with_mismatch(
                         samples, "chr20", ma_mismatch=0.1, ms_mismatch=0.1, num_threads=1)
@@ -536,6 +518,21 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
             inferred_ts.dump(path_to_file + output_fn + ".tsinferred.trees")
             dated_inferred_ts = tsdate.date(inferred_ts, row["Ne"], row["mut_rate"])
             dated_inferred_ts.dump(path_to_file + output_fn + ".tsinferred.tsdated.trees")
+            compare_ts_dict["tsdate_inferred"] = dated_inferred_ts
+            if self.tsinfer_iterate:
+                dated_samples = tsdate.get_sites_time(dated_inferred_ts, samples=samples)
+                if self.tsinfer_mismatch:
+                    _, reinferred_ts = evaluation.infer_with_mismatch(
+                            dated_samples, "chr20", ma_mismatch=0.1, ms_mismatch=0.1, num_threads=1)
+                    reinferred_ts = tsdate.preprocess_ts(reinferred_ts)
+                else:
+                    reinferred_ts = tsinfer.infer(dated_samples).simplify()
+                reinferred_ts.dump(path_to_file + output_fn + ".iter.tsinferred.trees")
+                compare_ts_dict["iter_tsdate_inferred"] = redated_inferred_ts
+                redated_inferred_ts = tsdate.date(reinferred_ts, row["Ne"], row["mut_rate"])
+                redated_inferred_ts.dump(path_to_file + output_fn + ".iter.tsinferred.tsdated.trees")
+            else:
+                redated_inferred_ts = None
 
             relate_dir = os.path.join(self.data_dir, "relate_" + row["filename"] + output_fn)
             path_to_genetic_map = path_to_file + "_genetic_map.txt"
@@ -548,40 +545,39 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 relate_dir,
                 "relate_run" + output_fn,
             )
-            #relate_ts.dump(path_to_file + output_fn + ".relate.trees")
-            #relate_age.to_csv(path_to_file + output_fn + ".relate_age.csv")
+            relate_ts.dump(path_to_file + output_fn + ".relate.trees")
+            relate_age.to_csv(path_to_file + output_fn + ".relate_age.csv")
             if self.relate_reinfer:
-                relate_reage, relate_retrees = evaluation.run_relate_pop_size(
+                relate_iter_ages, relate_iter_ts= evaluation.run_relate_pop_size(
                         sim, "relate_run" + output_fn, row["mut_rate"],
                         "relate_reinfer" + output_fn, relate_dir)
+            else:
+                relate_iter_ages = None 
+                relate_iter_ts = None 
             geva_ages, geva_cpu, geva_memory = evaluation.run_geva(
                 path_to_file + output_fn, row["Ne"], row["mut_rate"], row["rec_rate"]
             )
-            geva_ages.to_csv(path_to_file + output_fn + ".geva.csv")
             geva_positions = pd.read_csv(
-                path_to_file + output_fn + ".marker.txt", delimiter=" ", index_col="MarkerID"
-            )
-            #geva_ages = None
-            #geva_positions = None
+                    path_to_file + output_fn + ".marker.txt", delimiter=" ",
+                    index_col="MarkerID")
+            geva_ages.to_csv(path_to_file + output_fn + ".geva.csv")
             print("Compare Mutations")
             mutation_df = evaluation.compare_mutations(
-                [sim, dated_ts, dated_inferred_ts, relate_ts],
+                list(compare_ts_dict.values()), list(compare_ts_dict.keys()),
                 geva_ages=geva_ages,
                 geva_positions=geva_positions,
                 relate_ages=relate_age,
-                relate_reinfer=relate_reage
+                relate_reinfer=relate_iter_ages
             )
             
             sim_pos = sim.tables.sites.position
             sim = sim.keep_intervals(
                     [[np.round(sim_pos[0]), np.round(sim_pos[-1])]]).trim()
-#            tables = relate_ts.dump_tables()
-#            tables.sequence_length = sim.get_sequence_length()
-#            relate_ts = tables.tree_sequence()
 
             dated_ts_pos = dated_ts.tables.sites.position
             dated_ts = dated_ts.keep_intervals([[np.round(dated_ts_pos[0]),
                 np.round(dated_ts_pos[-1])]]).trim()
+            compare_ts_dict = {"simulated_ts": sim, "tsdate": dated_ts}
 
             dated_inferred_ts_pos = dated_inferred_ts.tables.sites.position
             dated_inferred_ts = dated_inferred_ts.keep_intervals([[
@@ -590,23 +586,33 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
             tables = dated_inferred_ts.dump_tables()
             tables.sequence_length = sim.get_sequence_length()
             dated_inferred_ts = tables.tree_sequence()
+            compare_ts_dict["tsdate_inferred"] = dated_inferred_ts
 
             if self.relate_reinfer:
                 relate_ts_pos = relate_retrees.tables.sites.position
                 relate_ts = relate_retrees.keep_intervals([[
                     np.round(relate_ts_pos[0]), np.round(relate_ts_pos[-1])]]).trim()
+                compare_ts_dict["relate_iterate"] = relate_ts
             else:
                 relate_ts_pos = relate_ts.tables.sites.position
                 relate_ts = relate_ts.keep_intervals([[
                     np.round(relate_ts.tables.sites.position[0]),
                     np.round(relate_ts.tables.sites.position[-1])]]).trim()
+                compare_ts_dict["relate"] = relate_ts
 
             print("Find KC Distances")
-            print(sim.get_sequence_length(), dated_ts.get_sequence_length(), dated_inferred_ts.get_sequence_length(), relate_ts.get_sequence_length())
-            results_lambda_0, results_lambda_1 = evaluation.get_kc_distances(
-                    [sim, dated_ts, dated_inferred_ts, relate_ts],
-                    ["simulated_ts", "tsdate", "tsdate_inferred", "relate"])
-            kc_df = pd.DataFrame.from_dict([results_lambda_0, results_lambda_1])
+            if self.tsinfer_iterate:
+                redated_inferred_ts_pos = redated_inferred_ts.tables.sites.position
+                redated_inferred_ts = redated_inferred_ts.keep_intervals([[
+                    np.round(redated_inferred_ts_pos[0]),
+                    np.round(redated_inferred_ts_pos[-1])]]).trim()
+                tables = redated_inferred_ts.dump_tables()
+                tables.sequence_length = sim.get_sequence_length()
+                redated_inferred_ts = tables.tree_sequence()
+                compare_ts_dict["tsdate_iterate"] = redated_inferred_ts
+            kc_df = evaluation.get_kc_distances(
+                    list(compare_ts_dict.values()),
+                    list(compare_ts_dict.keys()))
             return mutation_df, kc_df
         mut_df, kc_df = run_all_inference(sim, dated_ts, sample_data, "")
         error_mut_df = None
@@ -619,9 +625,11 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
         if self.ancestral_state_error:
             anc_error_samples = tsinfer.load(path_to_file + ".ancestral_state.error.samples")
             anc_error_mut_df, anc_error_kc_df = run_all_inference(sim, dated_ts, anc_error_samples, ".ancestral_state.error")
-        return index, row, [mut_df, error_mut_df, anc_error_mut_df, kc_df, error_kc_df,
-                            anc_error_kc_df]
-
+        return_vals = {"muts_noerr": mut_df, "muts_err": error_mut_df,
+                       "muts_anc_err": anc_error_mut_df, "kc_noerr": kc_df, "kc_err": error_kc_df,
+                       "kc_anc_err": anc_error_kc_df}
+        print(mut_df)
+        return index, row, return_vals
 
 
 class TsdateNeutralSimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
@@ -630,6 +638,7 @@ class TsdateNeutralSimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred"]
+        self.output_suffixes = ["_mutations.csv"] 
         self.sim_cols = self.sim_cols
         self.num_rows = self.default_replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
@@ -644,28 +653,23 @@ class TsdateNeutralSimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         # Name of output file with mutations ages
         path_to_file = os.path.join(self.data_dir, row["filename"])
         sim = tskit.load(path_to_file + ".trees")
-
-        dated_ts, tsdate_cpu, tsdate_memory = evaluation.run_tsdate(
-            path_to_file + ".trees", row["Ne"], row["mut_rate"], 20, "inside_outside"
-        )
+        samples = tsinfer.load(path_to_file + ".samples")
+        dated_ts = tsdate.date(sim, row["Ne"], 
+                row["mut_rate"])
         dated_ts.dump(path_to_file + ".tsdated.trees")
 
-        inferred_ts, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
-            path_to_file + ".samples", sim.get_sequence_length()
-        )
-        inferred_ts.simplify().dump(path_to_file + ".tsinferred.trees")
+        inferred_ts = tsinfer.infer(samples).simplify()
+        inferred_ts.dump(path_to_file + ".tsinferred.trees")
 
-        dated_inferred_ts, tsdate_cpu, tsdate_memory = evaluation.run_tsdate(
-            path_to_file + ".tsinferred.trees",
-            row["Ne"],
-            row["mut_rate"],
-            50,
-            "inside_outside",
+        dated_inferred_ts = tsdate.date(inferred_ts,
+                row["Ne"], row["mut_rate"]
         )
         dated_inferred_ts.dump(path_to_file + ".tsinferred.tsdated.trees")
 
-        compare_df = evaluation.compare_mutations([sim, dated_ts, dated_inferred_ts])
-        return index, row, compare_df
+        compare_df = evaluation.compare_mutations([sim, dated_ts, dated_inferred_ts],
+                ["simulated_ts", "tsdate", "tsdate_inferred"])
+        return_vals = {"mut_df": compare_df}
+        return index, row, return_vals
 
 
 class IterationTsdate(NeutralSimulatedMutationAccuracy):
@@ -805,7 +809,7 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "relate", "geva"]
-        self.default_replicates = 30
+        self.default_replicates = 1 
         self.num_rows = self.default_replicates
         self.sim_cols = self.sim_cols + ["snippet"]
         self.data = pd.DataFrame(columns=self.sim_cols)
@@ -813,11 +817,20 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         self.empirical_error = True
         self.ancestral_state_error = True
         self.tsinfer_mismatch = True 
+        self.tsinfer_iterate = True 
         self.relate_reinfer = True 
+        self.modern_sample_size = 150
+        self.ancient_sample_size = 0
+        self.remove_ancient_mutations = False
+        self.ancient_times = None
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
-        row_data["sample_size"] = 50 
+        row_data["sample_size_modern"] = self.modern_sample_size 
+        row_data["sample_size_ancient"] = self.ancient_sample_size
+        if self.ancient_sample_size != 0 and self.ancient_times is None:
+            raise ValueError("must specify ancient times if simulating ancients")
+
         row_data["Ne"] = 10000
         row_data["length"] = 5e6
         row_data["mut_rate"] = 1e-8
@@ -828,9 +841,46 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
             species = stdpopsim.get_species("HomSap")
             contig = species.get_contig("chr20", genetic_map="HapMapII_GRCh37")
             model = species.get_demographic_model("OutOfAfrica_3G09")
-            samples = model.get_samples(row_data["sample_size"], row_data["sample_size"], row_data["sample_size"])
+            #samples = model.get_samples(row_data["sample_size"], row_data["sample_size"], row_data["sample_size"])
+            yri_samples = [
+                msprime.Sample(population=0, time=0)
+                for samp in range(row_data["sample_size_modern"] // 3)
+            ]
+            ceu_samples = [
+                msprime.Sample(population=1, time=0)
+                for samp in range(row_data["sample_size_modern"] // 3)
+            ]
+            chb_samples = [
+                msprime.Sample(population=2, time=0)
+                for samp in range(row_data["sample_size_modern"] // 3)
+            ]
+            ancient_samples = None
+            if self.ancient_times == "empirical_age_distribution":
+                ancient_sample_times = evaluation.sample_times(
+                    row_data["sample_size_ancient"], constants.GENERATION_TIME
+                )
+                ancient_sample_times = np.array(ancient_sample_times, dtype=float)
+                ancient_samples = [
+                    msprime.Sample(population=1, time=time)
+                    for samp, time in zip(
+                        range(row_data["sample_size_ancient"]), ancient_sample_times)
+                ]
+            elif self.ancient_times == "ooa_samples":
+                ancient_samples = [
+                    msprime.Sample(population=0, time=5650)
+                    for samp in range(row_data["sample_size_ancient"])
+                ]
+            elif self.ancient_times == "amh_samples":
+                ancient_samples = [
+                    msprime.Sample(population=0, time=10000)
+                    for samp in range(row_data["sample_size_ancient"])
+            ]
+
+            samples = yri_samples + ceu_samples + chb_samples + ancient_samples
             engine = stdpopsim.get_default_engine()
             ts = engine.simulate(model, contig, samples, seed=seed)
+            if self.remove_ancient_mutations:
+                ts = evaluation.remove_ancient_only_muts(ts)
             chr20_centromere = [25700000, 30400000]
             snippet_start = self.rng.randint(
                 0, ts.get_sequence_length() - row_data["length"]
@@ -857,6 +907,7 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         DataGeneration.setup(
             self, None, [None], simulate_func, genetic_map_func, row_data
         )
+
 
     def get_genetic_map_chr20_snippet(self, rowdata, filename):
         """
@@ -926,7 +977,7 @@ class IterativeApproachNoAncients(NeutralSimulatedMutationAccuracy):
             inferred_ts = inferred_ts.simplify()
             dated_ts = tsdate.date(inferred_ts, row["Ne"], row["mut_rate"])
             sample_data_copy = samples.copy()
-            sample_data_copy.sites_time[:] = tsdate.get_site_times(dated_ts)
+            sample_data_copy.sites_time[:] = tsdate.get_sites_time(dated_ts)
             sample_data_copy.finalise()
             iter_infer = tsinfer.infer(sample_data_copy).simplify()
             dated_ts_iter = tsdate.date(iter_infer, row["Ne"], row["mut_rate"])
@@ -1327,8 +1378,7 @@ class SimulateVanillaAncient(DataGeneration):
             true_topo_dated = evaluation.get_dated_ts(
                 modern_ts, tsdate_true_topo, row["Ne"], 1e-6
             )
-            kc_distances = pd.DataFrame.from_dict(
-                evaluation.get_kc_distances(
+            kc_distances = evaluation.get_kc_distances(
                     [
                         modern_ts.simplify(),
                         inferred_dated_ts.simplify(),
@@ -1344,14 +1394,12 @@ class SimulateVanillaAncient(DataGeneration):
                         "SimulatedTopoTime",
                     ],
                 )
-            )
             kc_distances["ancient_sample_size"] = ancient_sample_size
             kc_distances["lambda_param"] = [0, 1]
             master_kc_df = pd.concat([master_kc_df, kc_distances], sort=False)
 
             # Run KC distance comparisons with error
-            kc_distances_err = pd.DataFrame.from_dict(
-                evaluation.get_kc_distances(
+            kc_distances_err = evaluation.get_kc_distances(
                     [
                         modern_ts.simplify(),
                         inferred_dated_ts_err.simplify(),
@@ -1367,7 +1415,6 @@ class SimulateVanillaAncient(DataGeneration):
                         "SimulatedTopoTime",
                     ],
                 )
-            )
             kc_distances_err["ancient_sample_size"] = ancient_sample_size
             kc_distances_err["lambda_param"] = [0, 1]
             master_kc_df_err = pd.concat(
@@ -1518,45 +1565,48 @@ class SimulateVanillaAncient(DataGeneration):
         kc_distances_master_df_err.to_csv(kc_output_fn + ".empiricalerror.csv")
 
 
-class OOA_Chr20_ancient(SimulateVanillaAncient):
-    name = "ooa_chr20"
+
+class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
+    name = "chr20_ancient_iteration"
 
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = [
-            "ancient_sample_size",
             "simulated_ts",
             "tsdate",
             "tsdate_inferred",
-            "tsdate_iteration",
-            "tsdate_true_times",
-            "tsdate_sim_topo",
+            "tsdate_iteration"
         ]
-        self.default_replicates = 1
+        self.output_suffixes = ["_mutations.csv", "_msle.csv", "_spearman.csv"]
+        self.default_replicates = 10
         self.sim_cols = self.sim_cols
         self.num_rows = self.default_replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
-        self.rng = random.Random(self.default_seed)
+        self.empirical_error = False 
+        self.ancestral_state_error = True
+        self.remove_ancient_mutations = True
+        self.modern_sample_size = 450
+        self.ancient_sample_size = 40
+        self.ancient_times = "empirical_age_distribution"
 
     def setup(self):
-        """
-        Run Simulations
-        """
         row_data = dict.fromkeys(self.sim_cols)
+        row_data["sample_size_modern"] = self.modern_sample_size 
+        row_data["sample_size_ancient"] = self.ancient_sample_size
+        if self.ancient_sample_size != 0 and self.ancient_times is None:
+            raise ValueError("must specify ancient times if simulating ancients")
+
         row_data["Ne"] = 10000
-        # row_data["sample_size"] = 500
+        row_data["length"] = 10e6
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
-        row_data["sample_size_modern"] = 60
-        row_data["sample_size_ancient"] = 8
-        row_data["length"] = 1e6
 
-        seeds = [self.rng.randint(1, 2 ** 31) for i in range(self.default_replicates)]
-        for index, seed in tqdm(enumerate(seeds), desc="Running Simulations"):
-            # randomly sample ancient times
-            ancient_sample_times = evaluation.sample_times(
-                row_data["sample_size_ancient"], constants.GENERATION_TIME
-            )
+        def simulate_func(params):
+            seed = params[1]
+            species = stdpopsim.get_species("HomSap")
+            contig = species.get_contig("chr20", length_multiplier=0.01)
+            model = species.get_demographic_model("OutOfAfrica_3G09")
+            #samples = model.get_samples(row_data["sample_size"], row_data["sample_size"], row_data["sample_size"])
             yri_samples = [
                 msprime.Sample(population=0, time=0)
                 for samp in range(row_data["sample_size_modern"] // 3)
@@ -1569,73 +1619,341 @@ class OOA_Chr20_ancient(SimulateVanillaAncient):
                 msprime.Sample(population=2, time=0)
                 for samp in range(row_data["sample_size_modern"] // 3)
             ]
-            ancient_sample_times = np.array(ancient_sample_times, dtype=float)
-            anc_per_pop = row_data["sample_size_ancient"] // 2
-            ceu_ancient_samples = [
-                msprime.Sample(population=1, time=time)
-                for samp, time in zip(
-                    range(anc_per_pop), ancient_sample_times[:anc_per_pop]
+            ancient_samples = None
+            if self.ancient_times == "empirical_age_distribution":
+                ancient_sample_times = evaluation.sample_times(
+                    row_data["sample_size_ancient"], constants.GENERATION_TIME
                 )
+                ancient_sample_times = np.array(ancient_sample_times, dtype=float)
+                ancient_samples = [
+                    msprime.Sample(population=1, time=time)
+                    for samp, time in zip(
+                        range(row_data["sample_size_ancient"]), ancient_sample_times)
+                ]
+            elif self.ancient_times == "ooa_samples":
+                ancient_samples = [
+                    msprime.Sample(population=0, time=5650)
+                    for samp in range(row_data["sample_size_ancient"])
+                ]
+            elif self.ancient_times == "amh_samples":
+                ancient_samples = [
+                    msprime.Sample(population=0, time=10000)
+                    for samp in range(row_data["sample_size_ancient"])
             ]
-            chb_ancient_samples = [
-                msprime.Sample(population=2, time=time)
-                for samp, time in zip(
-                    range(anc_per_pop), ancient_sample_times[anc_per_pop:]
-                )
-            ]
 
-            samples = yri_samples + ceu_samples + chb_samples + ceu_ancient_samples + chb_ancient_samples 
-            sim = evaluation.run_chr20_ooa(
-                samples,
-                row_data["Ne"],
-                row_data["length"],
-                row_data["mut_rate"],
-                row_data["rec_rate"],
-                self.rng,
-                seed,
-            )
-            # Dump simulated tree
-            filename = self.name + "_" + str(index)
-            row_data["filename"] = filename
-            row_data["replicate"] = index
-            row_data["n_edges"] = sim.num_edges
-            row_data["n_trees"] = sim.num_trees
-            row_data["n_sites"] = sim.num_sites
-            row_data["seed"] = seed
+            samples = yri_samples + ceu_samples + chb_samples + ancient_samples
+            engine = stdpopsim.get_default_engine()
+            ts = engine.simulate(model, contig, samples, seed=seed)
+            if self.remove_ancient_mutations:
+                ts = evaluation.remove_ancient_only_muts(ts)
+            return ts
 
-            # Remove ancient samples and fixed mutations
-            #modern_samples = np.where(sim.tables.nodes.time[sim.samples()] == 0)[0]
-            sim = evaluation.remove_ancient_only_muts(sim)
+        def genetic_map_func(row_data, filename):
+            pass
 
-            # Save the simulated tree sequence
-            sim.dump(os.path.join(self.data_dir, filename + ".trees"))
+        DataGeneration.setup(
+            self, None, [None], simulate_func, genetic_map_func, row_data
+        )
 
-            # Save the simulated tree sequence
-            #modern_ts.dump(os.path.join(self.data_dir, filename + ".modern.trees"))
 
-            # Create sampledata file, with and without keeping times
-            sample_data = tsinfer.formats.SampleData.from_tree_sequence(
-                sim, use_times=False,
-            )
-            sample_data_indiv_times = sample_data.copy(
-                path=os.path.join(self.data_dir, filename + ".samples")
-            )
-            sample_data_indiv_times.individuals_time[:] = np.array(
-                sim.tables.nodes.time[sim.samples()]
-            )
-            sample_data_indiv_times.finalise()
+#    def setup(self):
+#        row_data = dict.fromkeys(self.sim_cols)
+#        row_data["sample_size_modern"] = self.modern_sample_size
+#        row_data["sample_size_ancient"] = self.ancient_sample_size
+#        row_data["mutation_rate"] = 1e-8
+#        row_data["Ne"] = 10000
+#
+#        def simulate_func(params):
+#            seed = params[1]
+#            species = stdpopsim.get_species("HomSap")
+#            contig = species.get_contig("chr20", length_multiplier=0.02)
+#                   # genetic_map="HapMapII_GRCh37")
+#            model = species.get_demographic_model("OutOfAfrica_3G09")
+#            yri_samples = [
+#                msprime.Sample(population=0, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            ceu_samples = [
+#                msprime.Sample(population=1, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            chb_samples = [
+#                msprime.Sample(population=2, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            ancient_sample_times = evaluation.sample_times(
+#                row_data["sample_size_ancient"], constants.GENERATION_TIME
+#            )
+#            ancient_sample_times = np.array(ancient_sample_times, dtype=float)
+#
+#            #anc_per_pop = row_data["sample_size_ancient"] // 2
+##            yri_ancient_samples = [
+##                msprime.Sample(population=0, time=10000)
+##                for samp, time in zip(
+##                    range(anc_per_pop), ancient_sample_times[:anc_per_pop]
+##                )
+##            ]
+#            ceu_ancient_samples = [
+#                msprime.Sample(population=1, time=time)
+#                for samp, time in zip(
+#                    range(row_data["sample_size_ancient"]), ancient_sample_times)
+#            ]
+##            chb_ancient_samples = [
+##                msprime.Sample(population=2, time=time)
+##                for samp, time in zip(
+##                    range(anc_per_pop), ancient_sample_times[anc_per_pop:]
+##                )
+##            ]
+#
+#            samples = yri_samples + ceu_samples + chb_samples + ceu_ancient_samples
+#
+#            engine = stdpopsim.get_default_engine()
+#            ts = engine.simulate(model, contig, samples, seed=seed)
+#            ts = evaluation.remove_ancient_only_muts(ts)
+#            return ts
+#
+#        def genetic_map_func(row_data, filename):
+#            pass
+#
+#        DataGeneration.setup(
+#            self, None, [None], simulate_func, genetic_map_func, row_data
+#        )
+#        row_data = dict.fromkeys(self.sim_cols)
+#        row_data["sample_size_modern"] = self.modern_sample_size 
+#        row_data["sample_size_ancient"] = self.ancient_sample_size
+#        row_data["Ne"] = 10000
+#        row_data["length"] = 5e6
+#        row_data["mut_rate"] = 1e-8
+#        row_data["rec_rate"] = 1e-8
+#
+#        genetic_map_func = self.get_genetic_map_chr20_snippet
+#        DataGeneration.setup(
+#            self, None, [None], self.simulate_func, genetic_map_func, row_data
+#        )
 
-           # tsinfer.formats.SampleData.from_tree_sequence(
-           #     modern_ts,
-           #     path=os.path.join(self.data_dir, filename + ".keep_times.samples"),
-           #     use_times=True,
-           # )
+    def inference(self, row_data):
+        index = row_data[0]
+        row = row_data[1]
 
-            # Update dataframe with details of simulation
-            self.data = self.data.append(row_data, ignore_index=True)
+        path_to_file = os.path.join(self.data_dir, row["filename"])
+        # Load the original simulation and the one with only modern samples
+        sim = tskit.load(path_to_file + ".trees")
+#        self.rng = random.Random(index)
+#        chr20_centromere = [25700000, 30400000]
+#        row["length"] = 10e6
+#        snippet_start = self.rng.randint(
+#            0, sim.get_sequence_length() - row["length"]
+#        )
+#        snippet_end = snippet_start + row["length"]
+#        # Don't allow snippets to include the centromere
+#        while (
+#            snippet_end > chr20_centromere[0] and snippet_end < chr20_centromere[1]
+#        ) or (
+#            snippet_start > chr20_centromere[0]
+#            and snippet_start < chr20_centromere[1]
+#        ):
+#            print("Rechoosing snippet")
+#            snippet_start = self.rng.randint(
+#                0, sim.get_sequence_length() - row["length"]
+#            )
+#            snippet_end = snippet_start + row["length"]
+#        print("Random Snippet Start:" + str(snippet_start) + " end: " + str(snippet_end))
+#        self.snippet = [snippet_start, snippet_start + row["length"]]
+#        sim = sim.keep_intervals(np.array([self.snippet]))
 
-        # Save dataframe
-        self.summarize()
+        samples = tsinfer.load(path_to_file + ".ancestral_state.error.samples")
+        #samples = tsinfer.load(path_to_file + ".samples")
+        #samples = samples.subset(sites=np.where(np.logical_and(samples.sites_position[:] > snippet_start, samples.sites_position[:] < snippet_end))[0])
+        sim = sim.delete_sites(np.where(np.all(samples.sites_genotypes[:] == 0, axis=1))[0])
+        samples= samples.subset(sites=np.where(np.any(
+            samples.sites_genotypes[:] == 1, axis=1))[0])
+        assert samples.num_sites == sim.num_sites
+
+        #samples_indiv_times = samples.copy()
+        #samples_indiv_times.sites_time[:] = np.full(samples.num_sites, -np.inf)
+        #samples_indiv_times.finalise()
+        modern_samples = samples.subset(individuals=np.arange(0, row["sample_size_modern"]))
+        inferred_ts = tsinfer.infer(modern_samples)
+        inferred_ts = tsdate.preprocess_ts(inferred_ts)
+        #_, mismatch_simplified_inferred_ts = evaluation.infer_with_mismatch(
+        #        modern_samples, "chr20", num_threads=1)
+        dated = tsdate.date(inferred_ts.simplify(filter_sites=False), row["Ne"], row["mut_rate"])
+        assert dated.num_sites == modern_samples.num_sites
+
+        # Iterate
+        dated_samples = modern_samples.copy()
+        dated_samples.sites_time[:] = tsdate.get_sites_time(dated)
+        dated_samples.finalise()
+        #_, iter_mismatch_simplified_inferred_ts = evaluation.infer_with_mismatch(
+        #        dated_samples, "chr20", num_threads=1)
+        iter_inferred_ts = tsinfer.infer(dated_samples, path_compression=False)
+        iter_inferred_ts = tsdate.preprocess_ts(iter_inferred_ts)
+        iter_dated = tsdate.date(iter_inferred_ts.simplify(), row["Ne"], row["mut_rate"])
+
+        ancient_sample_sizes = [1, 5, 10, 20, 40]
+        tables = sim.tables
+        iter_ts_ancients = []
+        iter_ts_inferred = []
+        for subset_size in ancient_sample_sizes:
+            subsetted = samples.subset(individuals=np.arange(0, row["sample_size_modern"] + subset_size))
+            #_, inferred = evaluation.infer_with_mismatch(subsetted, "chr20", modern_samples_match=True)
+           # ancestors_reinferred = tsinfer.generate_ancestors(subsetted)
+           # ancestors_ts_reinferred = tsinfer.match_ancestors(subsetted, ancestors_reinferred)
+           # inferred = tsinfer.match_samples(dated_samples, ancestors_ts_reinferred)
+
+           # dated_w_anc = tsdate.date(inferred.simplify(), 10000, 1e-8)
+           # dated_samples = tsdate.get_sites_time(dated_w_anc, samples=subsetted)
+            dated_samples = tsdate.get_sites_time(dated, samples=subsetted)
+            dated_samples = dated_samples.copy()
+            dated_samples.sites_time[:] = dated_samples.sites_time[:] + 1e-6
+            dated_samples.finalise()
+            #_, reinferred = evaluation.infer_with_mismatch(dated_samples, "chr20", ancient_ancestors=True)
+            ancestors_reinferred = tsinfer.generate_ancestors(dated_samples)
+            ancestors_reinferred_with_anc = ancestors_reinferred.insert_proxy_samples(dated_samples, allow_mutation=True)
+            ancestors_ts_reinferred = tsinfer.match_ancestors(dated_samples, ancestors_reinferred_with_anc, path_compression=False)
+            reinferred = tsinfer.match_samples(modern_samples, ancestors_ts_reinferred, force_sample_times=True)
+            reinferred = tsdate.preprocess_ts(reinferred)
+            iter_ts_inferred.append(reinferred)
+            #iter_ts_ancients.append(tsdate.date(reinferred.simplify(np.arange(0, row["sample_size_modern"]).astype('int32')), 10000, 1e-8))
+            iter_ts_ancients.append(tsdate.date(reinferred.simplify(), 10000, 1e-8))
+        subset_names = ["Subset " + str(sample_size) for sample_size in ancient_sample_sizes]
+        mut_df = evaluation.compare_mutations([sim, dated, iter_dated] + [ts for ts in iter_ts_ancients],
+                                              ["simulated_ts", "tsdate_inferred", "iter_dated_inferred"] + subset_names)
+        msle_results = {}
+        for col in mut_df.columns:
+            print(col)
+            comparable_muts = np.logical_and(mut_df["simulated_ts"] > 0, mut_df[col] > 0)
+            msle_results[col] = mean_squared_log_error(mut_df["simulated_ts"][comparable_muts], mut_df[col][comparable_muts])
+        msle_df = pd.DataFrame(msle_results, index=[index])
+        mut_df["Run"] = index
+        modern_sim = sim.simplify(samples=np.arange(0, row["sample_size_modern"]).astype("int32"))
+
+        simplified_reinferred = [ts.simplify(samples=np.arange(0, row["sample_size_modern"]).astype("int32")) for ts in iter_ts_ancients]
+        spearman_results = {}
+        for ts, name in zip([inferred_ts, iter_inferred_ts] + iter_ts_inferred, ["inferred", "reinferred"] + subset_names):
+            spearman_results[name] = scipy.stats.spearmanr(tsdate.get_sites_time(sim), tsdate.get_sites_time(ts))[0]
+        spearman_df = pd.DataFrame(spearman_results, index=[index]) 
+        
+        #kc_df = evaluation.get_kc_distances(
+        #        [modern_sim, dated, iter_dated] + simplified_reinferred,
+        #        ["simulated_ts", "tsdate_inferred", "iter_tsdate_inferred"] + subset_names)
+        return_vals = {"mutations": mut_df, "msle": msle_df, "spearman": spearman_df}
+        return index, row, return_vals
+
+#    def setup(self):
+#        """
+#        Run Simulations
+#        """
+#        row_data = dict.fromkeys(self.sim_cols)
+#        row_data["Ne"] = 10000
+#        # row_data["sample_size"] = 500
+#        row_data["mut_rate"] = 1e-8
+#        row_data["rec_rate"] = 1e-8
+#        row_data["sample_size_modern"] = 2 
+#        row_data["sample_size_ancient"] = 2 
+#        row_data["length"] = 1e6
+#
+#        seeds = [self.rng.randint(1, 2 ** 31) for i in range(self.default_replicates)]
+#        for index, seed in tqdm(enumerate(seeds), desc="Running Simulations"):
+#            # randomly sample ancient times
+#            ancient_sample_times = evaluation.sample_times(
+#                row_data["sample_size_ancient"], constants.GENERATION_TIME
+#            )
+#            yri_samples = [
+#                msprime.Sample(population=0, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            ceu_samples = [
+#                msprime.Sample(population=1, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            chb_samples = [
+#                msprime.Sample(population=2, time=0)
+#                for samp in range(row_data["sample_size_modern"] // 3)
+#            ]
+#            ancient_sample_times = np.array(ancient_sample_times, dtype=float)
+#            anc_per_pop = row_data["sample_size_ancient"] // 2
+#            ceu_ancient_samples = [
+#                msprime.Sample(population=1, time=time)
+#                for samp, time in zip(
+#                    range(anc_per_pop), ancient_sample_times[:anc_per_pop]
+#                )
+#            ]
+#            chb_ancient_samples = [
+#                msprime.Sample(population=2, time=time)
+#                for samp, time in zip(
+#                    range(anc_per_pop), ancient_sample_times[anc_per_pop:]
+#                )
+#            ]
+#
+#            samples = yri_samples + ceu_samples + chb_samples + ceu_ancient_samples + chb_ancient_samples 
+#            sim = evaluation.run_chr20_ooa(
+#                samples,
+#                row_data["Ne"],
+#                row_data["length"],
+#                row_data["mut_rate"],
+#                row_data["rec_rate"],
+#                self.rng,
+#                seed,
+#            )
+#            # Dump simulated tree
+#            filename = self.name + "_" + str(index)
+#            row_data["filename"] = filename
+#            row_data["replicate"] = index
+#            row_data["n_edges"] = sim.num_edges
+#            row_data["n_trees"] = sim.num_trees
+#            row_data["n_sites"] = sim.num_sites
+#            row_data["seed"] = seed
+#
+#            # Remove ancient samples and fixed mutations
+#            #modern_samples = np.where(sim.tables.nodes.time[sim.samples()] == 0)[0]
+#            sim = evaluation.remove_ancient_only_muts(sim)
+#
+#            # Save the simulated tree sequence
+#            sim.dump(os.path.join(self.data_dir, filename + ".trees"))
+#
+#            # Save the simulated tree sequence
+#            #modern_ts.dump(os.path.join(self.data_dir, filename + ".modern.trees"))
+#
+#            # Create sampledata file, with and without keeping times
+#            sample_data = tsinfer.formats.SampleData.from_tree_sequence(
+#                sim, use_times=False,
+#            )
+#            sample_data_indiv_times = sample_data.copy(
+#                path=os.path.join(self.data_dir, filename + ".samples")
+#            )
+#            sample_data_indiv_times.individuals_time[:] = np.array(
+#                sim.tables.nodes.time[sim.samples()]
+#            )
+#            sample_data_indiv_times.finalise()
+#
+#           # tsinfer.formats.SampleData.from_tree_sequence(
+#           #     modern_ts,
+#           #     path=os.path.join(self.data_dir, filename + ".keep_times.samples"),
+#           #     use_times=True,
+#           # )
+#
+#            # Update dataframe with details of simulation
+#            self.data = self.data.append(row_data, ignore_index=True)
+#
+#        # Save dataframe
+#        self.summarize()
+
+class Chr20AncientIterationOOA(Chr20AncientIteration):
+    name = "chr20_ancient_iteration_ooa"
+
+    def __init__(self):
+        Chr20AncientIteration.__init__(self)
+        self.ancient_times = "ooa_samples"
+
+
+class Chr20AncientIterationAMH(Chr20AncientIteration):
+    name = "chr20_ancient_iteration_amh"
+
+    def __init__(self):
+        Chr20AncientIteration.__init__(self)
+        self.ancient_times = "amh_samples"
+
 
 class EvaluatePrior(DataGeneration):
     name = "evaluateprior"
@@ -1813,12 +2131,16 @@ class TsdateAccuracy(DataGeneration):
         inference_func()
 
 
-class TsdateChr20(DataGeneration):
+class TsdateChr20(NeutralSimulatedMutationAccuracy):
     name = "tsdate_chr20_accuracy"
 
     def __init__(self):
         DataGeneration.__init__(self)
         self.default_replicates = 1
+        self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "mismatch_inferred_dated", "iter_dated_ts"]
+        self.output_suffixes = ["_mutations.csv", "_error_mutations.csv",
+                           "_anc_error_mutations.csv", "_kc_distances.csv",
+                           "_error_kc_distances.csv", "_anc_error_kc_distances.csv"]
         self.num_rows = self.default_replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.empirical_error = True 
@@ -1849,8 +2171,10 @@ class TsdateChr20(DataGeneration):
         )
 
 
-    def inference(self, row_data, num_threads=1, progress=True):
-        row = row_data.iloc[0]
+    def inference(self, row_data, num_threads=1, progress=False):
+        index = row_data[0]
+        row = row_data[1]
+
         filename = row["filename"]
         path_to_file = os.path.join(self.data_dir, filename)
         sim = tskit.load(path_to_file + ".trees")
@@ -1861,78 +2185,114 @@ class TsdateChr20(DataGeneration):
                 path_to_file + ".ancestral_state.error.samples")
 
         print("Dating Simulated Tree Sequence")
-        dated = tsdate.date(
-            sim, mutation_rate=1e-8, Ne=int(row["Ne"]),
-            progress=progress)
-        dated.dump(path_to_file + ".dated.trees")
+       # dated = tsdate.date(
+       #     sim, mutation_rate=1e-8, Ne=int(row["Ne"]),
+       #     progress=progress)
+       # dated.dump(path_to_file + ".dated.trees")
 
-        def infer_all_methods(sample_data, name):
-            print("Inferring Tree Sequence")
-            inferred_ts = tsinfer.infer(sample_data,
-                    num_threads=num_threads).simplify(filter_sites=False)
-            print("Dating Inferred Tree Sequence")
-            inferred_dated = tsdate.date(
-                inferred_ts, mutation_rate=row["mutation_rate"], Ne=int(row["Ne"]),
-                progress=progress)
-            print("Inferring TS with Mismatch")
-            _, mismatch_simplified_inferred_ts = evaluation.infer_with_mismatch(
-                    sample_data, "chr20", num_threads=num_threads)
-            print("Dating Mismatched TS")
-            mismatch_inferred_dated = tsdate.date(
-                mismatch_simplified_inferred_ts, mutation_rate=row["mutation_rate"],
-                Ne=int(row["Ne"]), progress=progress)
+        def infer_all_methods(sample_data, name, inferred_dated):
+        #    print("Inferring Tree Sequence")
+        #    inferred_ts = tsinfer.infer(sample_data,
+        #            num_threads=1).simplify(filter_sites=False)
+        #    print("Dating Inferred Tree Sequence")
+        #    inferred_dated = tsdate.date(
+        #        inferred_ts, mutation_rate=row["mutation_rate"], Ne=int(row["Ne"]),
+        #        progress=progress)
+        #    print("Inferring TS with Mismatch")
+        #    _, mismatch_simplified_inferred_ts = evaluation.infer_with_mismatch(
+        #            sample_data, "chr20", num_threads=1)
+        #    print("Dating Mismatched TS")
+        #    mismatch_inferred_dated = tsdate.date(
+        #        mismatch_simplified_inferred_ts, mutation_rate=row["mutation_rate"],
+        #        Ne=int(row["Ne"]), progress=progress)
+        
             copy = sample_data.copy()
-            sites_time = tsdate.get_site_times(mismatch_inferred_dated)
+            sites_time = tsdate.get_sites_time(inferred_dated)
             sites_time[sites_time > 1] = np.round(sites_time[sites_time > 1])
             copy.sites_time[:] = sites_time
             copy.finalise()
             print("Reinferring TS")
             _, iter_simplified_ts = evaluation.infer_with_mismatch(
-                    copy, "chr20", num_threads=num_threads)
+                    copy, "chr20", num_threads=1)
             print("Dating Reinferred TS")
             iter_dated_ts = tsdate.date(iter_simplified_ts,
                                         mutation_rate=row["mutation_rate"],
-                                        Ne=int(row["Ne"]), num_threads=num_threads,
+                                        Ne=int(row["Ne"]), num_threads=1,
                                         progress=progress)
 
-            inferred_dated.dump(path_to_file + name + ".inferred.dated.trees")
-            mismatch_inferred_dated.dump(
-                path_to_file + name + ".mismatch.inferred.dated.trees")
+#            inferred_dated.dump(path_to_file + name + ".inferred.dated.trees")
+#            mismatch_inferred_dated.dump(
+#                path_to_file + name + ".mismatch.inferred.dated.trees")
             iter_dated_ts.dump(path_to_file + name + ".iter.mismatch.dated.trees")
-            return inferred_dated, mismatch_inferred_dated, iter_dated_ts
+            #return inferred_dated, mismatch_inferred_dated, iter_dated_ts
+            return iter_dated_ts
+        inferred_dated = tskit.load(path_to_file + ".inferred.dated.trees")
+        error_inferred_dated = tskit.load(path_to_file + ".error.inferred.dated.trees")
+        anc_error_inferred_dated = tskit.load(path_to_file + ".anc_error.inferred.dated.trees")
+        iter_dated_ts = infer_all_methods(
+                sample_data, "", inferred_dated)
+        error_iter_dated_ts = infer_all_methods(error_samples, ".error", error_inferred_dated)
+        anc_error_iter_dated_ts = infer_all_methods(anc_error_samples, ".anc_error", anc_error_inferred_dated)
 
-        inferred_dated, mismatch_inferred_dated, iter_dated_ts = infer_all_methods(sample_data, "")
-        error_inferred_dated, error_mismatch_inferred_dated, error_iter_dated_ts = infer_all_methods(error_samples, ".error")
-        anc_error_inferred_dated, anc_error_mismatch_inferred_dated, anc_error_iter_dated_ts = infer_all_methods(anc_error_samples, ".anc_error")
+#        ts_dict = {"sim": sim, "dated": dated, "inferred_dated": inferred_dated, "mismatch_inferred_dated": mismatch_inferred_dated,
+#                "iter_dated_ts": iter_dated_ts, "error_inferred_dated": error_inferred_dated,
+#                "error_mismatch_inferred_dated": error_mismatch_inferred_dated, "error_iter_dated_ts": error_iter_dated_ts,
+#                "anc_error_inferred_dated": anc_error_inferred_dated, "anc_error_mismatch_inferred_dated": anc_error_mismatch_inferred_dated,
+#                "anc_error_iter_dated_ts": anc_error_iter_dated_ts}
+#        def get_ages(ts_dict):
+#            mut_ages = {}
+#            for name, cur_ts in ts_dict.items():
+#                mut_ages[name] = utility.get_mut_pos_df(cur_ts, "Age", cur_ts.tables.nodes.time)["Age"].values
+#            return mut_ages
+        dated = tskit.load(path_to_file + ".dated.trees")
+        inferred_dated = tskit.load(path_to_file + ".inferred.dated.trees")
+        mismatch_inferred_dated = tskit.load(path_to_file + ".mismatch.inferred.dated.trees")
+        iter_dated_ts = tskit.load(path_to_file + ".iter.mismatch.dated.trees")
+        error_inferred_dated = tskit.load(path_to_file + ".error.inferred.dated.trees")
+        error_mismatch_inferred_dated = tskit.load(path_to_file + ".error.mismatch.inferred.dated.trees")
+        error_iter_dated_ts = tskit.load(path_to_file + ".error.iter.mismatch.dated.trees")
+        anc_error_inferred_dated = tskit.load(path_to_file + ".anc_error.inferred.dated.trees")
+        anc_error_mismatch_inferred_dated = tskit.load(path_to_file + ".anc_error.mismatch.inferred.dated.trees")
+        anc_error_iter_dated_ts = tskit.load(path_to_file + ".anc_error.iter.mismatch.dated.trees")
 
-        ts_dict = {"sim": sim, "dated": dated, "inferred_dated": inferred_dated, "mismatch_inferred_dated": mismatch_inferred_dated,
-                "iter_dated_ts": iter_dated_ts, "error_inferred_dated": error_inferred_dated,
-                "error_mismatch_inferred_dated": error_mismatch_inferred_dated, "error_iter_dated_ts": error_iter_dated_ts,
-                "anc_error_inferred_dated": anc_error_inferred_dated, "anc_error_mismatch_inferred_dated": anc_error_mismatch_inferred_dated,
+        no_error = {"sim": sim, "dated": dated, "inferred_dated": inferred_dated, "mismatch_inferred_dated": mismatch_inferred_dated,
+                "iter_dated_ts": iter_dated_ts}
+        error = {"sim": sim, "error_inferred_dated": error_inferred_dated,
+                "error_mismatch_inferred_dated": error_mismatch_inferred_dated, "error_iter_dated_ts": error_iter_dated_ts}
+        anc_error = {"sim": sim, "anc_error_inferred_dated": anc_error_inferred_dated, "anc_error_mismatch_inferred_dated": anc_error_mismatch_inferred_dated,
                 "anc_error_iter_dated_ts": anc_error_iter_dated_ts}
-        def get_ages(ts_dict):
-            mut_ages = {}
-            for name, cur_ts in ts_dict.items():
-                mut_ages[name] = utility.get_mut_pos_df(cur_ts, "Age", cur_ts.tables.nodes.time)["Age"].values
-            return mut_ages
 
-        mut_ages = get_ages(ts_dict)
-        inferred_mut_ages = [mut_ages["inferred_dated"], mut_ages["error_inferred_dated"], mut_ages["anc_error_inferred_dated"]]
-        mismatch_inferred_mut_ages = [mut_ages["mismatch_inferred_dated"], mut_ages["error_mismatch_inferred_dated"], mut_ages["anc_error_mismatch_inferred_dated"]]
-        iter_inferred_mut_ages = [mut_ages["iter_dated_ts"], mut_ages["error_iter_dated_ts"], mut_ages["anc_error_iter_dated_ts"]]
+        mut_df = evaluation.compare_mutations(list(no_error.values()), list(no_error.keys()))
+        error_mut_df = evaluation.compare_mutations(list(error.values()), list(error.keys()))
+        anc_error_mut_df = evaluation.compare_mutations(list(anc_error.values()), list(anc_error.keys()))
+        #mut_ages = get_ages(ts_dict)
+        #inferred_mut_ages = [mut_ages["inferred_dated"], mut_ages["error_inferred_dated"], mut_ages["anc_error_inferred_dated"]]
+        #mismatch_inferred_mut_ages = [mut_ages["mismatch_inferred_dated"], mut_ages["error_mismatch_inferred_dated"], mut_ages["anc_error_mismatch_inferred_dated"]]
+        #iter_inferred_mut_ages = [mut_ages["iter_dated_ts"], mut_ages["error_iter_dated_ts"], mut_ages["anc_error_iter_dated_ts"]]
+        print("Starting KC No Error")
+        kc_df = evaluation.get_kc_distances(list(no_error.values()),
+                                                   list(no_error.keys()))
+        print("Starting KC Error")
+        error_kc_df = evaluation.get_kc_distances(list(error.values()),
+                                                         list(error.keys()))
+        print("Starting KC Ancestral State Error")
+        anc_error_kc_df = evaluation.get_kc_distances(list(anc_error.values()), list(anc_error.keys()))
+        return_vals = {"muts_noerr": mut_df, "muts_err": error_mut_df,
+                       "muts_anc_err": anc_error_mut_df, "kc_noerr": kc_df, "kc_err": error_kc_df,
+                       "kc_anc_err": anc_error_kc_df}
+        return index, row, return_vals
 
-        kc_distances = evaluation.get_kc_distances(list(ts_dict.values()), list(ts_dict.keys()))
-        pickle.dump((mut_ages["sim"], mut_ages["dated"], inferred_mut_ages, mismatch_inferred_mut_ages, iter_inferred_mut_ages, kc_distances),
-                    open("simulated-data/tsdate_chr20_accuracy.mutation_ages.kc_distances.csv", "wb"))
+        #pickle.dump((mut_ages["sim"], mut_ages["dated"], inferred_mut_ages, mismatch_inferred_mut_ages, iter_inferred_mut_ages, kc_distances),
+        #            open("simulated-data/tsdate_chr20_accuracy.mutation_ages.kc_distances.csv", "wb"))
 
 
-    def run_multiprocessing(self, function, num_processes=1):
-        try:
-            data = pd.read_csv(self.data_file, index_col=0)
-        except FileNotFoundError:
-            logging.error("Must run with --setup flag first")
-
-        function(data, num_threads=num_processes)
+#    def run_multiprocessing(self, function, num_processes=1):
+#        try:
+#            data = pd.read_csv(self.data_file, index_col=0)
+#        except FileNotFoundError:
+#            logging.error("Must run with --setup flag first")
+#
+#        function(data, num_threads=num_processes)
 
 
 def get_subclasses(cls):

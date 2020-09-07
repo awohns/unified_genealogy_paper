@@ -38,7 +38,7 @@ def get_rho(samples, ancestors, chr_map, ma_mis_rate=0.1,
 
 
 def match_ancestors(samples, ancestors, rho, ma_mis,
-                    precision, prefix=None, ancient_ancestors=False, num_threads=1):
+                    precision, prefix=None, ancient_ancestors=False, num_threads=1, progress=False):
     av_rho = np.quantile(rho, 0.5)
     extra_params = dict(
         num_threads=num_threads,
@@ -55,11 +55,22 @@ def match_ancestors(samples, ancestors, rho, ma_mis,
 
     if ancient_ancestors:
         ancestors = ancestors.insert_proxy_samples(samples, allow_mutation=True)
+        copy = ancestors.copy(path=prefix + ".proxy.ancestors")
+        copy.finalise()
+        path_compression = False
+    else:
+        path_compression = True 
+    if progress:
+        progress_bar=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1)
+    else:
+        progress_bar = None
+
     inferred_anc_ts = tsinfer.match_ancestors(
         samples,
         ancestors,
         mismatch_rate=ma_mis,
-        progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 1, 0, 0),
+        progress_monitor=progress_bar,
+        path_compression=path_compression,
         **extra_params,
     )
     if prefix is not None:
@@ -69,7 +80,7 @@ def match_ancestors(samples, ancestors, rho, ma_mis,
 
 
 def match_samples(samples, inferred_anc_ts, rho, ms_mis, precision, prefix=None,
-                  modern_samples_match=False, ancient_ancestors=False, num_threads=1):
+                  modern_samples_match=False, ancient_ancestors=False, num_threads=1, progress=False):
     if modern_samples_match:
         samples = samples.subset(np.where(samples.individuals_time[:] == 0)[0])
         if prefix is not None:
@@ -85,13 +96,17 @@ def match_samples(samples, inferred_anc_ts, rho, ms_mis, precision, prefix=None,
         recombination_rate=rho,
         precision=precision,
     )
+    if progress:
+        progress_bar=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1)
+    else:
+        progress_bar=None
 
     inferred_ts = tsinfer.match_samples(
         samples,
         inferred_anc_ts,
         mismatch_rate=ms_mis,
         simplify=False,
-        progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1),
+        progress_monitor=progress_bar,
         force_sample_times=force_sample_times,
         **extra_params,
     )
@@ -199,14 +214,14 @@ if __name__ == "__main__":
 
     samples = tsinfer.load(args.sample_file)
     ancestors = tsinfer.load(args.ancestors_file)
-    chr_map = get_genetic_map(samples, args.genetic_map)
+    chr_map = get_genetic_map(args.sample_file, args.genetic_map)
     rho, ma_mis, ms_mis, precision = get_rho(
             samples, ancestors, chr_map, args.num_threads, args.mismatch_ancestors,
             args.mismatch_samples, args.precision)
 
     if args.mismatch_ancestors is not None:
-        inferred_anc_ts = match_ancestors(samples, ancestors, prefix, rho, ms_mis,
-                                          precision, args.ancient_ancestors,
+        inferred_anc_ts = match_ancestors(samples, ancestors, rho, ma_mis, precision,
+                                          prefix, args.ancient_ancestors,
                                           args.num_threads)
     if args.mismatch_samples is not None:
         if args.ancestors_ts is not None:

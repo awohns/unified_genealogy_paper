@@ -17,12 +17,13 @@ simplebgen: setup.py simplebgenmodule.c
 %.vcf.gz.csi: %.vcf.gz
 	bcftools index $(patsubst %.vcf.gz.csi,%.vcf.gz,$@)
 
+.SECONDARY:
 # Any implicit targets that are built will be deleted unless we make them as 'precious'.
-.PRECIOUS: \
-	%.ancestors %.atrees %.nosimplify.trees %.nosimplify.nopc.trees %.trees %.trees.gz\
+#.PRECIOUS: %.samples %.ancestors %.atrees %.nosimplify.trees %.nosimplify.nopc.trees \
+	%.trees %.trees.gz\
 	%.bcf.csi %.vcf.gz.csi \
 	chr%_ancestral_states.fa \
-	1kg_%_genotypes.bcf 1kg_%.samples
+	1kg_%_genotypes.bcf
 
 #############################################
 # Standard pipeline for samples file to .dated.trees
@@ -43,6 +44,10 @@ simplebgen: setup.py simplebgenmodule.c
 %.trees: %.samples %.ancestors %.atrees
 	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^)
 
+%.dated.trees: %.trees
+	python3 -m tsdate preprocess $^ $*.preprocessed.trees
+	python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p
+
 %.modern.trees: %.samples %.ancestors %.atrees
 	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^) --modern-samples-match
 
@@ -57,7 +62,10 @@ simplebgen: setup.py simplebgenmodule.c
 	python3 -m tsinfer ga -vp -t ${NUM_THREADS} $^
 
 %.dated.atrees: %.dated.ancestors
-	python3 run_inference.py $*.dated.samples $^ -t ${NUM_THREADS} -A 0.1 --ancient-ancestors
+	python3 ../src/run_inference.py $*.dated.samples $^ -t ${NUM_THREADS} -A 0.1 --ancient-ancestors
+
+%.dated.GRCh38.atrees: %.dated.ancestors
+	python3 ../src/run_inference.py $*.dated.samples $^ -t ${NUM_THREADS} -A 0.1 --ancient-ancestors -m recomb-hg38/genetic_map_GRCh38_
 
 %.historic.trees: %.samples %.ancestors %.dated.atrees
 	python3 run_inference.py $< $(word 2,$^) -t ${NUM_THREADS} -S 0.1 --ancestors-ts $(word 3,$^) --ancient-ancestors
@@ -254,6 +262,16 @@ sgdp_%.samples: sgdp_%_genotypes.bcf.csi %_ancestral_states_37.fa sgdp_samples.t
 		--num-threads=1 \
 		$@  > $@.report
 
+sgdp_GRCh38_%.samples: sgdp_%_genotypes.bcf.csi %_ancestral_states_37.fa sgdp_samples.txt
+	python3 convert.py sgdp -p \
+		sgdp_$*.GRCh38.bcf \
+		$*_ancestral_states.fa \
+		-m sgdp/sgdp_samples.txt \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL} \
+		--reference-name=${REFERENCE_NAME} \
+		--num-threads=1 \
+		$@  > $@.report
+
 sgdp_%.snipped.trees.gnn.csv: sgdp_%.snipped.trees
 	python3 tsutil.py compute-sgdp-gnn $^ $@ --num-threads=16
 
@@ -352,6 +370,7 @@ altai_%.samples: max_planck_data/altai/altai.%_mq25_mapab100.vcf.gz %_ancestral_
 		-m max_planck_data/altai/altai_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 chagyrskaya.%.noRB.GRCh38.vcf.gz: ${ARCHAIC_PATH}/chagyrskaya/chagyrskaya.%.noRB.vcf.gz
@@ -369,6 +388,7 @@ chagyrskaya_%.samples: max_planck_data/chagyrskaya/chagyrskaya.%.noRB.vcf.gz %_a
 		-m max_planck_data/chagyrskaya/chagyrskaya_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 chagyrskaya_GRCh38_%.samples: max_planck_data/chagyrskaya/chagyrskaya.%.noRB.GRCh38.vcf.gz %_ancestral_states.fa max_planck_data/chagyrskaya/chagyrskaya_metadata.txt
@@ -428,6 +448,7 @@ denisovan_%.samples: max_planck_data/denisovan/denisovan.%_mq25_mapab100.vcf.gz 
 		-m max_planck_data/denisovan/denisovan_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 ust_ishim_%.samples: max_planck_data/ust_ishim/ust_ishim.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/ust_ishim/ust_ishim_metadata.txt
@@ -437,6 +458,7 @@ ust_ishim_%.samples: max_planck_data/ust_ishim/ust_ishim.%_mq25_mapab100.vcf.gz 
 		-m max_planck_data/ust_ishim/ust_ishim_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 loshbour_%.samples: max_planck_data/loshbour/loshbour.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/loshbour/loshbour_metadata.txt
@@ -446,6 +468,7 @@ loshbour_%.samples: max_planck_data/loshbour/loshbour.%_mq25_mapab100.vcf.gz %_a
 		-m max_planck_data/loshbour/loshbour_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 lbk_%.samples: max_planck_data/lbk/lbk.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa max_planck_data/lbk/lbk_metadata.txt
@@ -455,6 +478,7 @@ lbk_%.samples: max_planck_data/lbk/lbk.%_mq25_mapab100.vcf.gz %_ancestral_states
 		-m max_planck_data/lbk/lbk_metadata.txt \
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37}\
 		--reference-name=${REFERENCE_NAME_37}\
+		--num-threads ${NUM_THREADS} \
 		$@ > $@.report
 
 #############################################
@@ -579,13 +603,49 @@ reich_%.samples: 1240k/v42.4.1240K_%.vcf.gz %_ancestral_states_37.fa 1240k/v42.4
 reich_ancients_%.samples: reich_%.samples
 	python tsutil.py remove-moderns-reich $^ $@
 
+1240k/v42.4.1240K_GRCh38_%.vcf.gz: 1240k/v42.4.1240K_%.vcf.gz 
+	gunzip -c 1240k/v42.4.1240K_$*.vcf.gz > 1240k/v42.4.1240K_$*.vcf
+	awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' 1240k/v42.4.1240K_$*.vcf > 1240k/v42.4.1240K_$*.withchr.vcf
+	java -jar ../tools/picard.jar LiftoverVcf I=1240k/v42.4.1240K_$*.withchr.vcf O=1240k/v42.4.1240K_GRCh38_$*.vcf CHAIN=hg19ToHg38.over.chain.gz REJECT=1240k/v42.4.1240K_GRCh38_$*.rejected_variants.vcf R=hg38.fa
+	bgzip -c 1240k/v42.4.1240K_GRCh38_$*.vcf > 1240k/v42.4.1240K_GRCh38_$*.vcf.gz 
+	rm 1240k/v42.4.1240K_GRCh38_$*.vcf
+	tabix -p vcf 1240k/v42.4.1240K_GRCh38_$*.vcf.gz
+
+reich_GRCh38_%.samples: 1240k/v42.4.1240K_GRCh38_%.vcf.gz %_ancestral_states.fa 1240k/v42.4.1240K.anno
+	python convert.py 1240k -p \
+		1240k/v42.4.1240K_GRCh38_$*.vcf.gz \
+		$*_ancestral_states.fa \
+		-m 1240k/v42.4.1240K.anno \
+		--ancestral-states-url=${ANCESTRAL_STATES_URL}\
+		--reference-name=${REFERENCE_NAME}\
+		--num-threads=${NUM_THREADS}\
+		$@ > $@.report
+
+reich_ancients_GRCh38_%.samples: reich_GRCh38_%.samples
+	python tsutil.py remove-moderns-reich $^ $@
+
+
 #############################################
 # Merged Sampledata Files 
 #############################################
 
 hgdp_archaics_afanasievo_%.samples: hgdp_%.samples afanasievo_GRCh38.%.samples denisovan_GRCh38_%.samples vindija_GRCh38_%.samples chagyrskaya_GRCh38_%.samples altai_GRCh38_%.samples
 	python tsutil.py make-sampledata-compatible --input-sampledata $^
-	python tsutil.py combine-sampledata --input-sampledata $< afanasievo_GRCh38.$*.deleted.samples denisovan_GRCh38_$*.deleted.samples vindija_GRCh38_$*.deleted.samples chagyrskaya_GRCh38_$*.deleted.samples altai_GRCh38_$*.deleted.samples --output $@
+	python tsutil.py merge-sampledata-files --input-sampledata $< afanasievo_GRCh38.$*.deleted.samples denisovan_GRCh38_$*.deleted.samples vindija_GRCh38_$*.deleted.samples chagyrskaya_GRCh38_$*.deleted.samples altai_GRCh38_$*.deleted.samples --output $@
+
+hgdp_1kg_sgdp_%.samples: hgdp_%.samples 1kg_GRCh38_%.samples sgdp_GRCh38_%.samples
+	python tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
+
+hgdp_1kg_sgdp_high_cov_ancients_%.samples: hgdp_1kg_sgdp_%.samples afanasievo_allsites.GRCh38.%.samples denisovan_GRCh38_%.samples vindija_GRCh38_%.samples chagyrskaya_GRCh38_%.samples altai_GRCh38_%.samples
+	python tsutil.py make-sampledata-compatible --input-sampledata $^
+	python tsutil.py merge-sampledata-files --input-sampledata $< afanasievo_allsites.GRCh38.$*.subset.samples denisovan_GRCh38_$*.subset.samples vindija_GRCh38_$*.subset.samples chagyrskaya_GRCh38_$*.subset.samples altai_GRCh38_$*.subset.samples --output $@
+
+hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples reich_ancients_GRCh38_%.samples
+	python tsutil.py make-sampledata-compatible --input-sampledata $^
+	python tsutil.py merge-sampledata-files --input-sampledata $< reich_ancients_GRCh38_$*.subset.samples --output $@
+
+hgdp_1kg_sgdp_high_cov_ancients_%.dated.samples: hgdp_1kg_sgdp_high_cov_ancients_chr20.samples hgdp_1kg_sgdp_all_ancients_chr20.samples 1kg_sgdp_hgdp_chr20.binned.dated.trees
+	python tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_chr20.samples --all-samples hgdp_1kg_sgdp_all_ancients_chr20.samples --dated-ts 1kg_sgdp_hgdp_chr20.binned.dated.trees --output hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.samples
 
 tgp_archaics_afanasievo_%.samples: 1kg_%.samples afanasievo_GRCh38.%.samples denisovan_GRCh38_%.samples vindija_GRCh38_%.samples chagyrskaya_GRCh38_%.samples altai_GRCh38_%.samples
 	python tsutil.py make-sampledata-compatible --input-sampledata $^
@@ -601,3 +661,8 @@ tgp_archaics_afanasievo_%.samples: 1kg_%.samples afanasievo_GRCh38.%.samples den
 
 sgdp_reich_%.samples: sgdp_%.samples reich_ancients_chr20.samples
 	python tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
+
+1kg_ancients_%.samples: 1kg_%.samples reich_ancients_%.samples afanasievo_allsites_%.samples denisovan_%.samples vindija_%.samples chagyrskaya_%.samples altai_%.samples ust_ishim_%.samples loshbour_%.samples lbk_%.samples
+	python tsutil.py make-sampledata-compatible --input-sampledata 1kg_$*.samples reich_ancients_$*.samples
+	#python tsutil.py make-sampledata-compatible --input-sampledata $^
+	python tsutil.py merge-sampledata-files --input-sampledata $< reich_ancients_$*.subset.samples afanasievo_allsites_$*.subset.samples denisovan_$*.subset.samples vindija_$*.subset.samples chagyrskaya_$*.subset.samples altai_$*.subset.samples ust_ishim_$*.subset.samples loshbour_$*.subset.samples lbk_$*.subset.samples --output $@

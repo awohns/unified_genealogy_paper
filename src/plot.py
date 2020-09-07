@@ -60,11 +60,12 @@ class Figure(object):
                 pass
             return "{} error".format(error) if error else label_for_no_error
 
-    def mutation_accuracy(self, ax, x, y, label, kc_distance_0=None, kc_distance_1=None):
-        ax.hexbin(x, y, xscale="log", yscale="log", bins="log",
-                  gridsize=50, cmap="Blues")
+    def mutation_accuracy(self, ax, x, y, label, cmap="Blues", kc_distance_0=None, kc_distance_1=None):
+        hb = ax.hexbin(x, y, xscale="log", yscale="log", bins="log",
+                  cmap=cmap, mincnt=1)
         ax.plot(ax.get_xlim(), ax.get_ylim(), ls="--", c=".3")
-        ax.set_title(label, fontsize=24)
+        if label is not None:
+            ax.set_title(label, fontsize=24, color=cmap[:-1])
         assert len(x) == len(y)
         ax.text(0.05, 0.9, str(len(x)) + " mutations",
             transform=ax.transAxes, size=14)
@@ -88,6 +89,7 @@ class Figure(object):
             ax.text(0.3, 0.03, "KC Dist. ($\lambda$=1):" +
                                 "{:.2E}".format(kc_distance_1),
                                 transform=ax.transAxes, size=14)
+        return hb
 
 
 class TsdateSimulatedAccuracyNeutral(Figure):
@@ -99,39 +101,38 @@ class TsdateSimulatedAccuracyNeutral(Figure):
 
     name = "tsdate_simulated_accuracy"
     data_path = "simulated-data"
-    filename = ["tsdate_neutral_simulated_mutation_accuracy_mutations_remove_oldest"]
+    filename = ["tsdate_neutral_simulated_mutation_accuracy_mutations"]
 
     def plot(self):
         df = self.data[0]
-        with sns.axes_style("white"):
-            fig, ax = plt.subplots(
-                nrows=1, ncols=2, figsize=(12, 6), sharex=True, sharey=True
-            )
-            true_vals = df["simulated_ts"]
-            tsdate = df["tsdate"]
-            tsdate_inferred = df["tsdate_inferred"]
+        fig, ax = plt.subplots(
+            nrows=1, ncols=2, figsize=(12, 6), sharex=True, sharey=True
+        )
+        df = df[df["simulated_ts"] > 0]
+        true_vals = df["simulated_ts"]
+        tsdate = df["tsdate"]
+        tsdate_inferred = df["tsdate_inferred"]
 
-            ax[0].set_xscale("log")
-            ax[0].set_yscale("log")
-            ax[0].set_xlim(1, 2e5)
-            ax[0].set_ylim(1, 2e5)
+        ax[0].set_xscale("log")
+        ax[0].set_yscale("log")
+        ax[0].set_xlim(1, 2e5)
+        ax[0].set_ylim(1, 2e5)
 
-            # tsdate on true tree
-            self.mutation_accuracy(
-                ax[0], true_vals, tsdate, "tsdate (using true topology)"
-            )
+        # tsdate on true tree
+        self.mutation_accuracy(ax[0], true_vals, tsdate, None, cmap=None)
+        ax[0].set_title("tsdate (using true topology)", fontsize=24)
 
-            # tsdate on inferred tree
-            self.mutation_accuracy(
-                ax[1], true_vals, tsdate_inferred, "tsinfer + tsdate"
-            )
-            plt.xlabel("True Age (generations")
-            plt.ylabel("Estimated Age (generations")
-
-            self.save("tsdate_simulated_accuracy_neutral")
-
-
-
+        # tsdate on inferred tree
+        hb = self.mutation_accuracy(ax[1], true_vals, tsdate_inferred, None, cmap=None)
+        ax[1].set_title("tsdate + tsdate", fontsize=24)
+        fig.subplots_adjust(right=0.9)
+        colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
+        cb = fig.colorbar(hb, cax=colorbar_ax)
+        cb.set_label('log10(Number of Mutations)')
+        fig.text(0.5, 0.03, "True Mutation Ages (Generations)", size=20, ha="center")
+        fig.text(0.03, 0.5, "Estimated Mutation \n Ages (Generations)", size=20, 
+                va="center", rotation="vertical")
+        self.save(self.name)
 
 
 class IterateNoAncients(Figure):
@@ -339,60 +340,220 @@ class IterateNoAncients(Figure):
             self.save("iterative_accuracy_noancients")
 
 
-class Figure3(Figure):
+class Figure2Ancients(Figure):
     """
-    Main text figure 3. Accuracy of increasing number of ancient samples.
+    Main text figure 2. Accuracy of increasing number of ancient samples.
     """
 
-    name = "figure3"
+    name = "iteration_ancients"
     data_path = "simulated-data"
-    filename = [""]
-    plt_title = "Figure 3"
+    filename = ["chr20_ancient_iteration_msle", "chr20_ancient_iteration_spearman",
+                "chr20_ancient_iteration_ooa_msle", "chr20_ancient_iteration_ooa_spearman",
+                "chr20_ancient_iteration_amh_msle", "chr20_ancient_iteration_amh_spearman"]
+    plt_title = "iteration_ancients"
 
     def __init__(self):
         super().__init__()
-        self.data = self.data[0]
 
     def plot(self):
-        muts = self.data
+        msle = self.data[0]
+        spearman = self.data[1]
+        msle_ooa = self.data[2]
+        spearman_ooa = self.data[3]
+        msle_amh = self.data[4]
+        spearman_amh = self.data[5]
+        #muts = pd.merge([self.data[0], self.data[2].add_suffix("_ooa"), self.data[4].add_suffix("_amh"))
+        #spearman = pd.merge([self.data[1], self.data[3].add_suffix("_ooa"), self.data[5].add_suffix("_amh")])
+        #muts = self.data[0]
+        #muts_amh = self.data[2]
+        #spearman = self.data[1]
         widths = [0.5, 0.5, 3, 0.5]
-        heights = [3]
+        heights = [3, 3]
+        gs_kw = dict(width_ratios=widths, height_ratios=heights)
+        gs_kw.update(wspace=0.03)
+        #fig, ax = plt.subplots(
+        #    ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+        #)
+        fig, ax = plt.subplots(ncols=1, nrows=2)
+        #ax[0, 1].set_ylabel("")
+        #ax[0, 0].set_ylabel("Mean Squared Log Error")
+        #ax[0, 2].set_xlabel("Ancient Sample Size")
+        #ax[0, 3].set_ylabel("")
+        #ax[0, 1].tick_params(left="off")
+        #ax[0, 2].tick_params(left="off")
+        #ax[0, 3].tick_params(left="off")
+        #ax[0, 0].set_title("i")
+        #ax[0, 1].set_title("ii")
+        #ax[0, 2].set_title("iii")
+        #ax[0, 3].set_title("iv")
+
+        #for row, df in enumerate([msle]):
+        df = msle
+        df = 1 - (df / np.mean(df["tsdate_inferred"]))
+#            if row == 0:
+#                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
+#            else:
+#                sns.boxplot(x=df["inferred"], orient="v", ax=ax[row, 0])
+#            if row == 0:
+#                sns.lineplot(
+#                    x=df["iter_dated_inferred"],
+#                    orient="v",
+#                    ax=ax[row, 1],
+#                )
+#            else:
+#                sns.boxplot(
+#                    x=df["reinferred"],
+#                    orient="v",
+#                    ax=ax[row, 1],
+#                )
+        cols = ["tsdate_inferred", "iter_dated_inferred"]
+        cols = cols + ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+        df_melt = df.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[0],
+        )
+        msle_ooa = 1 - (msle_ooa / np.mean(msle_ooa["tsdate_inferred"]))
+        df_melt = msle_ooa.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[0],
+        )
+        msle_amh = 1 - (msle_amh / np.mean(msle_amh["tsdate_inferred"]))
+        df_melt = msle_amh.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[0],
+        )
+        spearman = (spearman / np.mean(spearman["inferred"]))
+        cols = ["inferred", "reinferred"]
+        cols = cols + ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+
+        df_melt = spearman.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[1],
+        )
+
+        spearman_ooa = (spearman_ooa / np.mean(spearman_ooa["inferred"]))
+        df_melt = spearman_ooa.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[1],
+        )
+        
+        spearman_amh = (spearman_amh / np.mean(spearman_amh["inferred"]))
+        df_melt = spearman_amh.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[1],
+        )
+
+        # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
+        #sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
+        # ax[0].set_xlabel("Date \nTree Seq")
+        # ax[0].set_xticklabels(["Date \nTree Sequence"])
+        plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
+        self.save(self.name)
+
+
+class Figure2(Figure):
+    """
+    Main text figure 2. Accuracy of increasing number of ancient samples.
+    """
+
+    name = "iteration_eval"
+    data_path = "simulated-data"
+    filename = ["chr20_ancient_iteration_msle", "chr20_ancient_iteration_spearman",
+                "chr20_ancient_iteration_amh_msle", "chr20_ancient_iteration_amh_spearman"]
+    plt_title = "iteration_eval"
+
+    def __init__(self):
+        super().__init__()
+
+    def plot(self):
+        muts = pd.merge([self.data[0], self.data[2].add_suffix("_amh")])
+        spearman = pd.merge([self.data[1], self.data[3].add_suffix("_amh")])
+        #muts = self.data[0]
+        #muts_amh = self.data[2]
+        #spearman = self.data[1]
+        widths = [0.5, 0.5, 3, 0.5]
+        heights = [3, 3]
         gs_kw = dict(width_ratios=widths, height_ratios=heights)
         gs_kw.update(wspace=0.03)
         fig, ax = plt.subplots(
-            ncols=4, nrows=1, constrained_layout=True, gridspec_kw=gs_kw, sharey=True
+            ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
         )
-        sns.boxplot(x=muts["tsdateTime"], orient="v", ax=ax[0])
+        ax[0, 1].set_ylabel("")
+        ax[0, 0].set_ylabel("Mean Squared Log Error")
+        ax[0, 2].set_xlabel("Ancient Sample Size")
+        ax[0, 3].set_ylabel("")
+        ax[0, 1].tick_params(left="off")
+        ax[0, 2].tick_params(left="off")
+        ax[0, 3].tick_params(left="off")
+        ax[0, 0].set_title("i")
+        ax[0, 1].set_title("ii")
+        ax[0, 2].set_title("iii")
+        ax[0, 3].set_title("iv")
 
-        sns.boxplot(
-            x=muts[muts["ancient_sample_size"] == 0]["IterationTime"],
-            orient="v",
-            ax=ax[1],
-        )
-        sns.lineplot(
-            x="ancient_sample_size",
-            y="IterationTime",
-            data=muts[muts["ancient_sample_size"] != 0],
-            ax=ax[2],
-        )
-        # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
-        sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
-        # ax[0].set_xlabel("Date \nTree Seq")
-        # ax[0].set_xticklabels(["Date \nTree Sequence"])
-        ax[1].set_ylabel("")
-        ax[2].set_xlim(0, 100)
-        ax[0].set_ylabel("Mean Squared Log Error")
-        ax[2].set_xlabel("Ancient Sample Size")
-        ax[3].set_ylabel("")
-        ax[1].tick_params(left="off")
-        ax[2].tick_params(left="off")
-        ax[3].tick_params(left="off")
-        ax[0].set_title("i")
-        ax[1].set_title("ii")
-        ax[2].set_title("iii")
-        ax[3].set_title("iv")
+        for row, df in enumerate([spearman, muts]):
+            if row == 1:
+                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
+            else:
+                sns.boxplot(x=df["inferred"], orient="v", ax=ax[row, 0])
+            if row == 1:
+                sns.boxplot(
+                    x=df["iter_dated_inferred"],
+                    orient="v",
+                    ax=ax[row, 1],
+                )
+            else:
+                sns.boxplot(
+                    x=df["reinferred"],
+                    orient="v",
+                    ax=ax[row, 1],
+                )
+
+            cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+            df_melt = df.melt(value_vars=cols)
+            df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+            sns.lineplot(
+                x="variable",
+                y="value",
+                data=df_melt,
+                ax=ax[row, 2],
+            )
+            # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
+            #sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
+            # ax[0].set_xlabel("Date \nTree Seq")
+            # ax[0].set_xticklabels(["Date \nTree Sequence"])
         plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
+
 
 class IterateAncientsVanillaMsle(Figure):
     """
@@ -617,6 +778,17 @@ class IterateAncientsVanillaKC(IterateAncientsVanillaKC):
     def __init__(self):
         super().__init__()
 
+class AverageAgeAncientMuts(Figure):
+    """
+    Figure 3 part b: average age of mutations carried by each ancient sample
+    """
+    name = "mutations_per_ancient"
+    data_path = "all-data"
+    filename = []
+
+    def plot(self):
+        samples = tsinfer.load("1kg_ancients_noreich_chr20")
+        min_site_times = samples.min_site_times(individuals_only=True)
 
 class AncientConstraints(Figure):
     """
@@ -630,6 +802,23 @@ class AncientConstraints(Figure):
     def jitter(self, array):
         max_min = (np.max(array) - np.min(array))
         return array + np.random.randn(len(array)) * (max_min * 0.01)
+
+    def return_running_mean(self, grouped_mut_ages, method):
+        running_mean = []
+        seen_vars = 0
+
+        for i, (_, grouped) in enumerate(grouped_mut_ages):
+            if i == 0:
+                running_mean.append(np.mean(grouped[method]))
+                seen_vars += len(grouped)
+            else:
+                total_vars = len(grouped) + seen_vars
+                running_mean.append(
+                    ((np.mean(grouped[method]) * len(grouped)/total_vars) + 
+                     (running_mean[-1] * (seen_vars/total_vars))))
+                seen_vars += len(grouped)
+        return np.array(running_mean)
+
 
     def plot(self):
         df = self.data[0]
@@ -649,25 +838,33 @@ class AncientConstraints(Figure):
         scatter_alpha = 0.5
         ax0.scatter(
             self.jitter(df["Ancient Bound"]),
-            30 * df["tsdate_upper_bound"],
+            constants.GENERATION_TIME * df["tsdate_upper_bound"],
             c=df["frequency"],
             s=scatter_size,
             alpha=scatter_alpha, cmap="plasma_r"
         )
         ax1.scatter(
             self.jitter(df["Ancient Bound"]),
-            30 * df["relate_upper_bound"],
+            constants.GENERATION_TIME * df["relate_upper_bound"],
             c=df["frequency"],
             s=scatter_size,
             alpha=scatter_alpha, cmap="plasma_r"
         )
         ax2.scatter(
             self.jitter(df["Ancient Bound"]),
-            30 * df["AgeCI95Upper_Jnt"],
+            constants.GENERATION_TIME * df["AgeCI95Upper_Jnt"],
             c=df["frequency"],
             s=scatter_size,
             alpha=scatter_alpha, cmap="plasma_r"
         )
+        grouped_mut_ages = df.groupby("Ancient Bound")
+        ax0.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
+            grouped_mut_ages, "tsdate_age"))
+        ax1.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
+            grouped_mut_ages, "relate_age"))
+        ax2.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
+            grouped_mut_ages, "AgeMean_Jnt"))
+
         shading_alpha = 0.1
         diag = [ax0.get_xlim(), ax0.get_xlim()]
         upper_lim = ax0.get_ylim()
@@ -690,7 +887,7 @@ class AncientConstraints(Figure):
             0.25,
             0.1,
             "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((30 * df["tsdate_upper_bound"]) > df["Ancient Bound"])
+                100 * np.sum((constants.GENERATION_TIME * df["tsdate_upper_bound"]) > df["Ancient Bound"])
                 / df.shape[0]
             ),
             fontsize=10,
@@ -700,7 +897,7 @@ class AncientConstraints(Figure):
             0.25,
             0.1,
             "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((30 * df["relate_upper_bound"]) > df["Ancient Bound"])
+                100 * np.sum((constants.GENERATION_TIME * df["relate_upper_bound"]) > df["Ancient Bound"])
                 / df.shape[0]
             ),
             fontsize=10,
@@ -710,7 +907,7 @@ class AncientConstraints(Figure):
             0.25,
             0.1,
             "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((30 * df["AgeCI95Upper_Jnt"]) > df["Ancient Bound"])
+                100 * np.sum((constants.GENERATION_TIME * df["AgeCI95Upper_Jnt"]) > df["Ancient Bound"])
                 / df.shape[0]
             ),
             fontsize=10,
@@ -951,39 +1148,31 @@ class TgpMutEstsFrequency(Figure):
 
     name = "tgp_muts_frequency"
     data_path = "all-data"
-    filename = ["tgp_mutations_allmethods_new_snipped_allsites"]
+    filename = ["tgp_mutations"]
     plt_title = "TGP Mutation Age vs Frequency"
 
     def plot(self):
         comparable_mutations = self.data[0][
             ["tsdate_age", "relate_age", "AgeMean_Jnt", "frequency"]
         ]
+        comparable_mutations = comparable_mutations[comparable_mutations["tsdate_age"] > 0]
         frequency = comparable_mutations["frequency"]
         fig, ax = plt.subplots(
-            nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
-        )
-        ax[0].scatter(
+            nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True)
+        ax[0].hexbin(
             frequency,
-            comparable_mutations["tsdate_age"],
-            s=0.2,
-            alpha=0.2,
-        )
-        ax[1].scatter(
+            comparable_mutations["tsdate_age"], xscale="log", yscale="log",
+            bins="log", cmap="Blues", mincnt=1)
+        ax[1].hexbin(
             frequency,
-            comparable_mutations["relate_age"],
-            s=0.2,
-            alpha=0.2,
-        )
-        ax[2].scatter(
+            comparable_mutations["relate_age"], xscale="log", yscale="log",
+            bins="log", cmap="Greens", mincnt=1)
+        ax[2].hexbin(
             frequency,
-            comparable_mutations["AgeMean_Jnt"],
-            s=0.2,
-            alpha=0.2,
-        )
-        plt.xlim(3e-3, 1)
-        plt.ylim(10, 2.2e5)
-        plt.xscale("log")
-        plt.yscale("log")
+            comparable_mutations["AgeMean_Jnt"], xscale="log", yscale="log",
+            bins="log", cmap="Reds", mincnt=1)
+        plt.xlim(3e-3, 1.05)
+        plt.ylim(10, 2.4e5)
         ax[0].set_title("Frequency vs. GEVA Estimated Variant Age")
         ax[1].set_title("Frequency vs. Relate Estimated Variant Age")
         ax[2].set_title("Frequency vs. GEVA Estimated Variant Age")
@@ -1008,48 +1197,54 @@ class TgpMutationAgeComparisons(Figure):
 
     name = "tgp_dates_comparison"
     data_path = "all-data"
-    filename = ["tgp_mutations_allmethods_new_snipped_allsites"]
+    filename = ["tgp_mutations_unconstrained"]
     plt_title = "Compare Mutation Age Estimates"
 
     def plot(self):
         comparable_mutations = self.data[0][
             ["tsdate_age", "relate_age", "AgeMean_Jnt", "frequency"]
         ]
+        comparable_mutations = comparable_mutations[comparable_mutations["tsdate_age"] > 0]
         frequency = comparable_mutations["frequency"]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
-        ax[0].scatter(
+        ax[0].hexbin(
             comparable_mutations["tsdate_age"],
             comparable_mutations["AgeMean_Jnt"],
-            c=frequency,
-            norm=mplc.LogNorm(),
-            cmap="plasma_r",
-            s=0.03,
-            alpha=0.03,
-        )
-        ax[1].scatter(
+            xscale="log", yscale="log",
+            bins="log", mincnt=1)
+
+#            c=frequency,
+#            norm=mplc.LogNorm(),
+#            cmap="plasma_r",
+#            s=0.03,
+#            alpha=0.03,
+#        )
+        ax[1].hexbin(
             comparable_mutations["tsdate_age"],
             comparable_mutations["relate_age"],
-            c=frequency,
-            norm=mplc.LogNorm(),
-            cmap="plasma_r",
-            s=0.03,
-            alpha=0.03,
-        )
-        ax[2].scatter(
+            xscale="log", yscale="log",
+            bins="log", mincnt=1)
+
+#            c=frequency,
+#            norm=mplc.LogNorm(),
+#            cmap="plasma_r",
+#            s=0.03,
+#            alpha=0.03,
+        ax[2].hexbin(
             comparable_mutations["relate_age"],
             comparable_mutations["AgeMean_Jnt"],
-            c=frequency,
-            norm=mplc.LogNorm(),
-            cmap="plasma_r",
-            s=0.03,
-            alpha=0.03,
-        )
+            xscale="log", yscale="log",
+            bins="log", mincnt=1)
+
+#            c=frequency,
+#            norm=mplc.LogNorm(),
+#            cmap="plasma_r",
+#            s=0.03,
+#            alpha=0.03,
         plt.xlim(1, 2e5)
         plt.ylim(1, 2e5)
-        plt.xscale("log")
-        plt.yscale("log")
         ax[0].set_title("tsdate vs. GEVA Estimated Variant Age")
         ax[1].set_title("tsdate vs. Relate Estimated Variant Age")
         ax[2].set_title("Relate vs. GEVA Estimated Variant Age")
@@ -1062,14 +1257,14 @@ class TgpMutationAgeComparisons(Figure):
         ax[0].plot([0.1, 3e5], [0.1, 3e5], c="black")
         ax[1].plot([0.1, 3e5], [0.1, 3e5], c="black")
         ax[2].plot([0.1, 3e5], [0.1, 3e5], c="black")
-        cm = plt.cm.ScalarMappable(
-            cmap="plasma_r",
-            norm=plt.Normalize(vmin=np.min(frequency), vmax=np.max(frequency) + 0.1),
-        )
-        cbar = plt.colorbar(cm, format="%.1f")
-        cbar.set_alpha(1)
-        cbar.draw_all()
-        cbar.set_label("Variant Frequency", rotation=270, labelpad=12)
+#        cm = plt.cm.ScalarMappable(
+#            cmap="plasma_r",
+#            norm=plt.Normalize(vmin=np.min(frequency), vmax=np.max(frequency) + 0.1),
+#        )
+#        cbar = plt.colorbar(cm, format="%.1f")
+#        cbar.set_alpha(1)
+#        cbar.draw_all()
+#        cbar.set_label("Variant Frequency", rotation=270, labelpad=12)
         plt.tight_layout()
 
         self.save(self.name)
@@ -1082,11 +1277,12 @@ class TgpMutationAverageAge(Figure):
 
     name = "mutation_average_age"
     data_path = "all-data"
-    filename = ["tgp_mutations_allmethods_new_snipped_allsites"]
+    filename = ["tgp_mutations"]
     plt_title = "Average TGP Mutation Age"
 
     def plot(self):
         comparable_mutations = self.data[0][["tsdate_age", "relate_age", "AgeMean_Jnt"]]
+        comparable_mutations = comparable_mutations[comparable_mutations["tsdate_age"] > 0]
         ax = sns.boxplot(
             data=comparable_mutations.rename(
                 columns={
@@ -1094,9 +1290,12 @@ class TgpMutationAverageAge(Figure):
                     "relate_age": "relate",
                     "AgeMean_Jnt": "GEVA",
                 }
-            )
+            ),
         )
         ax.set_yscale("log")
+        ax.artists[0].set_facecolor("blue")
+        ax.artists[1].set_facecolor("green")
+        ax.artists[2].set_facecolor("red")
         plt.ylabel("Estimated Mutation Age (generations)")
         plt.title(
             "Average Estimated Mutation Age from TGP \n {} Mutations on Chr 20".format(
@@ -1328,22 +1527,18 @@ class TsdateAccuracy(Figure):
                 self.mutation_accuracy(axes[index, i], true_ages, method, "",
                                        kc_distance_1=kc[index])
             axes[index, 3].text(3.25, 0.15, "Mutation Rate: " + str(param), rotation=90,
-                                color='Red', transform=axes[index, 1].transAxes, size=20)
+                                transform=axes[index, 1].transAxes, size=20)
 
-        axes[0, 0].set_title("Inside-Outside", size=20)
-        axes[0, 1].set_title("Maximization", size=20)
-        axes[0, 2].set_title("Inside-Outside", size=20)
-        axes[0, 3].set_title("Maximization", size=20)
+        axes[0, 0].set_title("Inside-Outside", size=20, color="Black")
+        axes[0, 1].set_title("Maximization", size=20, color="Black")
+        axes[0, 2].set_title("Inside-Outside", size=20, color="Black")
+        axes[0, 3].set_title("Maximization", size=20, color="Black")
 
         f.text(0.5, 0.05, 'True Time', ha='center', size=25)
         f.text(0.08, 0.5, 'Estimated Time', va='center',
                rotation='vertical', size=25)
         f.text(0.31, 0.92, 'tsdate using True Topologies', ha='center', size=25)
         f.text(0.71, 0.92, 'tsdate using tsinfer Topologies', ha='center', size=25)
-        axes[0, 1].set_title("tsdate using Simulated Topology")
-        axes[2, 0].set_title("No Error")
-        axes[2, 1].set_title("Empirical Error")
-        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
 
         self.save(self.name)
 
@@ -1377,6 +1572,8 @@ class NeutralSimulatedMutationAccuracy(Figure):
         #df = df.drop(columns=["geva"])
         #df = df.replace([0, -np.inf], np.nan)
         #df = df.dropna()
+        df = df[df["simulated_ts"] > 0]
+        df = df[df["relate"] > 0]
 
         # tsdate on true tree
         self.mutation_accuracy(
@@ -1394,18 +1591,19 @@ class NeutralSimulatedMutationAccuracy(Figure):
             kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_inferred"])
         )
 
-        # GEVA accuracy
-        self.mutation_accuracy(ax[1, 0], df["simulated_ts"][~np.isnan(df["geva"])],
-                df["geva"][~np.isnan(df["geva"])], "GEVA")
-
         # Relate accuracy
         self.mutation_accuracy(ax[1, 1], df["simulated_ts"][~np.isnan(df["relate"])],
-                df["relate"][~np.isnan(df["relate"])], "Relate",
+                df["relate"][~np.isnan(df["relate"])], "Relate", cmap="Greens",
                 kc_distance_0=np.mean(kc_distances.loc[0]["relate"]),
                 kc_distance_1=np.mean(kc_distances.loc[1]["relate"]))
 
+        # GEVA accuracy
+        self.mutation_accuracy(ax[1, 0], df["simulated_ts"][~np.isnan(df["geva"])],
+                df["geva"][~np.isnan(df["geva"])], "GEVA", cmap="Reds")
+
+
         f.text(0.5, 0.05, 'True Time', ha='center', size=25)
-        f.text(0.08, 0.5, 'Estimated Time', va='center',
+        f.text(0.05, 0.5, 'Estimated Time', va='center',
                rotation='vertical', size=25)
 
         self.save(self.name)
@@ -1418,16 +1616,28 @@ class TsdateChr20Accuracy(Figure):
 
     name = "tsdate_accuracy_chr20"
     data_path = "simulated-data"
-    filename = "tsdate_chr20_accuracy.mutation_ages.kc_distances"
+    filename = ["tsdate_chr20_accuracy_mutations",
+                "tsdate_chr20_accuracy_error_mutations",
+                "tsdate_chr20_accuracy_anc_error_mutations",
+                "tsdate_chr20_accuracy_kc_distances",
+                "tsdate_chr20_accuracy_error_kc_distances",
+                "tsdate_chr20_accuracy_anc_error_kc_distances"]
+
     plt_title = "tsdate_accuracy_chr20"
 
-    def __init__(self):
-        datafile_name = os.path.join(self.data_path, self.filename + ".csv")
-        self.data = pickle.load(open(datafile_name, "rb"))
 
     def plot(self):
-        (sim, dated, inferred_mut_ages, mismatch_inferred_mut_ages,
-         iter_inferred_mut_ages, kc_distances) = self.data
+        df = self.data[0]
+        error_df = self.data[1]
+        anc_error_df = self.data[2]
+        kc_distances = self.data[3]
+        kc_distances = kc_distances.set_index(kc_distances.columns[0])
+        error_kc_distances = self.data[4]
+        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
+        anc_error_kc_distances = self.data[5]
+        anc_error_kc_distances = anc_error_kc_distances.set_index(
+                anc_error_kc_distances.columns[0])
+
         f, axes = plt.subplots(ncols=3, nrows=5, sharex=True, sharey=True,
              gridspec_kw={"wspace": 0.1, "hspace": 0.1, "width_ratios": [1, 1, 1],
                           "height_ratios": [1, 0.1, 1, 1, 1]}, figsize=(15, 20))
@@ -1443,26 +1653,33 @@ class TsdateChr20Accuracy(Figure):
         axes[0, 0].set_ylim(1, 2e5)
         x0, x1 = axes[0, 0].get_xlim()
         y0, y1 = axes[0, 0].get_ylim()
-        row_labels = ["tsdate", "", "tsinfer + tsdate", "mismatch tsinfer + tsdate",
-                      "Iteration"]
+        row_labels = ["tsdate", "", "tsinfer + tsdate", "tsinfer with mismatch + tsdate",
+                      "iteration tsinfer + tsdate"]
         for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
-            axes[i, j].set_ylabel(name, rotation=90,
-                                color='Red', size=20)
+            axes[i, j].set_ylabel(name, rotation=90, size=20)
             axes[i, j].yaxis.set_label_position("right")
 
-        ax_counter = 0
-        for i, (column_idx_list, mut_ages_list) in zip([0, 2, 3, 4], [([1], [dated]), ([0, 1, 2], inferred_mut_ages),
-                                                   ([0, 1, 2], mismatch_inferred_mut_ages),
-                                                   ([0, 1, 2], iter_inferred_mut_ages)]):
-            for j, result in zip(column_idx_list, mut_ages_list):
+        sim = df["simulated_ts"]
+        methods = ["inferred_dated", "mismatch_inferred_dated", "iter_dated_ts"]
+        comparable_sites = np.logical_and(sim > 0, df["dated"] > 0)
+        self.mutation_accuracy(axes[0, 1], sim[comparable_sites],
+                               df["dated"][comparable_sites], "",
+                               kc_distance_1=np.mean(kc_distances.loc[1]["dated"]))
+        for col, prefix, (mut_df, kc_df) in zip(
+                range(3), ["", "error_", "anc_error_"], [(df, kc_distances),
+                    (error_df, error_kc_distances),
+                    (anc_error_df, anc_error_kc_distances)]):
+            for row, method, cmap in zip([2, 3, 4], methods, ["Blues", "Greens", "Reds"]):
+                method = prefix + method
+                result = mut_df[method]
                 comparable_sites = np.logical_and(sim > 0, result > 0)
                 cur_true_ages = sim[comparable_sites]
                 cur_results = result[comparable_sites]
                 self.mutation_accuracy(
-                        axes[i, j], cur_true_ages, cur_results, "",
-                            kc_distance_0=list(kc_distances[0].values())[ax_counter],
-                            kc_distance_1=list(kc_distances[1].values())[ax_counter])
-                ax_counter += 1
+                        axes[row, col], cur_true_ages,
+                            cur_results, "", cmap=cmap,
+                            kc_distance_0=np.mean(kc_df.loc[0][method]),
+                                kc_distance_1=np.mean(kc_df.loc[1][method]))
         axes[0, 1].set_title("tsdate using Simulated Topology")
         axes[2, 0].set_title("No Error")
         axes[2, 1].set_title("Empirical Error")
@@ -1472,6 +1689,64 @@ class TsdateChr20Accuracy(Figure):
                rotation='vertical', size=25)
 
         self.save(self.name)
+
+#        df = self.data[0]
+#        error_df = self.data[1]
+#        anc_error_df = self.data[2]
+#        kc_distances = self.data[3]
+#        kc_distances = kc_distances.set_index(kc_distances.columns[0])
+#        error_kc_distances = self.data[4]
+#        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
+#        anc_error_kc_distances = self.data[5]
+#        anc_error_kc_distances = anc_error_kc_distances.set_index(
+#                anc_error_kc_distances.columns[0])
+#        sim = self.data[0]["simulated_ts"]
+#        dated = self.data[0]["tsdate"]
+#
+#        f, axes = plt.subplots(ncols=3, nrows=5, sharex=True, sharey=True,
+#             gridspec_kw={"wspace": 0.1, "hspace": 0.1, "width_ratios": [1, 1, 1],
+#                          "height_ratios": [1, 0.1, 1, 1, 1]}, figsize=(15, 20))
+#        axes[0, 0].axis('off')
+#        axes[0, 2].axis('off')
+#        axes[1, 0].axis('off')
+#        axes[1, 1].axis('off')
+#        axes[1, 2].axis('off')
+#
+#        axes[0, 0].set_xscale('log')
+#        axes[0, 0].set_yscale('log')
+#        axes[0, 0].set_xlim(1, 2e5)
+#        axes[0, 0].set_ylim(1, 2e5)
+#        x0, x1 = axes[0, 0].get_xlim()
+#        y0, y1 = axes[0, 0].get_ylim()
+#        row_labels = ["tsdate", "", "tsinfer + tsdate", "mismatch tsinfer + tsdate",
+#                      "Iteration"]
+#        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
+#            axes[i, j].set_ylabel(name, rotation=90,
+#                                  size=20)
+#            axes[i, j].yaxis.set_label_position("right")
+#
+#        ax_counter = 0
+#        for i, (column_idx_list, mut_ages_list) in zip([0, 2, 3, 4], [([1], [dated]), ([0, 1, 2], inferred_mut_ages),
+#                                                   ([0, 1, 2], mismatch_inferred_mut_ages),
+#                                                   ([0, 1, 2], iter_inferred_mut_ages)]):
+#            for j, result in zip(column_idx_list, mut_ages_list):
+#                comparable_sites = np.logical_and(sim > 0, result > 0)
+#                cur_true_ages = sim[comparable_sites]
+#                cur_results = result[comparable_sites]
+#                self.mutation_accuracy(
+#                        axes[i, j], cur_true_ages, cur_results, "",
+#                            kc_distance_0=list(kc_distances[0].values())[ax_counter],
+#                            kc_distance_1=list(kc_distances[1].values())[ax_counter])
+#                ax_counter += 1
+#        axes[0, 1].set_title("tsdate using Simulated Topology", size=20)
+#        axes[2, 0].set_title("No Error", size=20)
+#        axes[2, 1].set_title("Empirical Error", size=20)
+#        axes[2, 2].set_title("Empirical Error + \n1% Ancestral State Error", size=20)
+#        f.text(0.5, 0.05, 'True Time', ha='center', size=25)
+#        f.text(0.08, 0.4, 'Estimated Time', va='center',
+#               rotation='vertical', size=25)
+#
+#        self.save(self.name)
 
 
 class Chr20SimulatedMutationAccuracy(Figure):
@@ -1486,6 +1761,7 @@ class Chr20SimulatedMutationAccuracy(Figure):
                 "chr20_simulated_mutation_accuracy_error_mutations",
                 "chr20_simulated_mutation_accuracy_anc_error_mutations",
                 "chr20_simulated_mutation_accuracy_kc_distances",
+                "chr20_simulated_mutation_accuracy_error_kc_distances",
                 "chr20_simulated_mutation_accuracy_anc_error_kc_distances"]
     plt_title = "simulated_accuracy_chr20"
 
@@ -1495,9 +1771,9 @@ class Chr20SimulatedMutationAccuracy(Figure):
         anc_error_df = self.data[2]
         kc_distances = self.data[3]
         kc_distances = kc_distances.set_index(kc_distances.columns[0])
-        error_kc_distances = self.data[3]
+        error_kc_distances = self.data[4]
         error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
-        anc_error_kc_distances = self.data[3]
+        anc_error_kc_distances = self.data[5]
         anc_error_kc_distances = anc_error_kc_distances.set_index(
                 anc_error_kc_distances.columns[0])
 
@@ -1517,9 +1793,9 @@ class Chr20SimulatedMutationAccuracy(Figure):
         x0, x1 = axes[0, 0].get_xlim()
         y0, y1 = axes[0, 0].get_ylim()
         row_labels = ["tsdate", "", "tsinfer + tsdate", "Relate", "GEVA"]
-        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
+        for (i, name), j, color in zip(enumerate(row_labels), [1, 2, 2, 2, 2], ["Blue", "", "Blue", "Red", "Green"]):
             axes[i, j].set_ylabel(name, rotation=90,
-                                color='Red', size=20)
+                                color=color, size=20)
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
@@ -1528,18 +1804,18 @@ class Chr20SimulatedMutationAccuracy(Figure):
         self.mutation_accuracy(axes[0, 1], sim[comparable_sites],
                                df["tsdate"][comparable_sites], "",
                                kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]))
-        for i, (column_idx_list, mut_df, kc_df) in zip(
-                [2, 3, 4], [([0, 1, 2], df, kc_distances),
-                    ([0, 1, 2], error_df, error_kc_distances),
-                    ([0, 1, 2], anc_error_df, anc_error_kc_distances)]):
-            for j, method in zip(column_idx_list, methods):
+        for col, (mut_df, kc_df) in zip(
+                range(3), [(df, kc_distances),
+                    (error_df, error_kc_distances),
+                    (anc_error_df, anc_error_kc_distances)]):
+            for row, method, cmap in zip([2, 3, 4], methods, ["Blues", "Greens", "Reds"]):
                 result = mut_df[method]
                 comparable_sites = np.logical_and(sim > 0, result > 0)
                 cur_true_ages = sim[comparable_sites]
                 cur_results = result[comparable_sites]
                 self.mutation_accuracy(
-                        axes[i, j], cur_true_ages,
-                            cur_results, "",
+                        axes[row, col], cur_true_ages,
+                            cur_results, "", cmap=cmap,
                             kc_distance_0=np.mean(kc_df.loc[0][method]),
                                 kc_distance_1=np.mean(kc_df.loc[1][method]))
         axes[0, 1].set_title("tsdate using Simulated Topology")
@@ -1664,9 +1940,9 @@ class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         axes[2, 1].set_title("Empirical Error")
         axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
         row_labels = ["tsdate", "", "tsinfer + tsdate", "Relate", "GEVA"]
-        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
+        for (i, name), j, color in zip(enumerate(row_labels), [1, 2, 2, 2, 2], ["Blue", "", "Blue", "Green", "Red"]):
             axes[i, j].set_ylabel(name, rotation=90,
-                                color='Red', size=20)
+                                color=color, size=20)
             axes[i, j].yaxis.set_label_position("right")
 
         self.mutation_accuracy(

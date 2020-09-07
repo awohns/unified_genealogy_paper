@@ -48,72 +48,6 @@ RELATE = "Relate"
 GEVA = "GEVA"
 
 
-def make_seq_errors_genotype_model(g, error_probs):
-    """
-    Given an empirically estimated error probability matrix, resample for a particular
-    variant. Determine variant frequency and true genotype (g0, g1, or g2),
-    then return observed genotype based on row in error_probs with nearest
-    frequency. Treat each pair of alleles as a diploid individual.
-    """
-    m = g.shape[0]
-    frequency = np.sum(g) / m
-    closest_row = (np.abs(error_probs['freq']-frequency)).idxmin()
-    closest_freq = error_probs.iloc[closest_row - 1].values[1:]
-
-    w = np.copy(g)
-    
-    # Make diploid (iterate each pair of alleles)
-    genos = np.reshape(w,(-1,2))
-
-    # Record the true genotypes (0,0=>0; 1,0=>1; 0,1=>2, 1,1=>3)
-    count = np.sum(np.array([1,2]) * genos,axis=1)
-    
-    base_genotypes = np.array([[0, 0], [1, 0], [0, 1], [1, 1]])
-
-    genos[count==0,:]=base_genotypes[
-        np.random.choice(4,sum(count==0), p=closest_freq[[0, 1, 1, 2]]*[1,0.5,0.5,1]),:]
-    genos[count==1,:]=base_genotypes[[0,1,3],:][
-        np.random.choice(3,sum(count==1), p=closest_freq[[3, 4, 5]]),:]
-    genos[count==2,:]=base_genotypes[[0,2,3],:][
-        np.random.choice(3,sum(count==2), p=closest_freq[[3, 4, 5]]),:]
-    genos[count==3,:]=base_genotypes[
-        np.random.choice(4,sum(count==3), p=closest_freq[[6, 7, 7, 8]]*[1,0.5,0.5,1]),:]    
-
-    return(np.reshape(genos,-1))
-
-
-def add_errors(sample_data, ancestral_allele_error=0, random_seed=None, **kwargs):
-    if random_seed is not None:
-        np.random.seed(random_seed)
-    if sample_data.num_samples % 2 != 0:
-        raise ValueError("Must have an even number of samples to inject error")
-    error_probs = pd.read_csv("data/EmpiricalErrorPlatinum1000G.csv", index_col=0)
-    n_variants = 0
-    aa_error_by_site = np.zeros(sample_data.num_sites, dtype=np.bool)
-    if ancestral_allele_error > 0:
-        assert ancestral_allele_error <= 1
-        n_bad_sites = round(ancestral_allele_error*sample_data.num_sites)
-        # This gives *exactly* a proportion aa_error or bad sites
-        # NB - to to this probabilitistically, use np.binomial(1, e, ts.num_sites)
-        aa_error_by_site[0:n_bad_sites] = True
-        np.random.shuffle(aa_error_by_site)
-    new_sd = sample_data.copy(**kwargs)
-    genotypes = new_sd.data["sites/genotypes"][:]  # Could be big
-    alleles = new_sd.data["sites/alleles"][:]
-    
-    for i, (ancestral_allele_error, v) in enumerate(zip(
-            aa_error_by_site, sample_data.variants())):
-        if ancestral_allele_error and len(v.site.alleles)==2:
-            genotypes[i, :] = 1-v.genotypes
-            alleles[i] = list(reversed(alleles[i]))
-        genotypes[i, :] = make_seq_errors_genotype_model(
-            genotypes[i, :], error_probs)
-    new_sd.data["sites/genotypes"][:] = genotypes
-    new_sd.data["sites/alleles"][:] = alleles
-    new_sd.finalise()
-    return new_sd
-
-
 def run_neutral_sim(
     sample_size, Ne, length, mutation_rate, recombination_rate, seed=None
 ):
@@ -173,7 +107,7 @@ def get_genetic_map_chr20_snippet(rowdata, filename):
 
 
 def infer_with_mismatch(sample_data, chromosome, ma_mismatch=0.1, ms_mismatch=0.1,
-        precision=None, num_threads=1):
+        precision=None, modern_samples_match=False, ancient_ancestors=False, num_threads=1):
     ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads)
     genetic_map = run_inference.get_genetic_map(chromosome)
     rho, ma_mis, ms_mis, precision = run_inference.get_rho(sample_data, ancestors,
@@ -181,11 +115,11 @@ def infer_with_mismatch(sample_data, chromosome, ma_mismatch=0.1, ms_mismatch=0.
             num_threads=num_threads)
     rho[:-1][rho[:-1] == 0] = np.min(rho[:-1][rho[:-1] != 0]) / 100
     ancestors_ts = run_inference.match_ancestors(sample_data, ancestors, rho, ma_mis,
-                                                 precision=13, ancient_ancestors=False,
+                                                 precision=13, ancient_ancestors=ancient_ancestors,
                                                  num_threads=num_threads)
     return run_inference.match_samples(sample_data, ancestors_ts, rho, ms_mis, 
-                                       13, modern_samples_match=False, 
-                                       ancient_ancestors=False, num_threads=num_threads)
+                                       13, modern_samples_match=modern_samples_match, 
+                                       ancient_ancestors=ancient_ancestors, num_threads=num_threads)
 
 
 def sample_times(ancient_sample_size, generation_time):
@@ -367,7 +301,8 @@ def sampledata_to_vcf(sample_data, filename):
     return df
 
 
-def compare_mutations(ts_list, relate_ages=None, relate_reinfer=None, geva_ages=None,
+def compare_mutations(ts_list, method_names=["tsdate", "tsdate_inferred"],
+                      relate_ages=None, relate_reinfer=None, geva_ages=None,
                       geva_positions=None):
     """
     Given a list of tree sequences, return a pandas dataframe with the age
@@ -380,59 +315,38 @@ def compare_mutations(ts_list, relate_ages=None, relate_reinfer=None, geva_ages=
     :return A DataFrame of mutations and age estimates from each method
     :rtype pandas.DataFrame
     """
-    def get_mut_age(ts, name, exclude_root=False):
-        """
-        Get the edge id associated with each mutation
-        """
-        node_times = ts.tables.nodes.time[:]
-        mut_ages = dict()
-        samples = ts.samples()
-        for tree in ts.trees():
-            for site in tree.sites():
-                for mut in site.mutations:
-                    parent_node = tree.parent(mut.node)
-                    if exclude_root:
-                        if parent_node != ts.num_nodes - 1:
-                            mut_ages[site.position] = (
-                                node_times[mut.node] + node_times[parent_node]
-                            ) / 2
-                    else:
-                        mut_ages[site.position] = (
-                            node_times[mut.node] + node_times[parent_node]
-                        ) / 2
-        df = pd.DataFrame.from_dict(mut_ages, orient="index", columns=[name])
-        df.index = np.round(df.index)
-        df = df.loc[~df.index.duplicated()]
-        return df
 
+    assert len(ts_list) == len(method_names)
     # Load tree sequences: simulated, dated (topo), dated(inferred)
     ts = ts_list[0]
-    dated_ts = ts_list[1]
-    dated_inferred_ts = ts_list[2]
-
-    # Load age of mutations for each tree sequence
     print("Number of mutations", ts.num_mutations)
-    mut_ages = utility.get_mut_pos_df(ts, "simulated_ts", ts.tables.nodes.time)
-    print("Number of mutations with true dates", mut_ages.shape[0])
-    mut_dated_ages = utility.get_mut_pos_df(dated_ts, "tsdate", dated_ts.tables.nodes.time)
-    print("Number of mutations dated by tsdate", mut_dated_ages.shape[0])
-    run_results = pd.merge(
-        mut_ages, mut_dated_ages, how="left", left_index=True, right_index=True
-    )
-    mut_inferred_dated_ages = utility.get_mut_pos_df(
-        dated_inferred_ts, "tsdate_inferred", dated_inferred_ts.tables.nodes.time 
-    )
-    print(
-        "Number of mutations dated by tsinfer + tsdate",
-        mut_inferred_dated_ages.shape[0],
-    )
-    run_results = pd.merge(
-        run_results,
-        mut_inferred_dated_ages,
-        how="left",
-        left_index=True,
-        right_index=True,
-    )
+    run_results = utility.get_mut_pos_df(ts, "simulated_ts", ts.tables.nodes.time)
+    print("Number of mutations with true dates", run_results.shape[0])
+
+#    dated_ts = ts_list[1]
+#    dated_inferred_ts = ts_list[2]
+    for cur_ts, method in zip(ts_list[1:], method_names[1:]):
+    # Load age of mutations for each tree sequence
+        mut_dated_ages = utility.get_mut_pos_df(cur_ts, method,
+                                                cur_ts.tables.nodes.time)
+        print("Number of mutations dated by " + method + ": ", mut_dated_ages.shape[0])
+        run_results = pd.merge(
+            run_results, mut_dated_ages, how="left", left_index=True, right_index=True
+        )
+#    mut_inferred_dated_ages = utility.get_mut_pos_df(
+#        dated_inferred_ts, "tsdate_inferred", dated_inferred_ts.tables.nodes.time 
+#    )
+#    print(
+#        "Number of mutations dated by tsinfer + tsdate",
+#        mut_inferred_dated_ages.shape[0],
+#    )
+#    run_results = pd.merge(
+#        run_results,
+#        mut_inferred_dated_ages,
+#        how="left",
+#        left_index=True,
+#        right_index=True,
+#    )
 
     # If Relate and GEVA were run, load mutation ages as pandas dataframe
     # Create an "age" column for both
@@ -468,11 +382,9 @@ def compare_mutations(ts_list, relate_ages=None, relate_reinfer=None, geva_ages=
             columns={"PostMean": "geva", "Position": "position"}
         ).set_index("position")
         print("Number of mutations dated by GEVA", geva.shape[0])
-        print(geva)
         run_results = pd.merge(
             run_results, geva, how="left", left_index=True, right_index=True
         )
-        print(run_results)
 
     return run_results
 
@@ -910,7 +822,7 @@ def get_kc_distances(ts_list, method_names):
     for ts, method_name in zip(ts_list[1:], method_names[1:]):
         results_lambda_0[method_name] = first_ts.kc_distance(ts, lambda_=0)
         results_lambda_1[method_name] = first_ts.kc_distance(ts, lambda_=1)
-    return results_lambda_0, results_lambda_1 
+    return pd.DataFrame.from_dict([results_lambda_0, results_lambda_1])
 
 
 def iteration_tsdate(

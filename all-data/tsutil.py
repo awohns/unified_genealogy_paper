@@ -25,6 +25,7 @@ import humanize
 import cyvcf2
 
 
+
 def run_simplify(args):
     ts = tskit.load(args.input)
     ts = ts.simplify()
@@ -37,7 +38,7 @@ def run_get_dated_samples(args):
     assert args.samples.endswith(".samples")
     prefix = args.samples[0:-len(".samples")]
     copy = samples.copy(prefix + ".dated.samples")
-    copy.sites_time[:] = tsdate.get_site_times(ts)
+    copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
 
 
@@ -337,6 +338,7 @@ def run_compute_hgdp_gnn(args):
     df = pd.DataFrame(cols)
     df.to_csv(args.output)
 
+
 def run_compute_hgdp_1kg_sgdp_gnn(args):
     ts = tskit.load(args.input)
 
@@ -398,7 +400,7 @@ def run_snip_centromere(args):
     # since we're just searching for the largest gap anyway. However, it can
     # be useful in UKBB, since it's perfectly possible that the largest
     # gap between sites isn't in the centromere.
-    X = position[s_index : e_index + 1]
+    X = position[s_index: e_index + 1]
     if len(X) > 0:
         j = np.argmax(X[1:] - X[:-1])
         real_start = X[j] + 1
@@ -451,7 +453,7 @@ def make_sampledata_compatible(args):
 
 def add_indiv_times(args):
     """
-    Takes samples 'age' in metadata and 
+    Takes samples 'age' in metadata and add to individuals_time[:]
     """
     samples = tsinfer.load(args.input)
     times = samples.individuals_time[:]
@@ -469,7 +471,8 @@ def merge_sampledata_files(args):
     for cur_sample in args.input_sampledata:
         samples.append(tsinfer.load(cur_sample))
     merged_samples = samples[0]
-    for other_samples in samples[1:]:
+    for index, other_samples in enumerate(samples[1:]):
+        print("Loaded sampledata file # {}".format(index))
         intersect_sites = np.isin(
             merged_samples.sites_position[:], other_samples.sites_position[:]
         )
@@ -485,17 +488,38 @@ def merge_sampledata_files(args):
         other_samples_copy.sites_metadata[:] = other_samples_metadata
         other_samples_copy.finalise()
         merged_samples = merged_samples.merge(other_samples_copy)
+        print("Merged sampledata file # {}".format(index))
     merged_copy = merged_samples.copy(args.output)
     merged_copy.finalise()
+
 
 def remove_moderns_reich(args):
     samples = tsinfer.load(args.input)
     ancients = samples.subset(individuals=np.where(samples.individuals_time[:] != 0)[0])
     genos = ancients.sites_genotypes[:]
     sites = np.where(np.sum(genos == 1, axis=1) != 0)[0]
-    ancients_pruned = samples.subset(sites=sites)
+    ancients_pruned = ancients.subset(sites=sites)
     copy = ancients_pruned.copy(args.output)
     copy.finalise()
+
+
+def combined_ts_constrained_samples(args):
+    high_cov_samples = tsinfer.load(args.high_cov)
+    all_samples = tsinfer.load(args.all_samples)
+    dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
+    all_samples_copy = all_samples.copy()
+    # Using 25 years as generation time
+    all_samples_copy.individuals_time[:] = all_samples_copy.individuals_time[:] / 25
+    all_samples_copy.sites_time[:] = tsdate.get_sites_time(dated_hgdp_1kg_sgdp_ts)
+    all_samples_copy.finalise()
+    min_site_times = all_samples_copy.min_site_times(individuals_only=False)
+    high_cov_samples_copy = high_cov_samples.copy(args.output)
+    high_cov_samples_copy.sites_time[:] = min_site_times
+    high_cov_samples_copy.sites_time[:] = min_site_times
+    high_cov_samples_copy.individuals_time[:] = (
+            high_cov_samples_copy.individuals_time[:] / 25)
+    high_cov_samples_copy.finalise()
+
 
 def main():
 
@@ -510,7 +534,7 @@ def main():
     subparser.set_defaults(func=run_simplify)
 
     subparser = subparsers.add_parser("dated_samples")
-    subparser.add_argument("samples", type=str, help="Input sampledata") 
+    subparser.add_argument("samples", type=str, help="Input sampledata")
     subparser.add_argument("ts", type=str, help="Input dated tree sequence")
     subparser.set_defaults(func=run_get_dated_samples)
 
@@ -618,6 +642,24 @@ def main():
     subparser.add_argument("output", type=str, help="Output sampledata file name")
     subparser.set_defaults(func=remove_moderns_reich)
 
+    subparser = subparsers.add_parser("combined-ts-dated-samples")
+    subparser.add_argument(
+        "--high-cov",
+        type=str,
+        help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
+    )
+    subparser.add_argument(
+        "--all-samples",
+        type=str,
+        help="HGDP + 1kg + SGDP + All Ancients.",
+    )
+    subparser.add_argument(
+        "--dated-ts",
+        type=str,
+        help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+    )
+    subparser.add_argument("--output", type=str, help="Output sampledata file name")
+    subparser.set_defaults(func=combined_ts_constrained_samples)
 
     daiquiri.setup(level="INFO")
 
