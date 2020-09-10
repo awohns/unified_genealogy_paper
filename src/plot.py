@@ -6,6 +6,7 @@ Generates all the actual figures. Run like
 import argparse
 import os
 import pickle
+from operator import attrgetter
 
 import scipy
 from scipy.stats import gaussian_kde
@@ -18,6 +19,7 @@ import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import (inset_axes, mark_inset,
                                                    zoomed_inset_axes)
 import matplotlib.colors as mplc
+import colorcet as cc
 
 import constants
 
@@ -348,8 +350,10 @@ class Figure2Ancients(Figure):
     name = "iteration_ancients"
     data_path = "simulated-data"
     filename = ["chr20_ancient_iteration_msle", "chr20_ancient_iteration_spearman",
-                "chr20_ancient_iteration_ooa_msle", "chr20_ancient_iteration_ooa_spearman",
-                "chr20_ancient_iteration_amh_msle", "chr20_ancient_iteration_amh_spearman"]
+                "chr20_ancient_iteration_kc", "chr20_ancient_iteration_ooa_msle",
+                "chr20_ancient_iteration_ooa_spearman", "chr20_ancient_iteration_ooa_kc",
+                "chr20_ancient_iteration_amh_msle", "chr20_ancient_iteration_amh_spearman",
+                "chr20_ancient_iteration_amh_kc"]
     plt_title = "iteration_ancients"
 
     def __init__(self):
@@ -358,23 +362,29 @@ class Figure2Ancients(Figure):
     def plot(self):
         msle = self.data[0]
         spearman = self.data[1]
-        msle_ooa = self.data[2]
-        spearman_ooa = self.data[3]
-        msle_amh = self.data[4]
-        spearman_amh = self.data[5]
+        kc = self.data[2]
+        kc = kc.set_index(kc.columns[0])
+        msle_ooa = self.data[3]
+        spearman_ooa = self.data[4]
+        kc_ooa = self.data[5]
+        kc_ooa = kc_ooa.set_index(kc_ooa.columns[0])
+        msle_amh = self.data[6]
+        spearman_amh = self.data[7]
+        kc_amh = self.data[8]
+        kc_amh = kc_amh.set_index(kc_amh.columns[0])
         #muts = pd.merge([self.data[0], self.data[2].add_suffix("_ooa"), self.data[4].add_suffix("_amh"))
         #spearman = pd.merge([self.data[1], self.data[3].add_suffix("_ooa"), self.data[5].add_suffix("_amh")])
         #muts = self.data[0]
         #muts_amh = self.data[2]
         #spearman = self.data[1]
         widths = [0.5, 0.5, 3, 0.5]
-        heights = [3, 3]
+        heights = [3, 3, 3]
         gs_kw = dict(width_ratios=widths, height_ratios=heights)
         gs_kw.update(wspace=0.03)
-        #fig, ax = plt.subplots(
-        #    ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
-        #)
-        fig, ax = plt.subplots(ncols=1, nrows=2)
+        fig, ax = plt.subplots(
+            ncols=4, nrows=3, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+        )
+        #fig, ax = plt.subplots(ncols=1, nrows=2)
         #ax[0, 1].set_ylabel("")
         #ax[0, 0].set_ylabel("Mean Squared Log Error")
         #ax[0, 2].set_xlabel("Ancient Sample Size")
@@ -389,7 +399,9 @@ class Figure2Ancients(Figure):
 
         #for row, df in enumerate([msle]):
         df = msle
-        df = 1 - (df / np.mean(df["tsdate_inferred"]))
+        #df = 1 - (df / np.mean(df["tsdate_inferred"]))
+        sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[0,0])
+        sns.boxplot(x=df["iter_dated_inferred"], orient="v", ax=ax[0,1])
 #            if row == 0:
 #                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
 #            else:
@@ -406,8 +418,8 @@ class Figure2Ancients(Figure):
 #                    orient="v",
 #                    ax=ax[row, 1],
 #                )
-        cols = ["tsdate_inferred", "iter_dated_inferred"]
-        cols = cols + ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+        #cols = ["tsdate_inferred", "iter_dated_inferred"]
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -415,9 +427,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[0],
+            ax=ax[0,2],
         )
-        msle_ooa = 1 - (msle_ooa / np.mean(msle_ooa["tsdate_inferred"]))
+        #msle_ooa = 1 - (msle_ooa / np.mean(msle_ooa["tsdate_inferred"]))
+        sns.boxplot(x=msle_ooa["tsdate_inferred"], orient="v", ax=ax[0,0])
+        sns.boxplot(x=msle_ooa["iter_dated_inferred"], orient="v", ax=ax[0,1])
+
         df_melt = msle_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -425,9 +440,9 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[0],
+            ax=ax[0, 2],
         )
-        msle_amh = 1 - (msle_amh / np.mean(msle_amh["tsdate_inferred"]))
+        #msle_amh = 1 - (msle_amh / np.mean(msle_amh["tsdate_inferred"]))
         df_melt = msle_amh.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -435,11 +450,16 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[0],
+            ax=ax[0, 2],
         )
-        spearman = (spearman / np.mean(spearman["inferred"]))
-        cols = ["inferred", "reinferred"]
-        cols = cols + ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+        #spearman = (spearman / np.mean(spearman["inferred"]))
+        #cols = ["inferred", "reinferred"]
+
+
+        sns.boxplot(x=spearman["inferred"], orient="v", ax=ax[1,0])
+        sns.boxplot(x=spearman["reinferred"], orient="v", ax=ax[1,1])
+
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
 
         df_melt = spearman.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -448,10 +468,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[1],
+            ax=ax[1, 2],
         )
+        sns.boxplot(x=spearman_ooa["inferred"], orient="v", ax=ax[1,0])
+        sns.boxplot(x=spearman_ooa["reinferred"], orient="v", ax=ax[1,1])
 
-        spearman_ooa = (spearman_ooa / np.mean(spearman_ooa["inferred"]))
+        #spearman_ooa = (spearman_ooa / np.mean(spearman_ooa["inferred"]))
         df_melt = spearman_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -459,10 +481,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[1],
+            ax=ax[1, 2],
         )
-        
-        spearman_amh = (spearman_amh / np.mean(spearman_amh["inferred"]))
+        sns.boxplot(x=spearman_amh["inferred"], orient="v", ax=ax[1,0])
+        sns.boxplot(x=spearman_amh["reinferred"], orient="v", ax=ax[1,1])
+#
+#        #spearman_amh = (spearman_amh / np.mean(spearman_amh["inferred"]))
         df_melt = spearman_amh.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -470,13 +494,53 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            ax=ax[1],
+            ax=ax[1, 2],
         )
 
         # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
         #sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
         # ax[0].set_xlabel("Date \nTree Seq")
         # ax[0].set_xticklabels(["Date \nTree Sequence"])
+        print(kc)
+        kc = kc.loc[0]
+        print(kc)
+        sns.boxplot(x=kc["tsdate_inferred"], orient="v", ax=ax[2, 0])
+        sns.boxplot(x=kc["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+        df_melt = kc.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[2, 2],
+        )
+        kc_ooa = kc_ooa.loc[0]
+        sns.boxplot(x=kc_ooa["tsdate_inferred"], orient="v", ax=ax[2, 0])
+        sns.boxplot(x=kc_ooa["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+        df_melt = kc_ooa.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[2, 2],
+        )
+        kc_amh = kc_amh.loc[0]
+        sns.boxplot(x=kc_amh["tsdate_inferred"], orient="v", ax=ax[2, 0])
+        sns.boxplot(x=kc_amh["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+        df_melt = kc_amh.melt(value_vars=cols)
+        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+        sns.lineplot(
+            x="variable",
+            y="value",
+            data=df_melt,
+            sort=False,
+            ax=ax[2, 2],
+        )
+
+
         plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
 
@@ -800,149 +864,85 @@ class AncientConstraints(Figure):
     plt_title = "ancient_constraint_1kg"
 
     def jitter(self, array):
-        max_min = (np.max(array) - np.min(array))
-        return array + np.random.randn(len(array)) * (max_min * 0.01)
-
-    def return_running_mean(self, grouped_mut_ages, method):
-        running_mean = []
-        seen_vars = 0
-
-        for i, (_, grouped) in enumerate(grouped_mut_ages):
-            if i == 0:
-                running_mean.append(np.mean(grouped[method]))
-                seen_vars += len(grouped)
-            else:
-                total_vars = len(grouped) + seen_vars
-                running_mean.append(
-                    ((np.mean(grouped[method]) * len(grouped)/total_vars) + 
-                     (running_mean[-1] * (seen_vars/total_vars))))
-                seen_vars += len(grouped)
-        return np.array(running_mean)
-
+        max_min = np.max(array) - np.min(array)
+        return np.exp(np.log(array) + np.random.randn(len(array)) * (max_min * 0.0000003))
 
     def plot(self):
         df = self.data[0]
-        fig = plt.figure(figsize=(15, 5), constrained_layout=True)
+        fig = plt.figure(figsize=(15, 5))
         widths = [3, 3, 3, 0.1]
         spec5 = fig.add_gridspec(ncols=4, nrows=1, width_ratios=widths)
         ax0 = fig.add_subplot(spec5[0])
-        ax0.set_xlim([1000, 2e5])
-        ax0.set_ylim([1000, 9e6])
+        ax0.set_xlim([200, 2e5])
+        ax0.set_ylim([200, 9e6])
         ax0.set_xscale("log")
         ax0.set_yscale("log")
 
         ax1 = fig.add_subplot(spec5[1], sharex=ax0, sharey=ax0)
         ax2 = fig.add_subplot(spec5[2], sharex=ax0, sharey=ax0)
         ax3 = fig.add_subplot(spec5[3])
+        df = df.set_index("Ancient Bound").sort_index()
+        df["Ancient Bound Bins"] = pd.cut(df.index, 30)
+        smoothed_mean = df.groupby("Ancient Bound Bins").mean()
+        smoothed_mean["bin_right"] = smoothed_mean.index.map(attrgetter('right'))
+        smoothed_mean = smoothed_mean.dropna()
+
         scatter_size = 0.2
-        scatter_alpha = 0.5
-        ax0.scatter(
-            self.jitter(df["Ancient Bound"]),
-            constants.GENERATION_TIME * df["tsdate_upper_bound"],
-            c=df["frequency"],
-            s=scatter_size,
-            alpha=scatter_alpha, cmap="plasma_r"
-        )
-        ax1.scatter(
-            self.jitter(df["Ancient Bound"]),
-            constants.GENERATION_TIME * df["relate_upper_bound"],
-            c=df["frequency"],
-            s=scatter_size,
-            alpha=scatter_alpha, cmap="plasma_r"
-        )
-        ax2.scatter(
-            self.jitter(df["Ancient Bound"]),
-            constants.GENERATION_TIME * df["AgeCI95Upper_Jnt"],
-            c=df["frequency"],
-            s=scatter_size,
-            alpha=scatter_alpha, cmap="plasma_r"
-        )
-        grouped_mut_ages = df.groupby("Ancient Bound")
-        ax0.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
-            grouped_mut_ages, "tsdate_age"))
-        ax1.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
-            grouped_mut_ages, "relate_age"))
-        ax2.plot(list(grouped_mut_ages.groups.keys()), constants.GENERATION_TIME * self.return_running_mean(
-            grouped_mut_ages, "AgeMean_Jnt"))
+        scatter_alpha = 0.4
+        shading_alpha = 0.2
+        for method in [(ax0, "tsdate",  ["tsdate_upper_bound", "tsdate_age"]),
+                       (ax1, "Relate", ["relate_upper_bound", "relate_age"]),
+                       (ax2, "GEVA", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"])]:
 
-        shading_alpha = 0.1
-        diag = [ax0.get_xlim(), ax0.get_xlim()]
-        upper_lim = ax0.get_ylim()
-        ax0.plot(diag[0], diag[1], c="black")
-        ax0.fill_between(diag[0], diag[1], (diag[1][0], diag[1][0]), color="red",
-                         alpha=shading_alpha)
-        ax0.fill_between(diag[0], diag[1], (upper_lim[1], upper_lim[1]), color="blue",
-                         alpha=shading_alpha)
-        ax1.plot(diag[0], diag[1], c="black")
-        ax1.fill_between(diag[0], diag[1], [diag[1][0], diag[1][0]], color="red",
-                         alpha=shading_alpha)
-        ax1.fill_between(diag[0], diag[1], (upper_lim[1], upper_lim[1]), color="blue",
-                         alpha=shading_alpha)
-        ax2.plot(diag[0], diag[1], c="black")
-        ax2.fill_between(diag[0], diag[1], [diag[1][0], diag[1][0]], color="red",
-                         alpha=shading_alpha)
-        ax2.fill_between(diag[0], diag[1], (upper_lim[1], upper_lim[1]), color="blue",
-                         alpha=shading_alpha)
-        ax0.text(
-            0.25,
-            0.1,
-            "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((constants.GENERATION_TIME * df["tsdate_upper_bound"]) > df["Ancient Bound"])
-                / df.shape[0]
-            ),
-            fontsize=10,
-            transform=ax0.transAxes,
-        )
-        ax1.text(
-            0.25,
-            0.1,
-            "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((constants.GENERATION_TIME * df["relate_upper_bound"]) > df["Ancient Bound"])
-                / df.shape[0]
-            ),
-            fontsize=10,
-            transform=ax1.transAxes,
-        )
-        ax2.text(
-            0.25,
-            0.1,
-            "{0:.2f}% of variants >= lower bound".format(
-                100 * np.sum((constants.GENERATION_TIME * df["AgeCI95Upper_Jnt"]) > df["Ancient Bound"])
-                / df.shape[0]
-            ),
-            fontsize=10,
-            transform=ax2.transAxes,
-        )
+            ax = method[0]
+            ax.set_title(method[1])
+            ax.text(0.1, 0.09, 'Ancient Derived Variant Lower Bound', rotation=36.51,
+                    transform=ax.transAxes)
+            diag = [ax.get_xlim(), ax.get_xlim()]
+            upper_lim = ax.get_ylim()
+            ax.plot(diag[0], diag[1], "--", c="black")
+            ax.fill_between(diag[0], diag[1], (diag[1][0], diag[1][0]), color="grey",
+                             alpha=shading_alpha)
+            ax.text(
+                0.20,
+                0.08,
+                "{0:.2f}% variants' estimated upper bound >= ancient lower bound".format(
+                    100 * np.sum((
+                        constants.GENERATION_TIME * df[method[2][0]]) > df.index)
+                    / df.shape[0]
+                ),
+                fontsize=10,
+                transform=ax.transAxes,
+            )
+            ax.text(
+                0.20,
+                0.04,
+                "{0:.2f}% variants' estimated age >= ancient lower bound".format(
+                    100 * np.sum((
+                        constants.GENERATION_TIME * df[method[2][1]]) > df.index)
+                    / df.shape[0]
+                ),
+                fontsize=10,
+                transform=ax.transAxes,
+            )
+            scatter = ax.scatter(
+                self.jitter(df.index),
+                constants.GENERATION_TIME * df[method[2][1]],
+                c=df["tsdate_frequency"],
+                s=scatter_size,
+                alpha=scatter_alpha, cmap="plasma_r",
+                norm=mplc.LogNorm(vmin=np.min(df["tsdate_frequency"]), vmax=1)
+            )
+            ax.plot(smoothed_mean["bin_right"].astype(int).values,
+                    constants.GENERATION_TIME * smoothed_mean[method[2][1]].values,
+                    alpha=0.7, marker="P", color="black")
+        fig.text(0.5, 0.01, 'Age of oldest sample with derived allele (years)',
+                 ha='center', size=15)
+        fig.text(0.08, 0.5, 'Estimated age (years)',
+                 va='center', rotation='vertical',
+                 size=15)
 
-        ax0.set_xlabel(
-            "Oldest ancient sample with derived allele (years)",
-        )
-        ax0.set_ylabel("tsdate Inferred Age")
-        ax1.set_xlabel(
-            "Oldest ancient sample with derived allele (years)",
-        )
-        ax1.set_ylabel("Relate Estimated Age")
-        ax2.set_xlabel(
-            "Oldest ancient sample with derived allele (years)",
-        )
-
-        ax2.set_ylabel("GEVA Estimated Age")
-        ax0.set_title(
-            "Ancient Derived Variant Lower Bound \n vs. tsdate upper bound",
-        )
-        ax1.set_title(
-            "Ancient Derived Variant Lower Bound \n vs. relate upper bound",
-        )
-        ax2.set_title(
-            "Ancient Derived Variant Lower Bound \n vs. GEVA upper bound",
-        )
-
-        cm = plt.cm.ScalarMappable(
-            cmap="plasma_r",
-            norm=plt.Normalize(vmin=np.min(df["frequency"]),
-                               vmax=np.max(df["frequency"]) + 0.1),
-        )
-        cbar = plt.colorbar(cm, format="%.1f", cax=ax3)
+        cbar = plt.colorbar(scatter, format="%.3f", cax=ax3, ticks=[0.001, 0.01, 0.1, 0.5, 1])
         cbar.set_alpha(1)
         cbar.draw_all()
         cbar.set_label("Variant Frequency", rotation=270, labelpad=12)
@@ -1153,10 +1153,10 @@ class TgpMutEstsFrequency(Figure):
 
     def plot(self):
         comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_age", "AgeMean_Jnt", "frequency"]
+            ["tsdate_age", "relate_age", "AgeMean_Jnt", "tsdate_frequency"]
         ]
         comparable_mutations = comparable_mutations[comparable_mutations["tsdate_age"] > 0]
-        frequency = comparable_mutations["frequency"]
+        frequency = comparable_mutations["tsdate_frequency"]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True)
         ax[0].hexbin(
@@ -1202,10 +1202,10 @@ class TgpMutationAgeComparisons(Figure):
 
     def plot(self):
         comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_age", "AgeMean_Jnt", "frequency"]
+            ["tsdate_age", "relate_age", "AgeMean_Jnt", "tsdate_frequency"]
         ]
         comparable_mutations = comparable_mutations[comparable_mutations["tsdate_age"] > 0]
-        frequency = comparable_mutations["frequency"]
+        frequency = comparable_mutations["tsdate_frequency"]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
@@ -1653,8 +1653,8 @@ class TsdateChr20Accuracy(Figure):
         axes[0, 0].set_ylim(1, 2e5)
         x0, x1 = axes[0, 0].get_xlim()
         y0, y1 = axes[0, 0].get_ylim()
-        row_labels = ["tsdate", "", "tsinfer + tsdate", "tsinfer with mismatch + tsdate",
-                      "iteration tsinfer + tsdate"]
+        row_labels = ["tsdate", "", "tsinfer + tsdate", "tsinfer with mismatch \n+ tsdate",
+                      "iteration tsinfer \n+ tsdate"]
         for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
             axes[i, j].set_ylabel(name, rotation=90, size=20)
             axes[i, j].yaxis.set_label_position("right")
@@ -1669,7 +1669,7 @@ class TsdateChr20Accuracy(Figure):
                 range(3), ["", "error_", "anc_error_"], [(df, kc_distances),
                     (error_df, error_kc_distances),
                     (anc_error_df, anc_error_kc_distances)]):
-            for row, method, cmap in zip([2, 3, 4], methods, ["Blues", "Greens", "Reds"]):
+            for row, method, cmap in zip([2, 3, 4], methods, ["Blues", "Blues", "Blues"]):
                 method = prefix + method
                 result = mut_df[method]
                 comparable_sites = np.logical_and(sim > 0, result > 0)
