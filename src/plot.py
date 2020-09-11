@@ -890,39 +890,75 @@ class AncientConstraints(Figure):
     filename = ["tgp_muts_constraints"]
     plt_title = "ancient_constraint_1kg"
 
-    def jitter(self, array):
+    def jitter(self, array, log=True):
         max_min = np.max(array) - np.min(array)
-        return np.exp(np.log(array) + np.random.randn(len(array)) * (max_min * 0.0000003))
+        if log:
+            return np.exp(
+                np.log(array) + np.random.randn(len(array)) * (max_min * 0.0000003))
+        else:
+            return array + np.random.randn(len(array))
 
     def plot(self):
         df = self.data[0]
-        fig = plt.figure(figsize=(15, 5))
+        fig = plt.figure(figsize=(15, 5), constrained_layout=False)
         widths = [3, 3, 3, 0.1]
         spec5 = fig.add_gridspec(ncols=4, nrows=1, width_ratios=widths)
-        ax0 = fig.add_subplot(spec5[0])
-        ax0.set_xlim([200, 2e5])
-        ax0.set_ylim([200, 9e6])
-        ax0.set_xscale("log")
-        ax0.set_yscale("log")
-
-        ax1 = fig.add_subplot(spec5[1], sharex=ax0, sharey=ax0)
-        ax2 = fig.add_subplot(spec5[2], sharex=ax0, sharey=ax0)
-        ax3 = fig.add_subplot(spec5[3])
-        df = df.set_index("Ancient Bound").sort_index()
-        df["Ancient Bound Bins"] = pd.cut(df.index, 30)
-        smoothed_mean = df.groupby("Ancient Bound Bins").mean()
+        for a in range(3):
+            inner_spec = spec5[a].subgridspec(ncols=2, nrows=1, wspace=0, hspace=0, width_ratios = [1, 10])
+            if a==0:
+                contemp = fig.add_subplot(inner_spec[0])
+                contemp.set_ylim([200, 9e6])
+                contemp.set_xlim([-5, 5])
+                contemp.set_yscale("log")
+                contemp.set_xscale("linear")
+                contemp.set_xticks([0])
+                contemp.set_xticklabels(["0"])
+                ancient = fig.add_subplot(inner_spec[1], sharey=contemp)
+                ancient.set_xscale("log")
+                ancient.set_xlim([200, 2e5])
+                ancient.spines['left'].set_visible(False)
+                ancient.yaxis.set_visible(False)
+                ax_main = [[contemp, ancient], ]
+            else:
+                ax_main.append([
+                    fig.add_subplot(inner_spec[0], sharey=contemp, sharex=contemp),
+                    fig.add_subplot(inner_spec[1], sharey=contemp, sharex=ancient),
+                ])
+                ax_main[-1][0].set_xticks([0])
+                ax_main[-1][0].set_xticklabels(["0"])
+                ax_main[-1][1].spines['left'].set_visible(False)
+                ax_main[-1][1].yaxis.set_visible(False)
+        ax_scale = fig.add_subplot(spec5[3])
+        ax_scale.set_yscale("linear")
+        
+        df_old = df[df["Ancient Bound"] > 0].set_index("Ancient Bound").sort_index()
+        df_new = df[np.logical_not(df["Ancient Bound"] > 0)]
+        df_old["Ancient Bound Bins"] = pd.cut(df_old.index, 30)
+        smoothed_mean = df_old.groupby("Ancient Bound Bins").mean()
         smoothed_mean["bin_right"] = smoothed_mean.index.map(attrgetter('right'))
         smoothed_mean = smoothed_mean.dropna()
 
         scatter_size = 0.2
-        scatter_alpha = 0.4
+        scatter_alpha = 0.2
         shading_alpha = 0.2
-        for method in [(ax0, "tsdate",  ["tsdate_upper_bound", "tsdate_age"]),
-                       (ax1, "Relate", ["relate_upper_bound", "relate_age"]),
-                       (ax2, "GEVA", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"])]:
-
-            ax = method[0]
-            ax.set_title(method[1])
+        for i, method in enumerate([
+            # Hack the titles with extra spaces to centre properly, as it's too tricky
+            # to centre over a pair or subplots
+            ("tsdate      ",  ["tsdate_upper_bound", "tsdate_age"]),
+            ("Relate      ", ["relate_upper_bound", "relate_age"]),
+            ("GEVA      ", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"]),
+        ]):
+            ax = ax_main[i][0]
+            ax.scatter(
+                self.jitter(np.zeros(len(df_new.index)), log=False),
+                constants.GENERATION_TIME * df_new[method[1][1]],
+                c=df_new["tsdate_frequency"],
+                s=scatter_size,
+                alpha=scatter_alpha/6, cmap="plasma_r",
+                norm=mplc.LogNorm(vmin=np.min(df_new["tsdate_frequency"]), vmax=1)                
+            )
+            ax = ax_main[i][1]
+            ax.set_title(method[0])
             ax.text(0.1, 0.09, 'Ancient Derived Variant Lower Bound', rotation=36.51,
                     transform=ax.transAxes)
             diag = [ax.get_xlim(), ax.get_xlim()]
@@ -933,35 +969,31 @@ class AncientConstraints(Figure):
             ax.text(
                 0.20,
                 0.08,
-                "{0:.2f}% variants' estimated upper bound $>=$ ancient lower bound".format(
-                    100 * np.sum((
-                        constants.GENERATION_TIME * df[method[2][0]]) > df.index)
-                    / df.shape[0]
-                ),
+                "{0:.2f}% variants' estimated upper bound $>=$ ancient lower bound"
+                .format(100 / df_old.shape[0] * np.sum((
+                    constants.GENERATION_TIME * df_old[method[1][0]]) > df_old.index)),
                 fontsize=10,
                 transform=ax.transAxes,
             )
             ax.text(
                 0.20,
                 0.04,
-                "{0:.2f}% variants' estimated age $>=$ ancient lower bound".format(
-                    100 * np.sum((
-                        constants.GENERATION_TIME * df[method[2][1]]) > df.index)
-                    / df.shape[0]
-                ),
+                "{0:.2f}% variants' estimated age $>=$ ancient lower bound"
+                .format(100 / df_old.shape[0] * np.sum((
+                    constants.GENERATION_TIME * df_old[method[1][1]]) > df_old.index)),
                 fontsize=10,
                 transform=ax.transAxes,
             )
             scatter = ax.scatter(
-                self.jitter(df.index),
-                constants.GENERATION_TIME * df[method[2][1]],
-                c=df["tsdate_frequency"],
+                self.jitter(df_old.index),
+                constants.GENERATION_TIME * df_old[method[1][1]],
+                c=df_old["tsdate_frequency"],
                 s=scatter_size,
                 alpha=scatter_alpha, cmap="plasma_r",
-                norm=mplc.LogNorm(vmin=np.min(df["tsdate_frequency"]), vmax=1)
+                norm=mplc.LogNorm(vmin=np.min(df_old["tsdate_frequency"]), vmax=1),
             )
             ax.plot(smoothed_mean["bin_right"].astype(int).values,
-                    constants.GENERATION_TIME * smoothed_mean[method[2][1]].values,
+                    constants.GENERATION_TIME * smoothed_mean[method[1][1]].values,
                     alpha=0.7, marker="P", color="black")
         fig.text(0.5, 0.01, 'Age of oldest sample with derived allele (years)',
                  ha='center', size=15)
@@ -969,7 +1001,8 @@ class AncientConstraints(Figure):
                  va='center', rotation='vertical',
                  size=15)
 
-        cbar = plt.colorbar(scatter, format="%.3f", cax=ax3, ticks=[0.001, 0.01, 0.1, 0.5, 1])
+        cbar = plt.colorbar(
+            scatter, format="%.3f", cax=ax_scale, ticks=[0.001, 0.01, 0.1, 0.5, 1])
         cbar.set_alpha(1)
         cbar.draw_all()
         cbar.set_label("Variant Frequency", rotation=270, labelpad=12)
