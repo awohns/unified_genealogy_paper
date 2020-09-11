@@ -384,31 +384,11 @@ class Figure2Ancients(Figure):
         fig, ax = plt.subplots(
             ncols=3, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
         )
-        #fig, ax = plt.subplots(ncols=1, nrows=2)
         
-        #for row, df in enumerate([msle]):
         df = msle
-        #df = 1 - (df / np.mean(df["tsdate_inferred"]))
         comb_df = pd.concat([msle, msle_ooa, msle_amh])
         sns.boxplot(x=comb_df["tsdate_inferred"], orient="v", ax=ax[0,0], color="silver")
         sns.boxplot(x=comb_df["iter_dated_inferred"], orient="v", ax=ax[0,1], color="silver")
-#            if row == 0:
-#                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
-#            else:
-#                sns.boxplot(x=df["inferred"], orient="v", ax=ax[row, 0])
-#            if row == 0:
-#                sns.lineplot(
-#                    x=df["iter_dated_inferred"],
-#                    orient="v",
-#                    ax=ax[row, 1],
-#                )
-#            else:
-#                sns.boxplot(
-#                    x=df["reinferred"],
-#                    orient="v",
-#                    ax=ax[row, 1],
-#                )
-        #cols = ["tsdate_inferred", "iter_dated_inferred"]
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -423,10 +403,7 @@ class Figure2Ancients(Figure):
             color="grey",
         )
         groupby = df_melt.groupby("variable").mean()
-        ax[0, 2].scatter(groupby.index, groupby["value"])
-        #msle_ooa = 1 - (msle_ooa / np.mean(msle_ooa["tsdate_inferred"]))
-#        sns.boxplot(x=msle_ooa["tsdate_inferred"], orient="v", ax=ax[0,0])
-#        sns.boxplot(x=msle_ooa["iter_dated_inferred"], orient="v", ax=ax[0,1])
+        ax[0, 2].scatter(groupby.index, groupby["value"], s=80, color="black", zorder=3, alpha=0.8)
 
         df_melt = msle_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -435,26 +412,25 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            marker="s",
             ax=ax[0, 2],
             alpha=0.7,
             color="grey"
         )
-        #msle_amh = 1 - (msle_amh / np.mean(msle_amh["tsdate_inferred"]))
+        groupby = df_melt.groupby("variable").mean()
+        ax[0, 2].scatter(groupby.index, groupby["value"], s=80, marker="X", color="black", zorder=3, alpha=0.8)
         df_melt = msle_amh.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
             x="variable",
             y="value",
             data=df_melt,
-            marker="D",
             sort=False,
             ax=ax[0, 2],
             alpha=0.7,
             color="grey"
         )
-        #spearman = (spearman / np.mean(spearman["inferred"]))
-        #cols = ["inferred", "reinferred"]
+        groupby = df_melt.groupby("variable").mean()
+        ax[0, 2].scatter(groupby.index, groupby["value"], s=80, marker="P", color="black", zorder=3, alpha=0.8)
 
         comb_df = pd.concat([spearman, spearman_ooa, spearman_amh])
 
@@ -470,15 +446,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            marker="o",
             ax=ax[1, 2],
             alpha=0.8,
             color="grey"
         )
-        #sns.boxplot(x=spearman_ooa["inferred"], orient="v", ax=ax[1,0])
-        #sns.boxplot(x=spearman_ooa["reinferred"], orient="v", ax=ax[1,1])
-
-        #spearman_ooa = (spearman_ooa / np.mean(spearman_ooa["inferred"]))
+        groupby = df_melt.groupby("variable").mean()
+        ax[1, 2].scatter(groupby.index, groupby["value"], s=80, color="black", zorder=3, alpha=0.8)
         df_melt = spearman_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -486,15 +459,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            marker="s",
             ax=ax[1, 2],
             alpha=0.7,
             color="grey"
         )
-        #sns.boxplot(x=spearman_amh["inferred"], orient="v", ax=ax[1,0])
-        #sns.boxplot(x=spearman_amh["reinferred"], orient="v", ax=ax[1,1])
-#
-#        #spearman_amh = (spearman_amh / np.mean(spearman_amh["inferred"]))
+        groupby = df_melt.groupby("variable").mean()
+        ax[1, 2].scatter(groupby.index, groupby["value"], s=80, marker="X", color="black", zorder=3, alpha=0.8)
         df_melt = spearman_amh.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
         sns.lineplot(
@@ -502,54 +472,12 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
-            marker="D",
             ax=ax[1, 2],
             alpha=0.7,
             color="grey"
         )
-
-        # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
-        #sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
-        # ax[0].set_xlabel("Date \nTree Seq")
-        # ax[0].set_xticklabels(["Date \nTree Sequence"])
-#        print(kc)
-#        kc = kc.loc[0]
-#        print(kc)
-#        sns.boxplot(x=kc["tsdate_inferred"], orient="v", ax=ax[2, 0])
-#        sns.boxplot(x=kc["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-#        df_melt = kc.melt(value_vars=cols)
-#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-#        sns.lineplot(
-#            x="variable",
-#            y="value",
-#            data=df_melt,
-#            sort=False,
-#            ax=ax[2, 2],
-#        )
-#        kc_ooa = kc_ooa.loc[0]
-#        sns.boxplot(x=kc_ooa["tsdate_inferred"], orient="v", ax=ax[2, 0])
-#        sns.boxplot(x=kc_ooa["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-#        df_melt = kc_ooa.melt(value_vars=cols)
-#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-#        sns.lineplot(
-#            x="variable",
-#            y="value",
-#            data=df_melt,
-#            sort=False,
-#            ax=ax[2, 2],
-#        )
-#        kc_amh = kc_amh.loc[0]
-#        sns.boxplot(x=kc_amh["tsdate_inferred"], orient="v", ax=ax[2, 0])
-#        sns.boxplot(x=kc_amh["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-#        df_melt = kc_amh.melt(value_vars=cols)
-#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-#        sns.lineplot(
-#            x="variable",
-#            y="value",
-#            data=df_melt,
-#            sort=False,
-#            ax=ax[2, 2],
-#        )
+        groupby = df_melt.groupby("variable").mean()
+        ax[1, 2].scatter(groupby.index, groupby["value"], s=80, marker="P", color="black", zorder=3, alpha=0.8)
 
         ax[0, 1].set_ylabel("")
         ax[0, 0].set_ylabel("Mean Squared Log Error")
@@ -561,12 +489,9 @@ class Figure2Ancients(Figure):
         ax[1, 2].set_xlabel("Ancient Sample Size")
         ax[1, 1].tick_params(left="off")
         ax[1, 2].tick_params(left="off")
-
-        #ax[0, 3].tick_params(left="off")
         ax[0, 0].set_title("i")
         ax[0, 1].set_title("ii")
         ax[0, 2].set_title("iii")
-        #ax[0, 3].set_title("iv")
 
         #plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
