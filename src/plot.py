@@ -377,31 +377,21 @@ class Figure2Ancients(Figure):
         #muts = self.data[0]
         #muts_amh = self.data[2]
         #spearman = self.data[1]
-        widths = [0.5, 0.5, 3, 0.5]
-        heights = [3, 3, 3]
+        widths = [0.5, 0.5, 3]
+        heights = [3, 3]
         gs_kw = dict(width_ratios=widths, height_ratios=heights)
         gs_kw.update(wspace=0.03)
         fig, ax = plt.subplots(
-            ncols=4, nrows=3, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+            ncols=3, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
         )
         #fig, ax = plt.subplots(ncols=1, nrows=2)
-        #ax[0, 1].set_ylabel("")
-        #ax[0, 0].set_ylabel("Mean Squared Log Error")
-        #ax[0, 2].set_xlabel("Ancient Sample Size")
-        #ax[0, 3].set_ylabel("")
-        #ax[0, 1].tick_params(left="off")
-        #ax[0, 2].tick_params(left="off")
-        #ax[0, 3].tick_params(left="off")
-        #ax[0, 0].set_title("i")
-        #ax[0, 1].set_title("ii")
-        #ax[0, 2].set_title("iii")
-        #ax[0, 3].set_title("iv")
-
+        
         #for row, df in enumerate([msle]):
         df = msle
         #df = 1 - (df / np.mean(df["tsdate_inferred"]))
-        sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[0,0])
-        sns.boxplot(x=df["iter_dated_inferred"], orient="v", ax=ax[0,1])
+        comb_df = pd.concat([msle, msle_ooa, msle_amh])
+        sns.boxplot(x=comb_df["tsdate_inferred"], orient="v", ax=ax[0,0], color="silver")
+        sns.boxplot(x=comb_df["iter_dated_inferred"], orient="v", ax=ax[0,1], color="silver")
 #            if row == 0:
 #                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
 #            else:
@@ -422,16 +412,21 @@ class Figure2Ancients(Figure):
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+
         sns.lineplot(
             x="variable",
             y="value",
             data=df_melt,
             sort=False,
             ax=ax[0,2],
+            alpha=0.8,
+            color="grey",
         )
+        groupby = df_melt.groupby("variable").mean()
+        ax[0, 2].scatter(groupby.index, groupby["value"])
         #msle_ooa = 1 - (msle_ooa / np.mean(msle_ooa["tsdate_inferred"]))
-        sns.boxplot(x=msle_ooa["tsdate_inferred"], orient="v", ax=ax[0,0])
-        sns.boxplot(x=msle_ooa["iter_dated_inferred"], orient="v", ax=ax[0,1])
+#        sns.boxplot(x=msle_ooa["tsdate_inferred"], orient="v", ax=ax[0,0])
+#        sns.boxplot(x=msle_ooa["iter_dated_inferred"], orient="v", ax=ax[0,1])
 
         df_melt = msle_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -440,7 +435,10 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
+            marker="s",
             ax=ax[0, 2],
+            alpha=0.7,
+            color="grey"
         )
         #msle_amh = 1 - (msle_amh / np.mean(msle_amh["tsdate_inferred"]))
         df_melt = msle_amh.melt(value_vars=cols)
@@ -449,15 +447,19 @@ class Figure2Ancients(Figure):
             x="variable",
             y="value",
             data=df_melt,
+            marker="D",
             sort=False,
             ax=ax[0, 2],
+            alpha=0.7,
+            color="grey"
         )
         #spearman = (spearman / np.mean(spearman["inferred"]))
         #cols = ["inferred", "reinferred"]
 
+        comb_df = pd.concat([spearman, spearman_ooa, spearman_amh])
 
-        sns.boxplot(x=spearman["inferred"], orient="v", ax=ax[1,0])
-        sns.boxplot(x=spearman["reinferred"], orient="v", ax=ax[1,1])
+        sns.boxplot(x=comb_df["inferred"], orient="v", ax=ax[1,0], color="silver")
+        sns.boxplot(x=comb_df["reinferred"], orient="v", ax=ax[1,1], color="silver")
 
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
 
@@ -468,10 +470,13 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
+            marker="o",
             ax=ax[1, 2],
+            alpha=0.8,
+            color="grey"
         )
-        sns.boxplot(x=spearman_ooa["inferred"], orient="v", ax=ax[1,0])
-        sns.boxplot(x=spearman_ooa["reinferred"], orient="v", ax=ax[1,1])
+        #sns.boxplot(x=spearman_ooa["inferred"], orient="v", ax=ax[1,0])
+        #sns.boxplot(x=spearman_ooa["reinferred"], orient="v", ax=ax[1,1])
 
         #spearman_ooa = (spearman_ooa / np.mean(spearman_ooa["inferred"]))
         df_melt = spearman_ooa.melt(value_vars=cols)
@@ -481,10 +486,13 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
+            marker="s",
             ax=ax[1, 2],
+            alpha=0.7,
+            color="grey"
         )
-        sns.boxplot(x=spearman_amh["inferred"], orient="v", ax=ax[1,0])
-        sns.boxplot(x=spearman_amh["reinferred"], orient="v", ax=ax[1,1])
+        #sns.boxplot(x=spearman_amh["inferred"], orient="v", ax=ax[1,0])
+        #sns.boxplot(x=spearman_amh["reinferred"], orient="v", ax=ax[1,1])
 #
 #        #spearman_amh = (spearman_amh / np.mean(spearman_amh["inferred"]))
         df_melt = spearman_amh.melt(value_vars=cols)
@@ -494,54 +502,73 @@ class Figure2Ancients(Figure):
             y="value",
             data=df_melt,
             sort=False,
+            marker="D",
             ax=ax[1, 2],
+            alpha=0.7,
+            color="grey"
         )
 
         # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
         #sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
         # ax[0].set_xlabel("Date \nTree Seq")
         # ax[0].set_xticklabels(["Date \nTree Sequence"])
-        print(kc)
-        kc = kc.loc[0]
-        print(kc)
-        sns.boxplot(x=kc["tsdate_inferred"], orient="v", ax=ax[2, 0])
-        sns.boxplot(x=kc["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-        df_melt = kc.melt(value_vars=cols)
-        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-        sns.lineplot(
-            x="variable",
-            y="value",
-            data=df_melt,
-            sort=False,
-            ax=ax[2, 2],
-        )
-        kc_ooa = kc_ooa.loc[0]
-        sns.boxplot(x=kc_ooa["tsdate_inferred"], orient="v", ax=ax[2, 0])
-        sns.boxplot(x=kc_ooa["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-        df_melt = kc_ooa.melt(value_vars=cols)
-        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-        sns.lineplot(
-            x="variable",
-            y="value",
-            data=df_melt,
-            sort=False,
-            ax=ax[2, 2],
-        )
-        kc_amh = kc_amh.loc[0]
-        sns.boxplot(x=kc_amh["tsdate_inferred"], orient="v", ax=ax[2, 0])
-        sns.boxplot(x=kc_amh["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
-        df_melt = kc_amh.melt(value_vars=cols)
-        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-        sns.lineplot(
-            x="variable",
-            y="value",
-            data=df_melt,
-            sort=False,
-            ax=ax[2, 2],
-        )
+#        print(kc)
+#        kc = kc.loc[0]
+#        print(kc)
+#        sns.boxplot(x=kc["tsdate_inferred"], orient="v", ax=ax[2, 0])
+#        sns.boxplot(x=kc["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+#        df_melt = kc.melt(value_vars=cols)
+#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+#        sns.lineplot(
+#            x="variable",
+#            y="value",
+#            data=df_melt,
+#            sort=False,
+#            ax=ax[2, 2],
+#        )
+#        kc_ooa = kc_ooa.loc[0]
+#        sns.boxplot(x=kc_ooa["tsdate_inferred"], orient="v", ax=ax[2, 0])
+#        sns.boxplot(x=kc_ooa["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+#        df_melt = kc_ooa.melt(value_vars=cols)
+#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+#        sns.lineplot(
+#            x="variable",
+#            y="value",
+#            data=df_melt,
+#            sort=False,
+#            ax=ax[2, 2],
+#        )
+#        kc_amh = kc_amh.loc[0]
+#        sns.boxplot(x=kc_amh["tsdate_inferred"], orient="v", ax=ax[2, 0])
+#        sns.boxplot(x=kc_amh["iter_tsdate_inferred"], orient="v", ax=ax[2, 1])
+#        df_melt = kc_amh.melt(value_vars=cols)
+#        df_melt["variable"] = df_melt["variable"].str.split().str[-1]
+#        sns.lineplot(
+#            x="variable",
+#            y="value",
+#            data=df_melt,
+#            sort=False,
+#            ax=ax[2, 2],
+#        )
 
+        ax[0, 1].set_ylabel("")
+        ax[0, 0].set_ylabel("Mean Squared Log Error")
+        ax[0, 2].set_xlabel("")
+        ax[0, 1].tick_params(left="off")
+        ax[0, 2].tick_params(labelbottom=False)
+        ax[1, 1].set_ylabel("")
+        ax[1, 0].set_ylabel("Spearman's $\\rho$")
+        ax[1, 2].set_xlabel("Ancient Sample Size")
+        ax[1, 1].tick_params(left="off")
+        ax[1, 2].tick_params(left="off")
 
-        plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
+        #ax[0, 3].tick_params(left="off")
+        ax[0, 0].set_title("i")
+        ax[0, 1].set_title("ii")
+        ax[0, 2].set_title("iii")
+        #ax[0, 3].set_title("iv")
+
+        #plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
 
 
@@ -906,7 +933,7 @@ class AncientConstraints(Figure):
             ax.text(
                 0.20,
                 0.08,
-                "{0:.2f}% variants' estimated upper bound >= ancient lower bound".format(
+                "{0:.2f}% variants' estimated upper bound $>=$ ancient lower bound".format(
                     100 * np.sum((
                         constants.GENERATION_TIME * df[method[2][0]]) > df.index)
                     / df.shape[0]
@@ -917,7 +944,7 @@ class AncientConstraints(Figure):
             ax.text(
                 0.20,
                 0.04,
-                "{0:.2f}% variants' estimated age >= ancient lower bound".format(
+                "{0:.2f}% variants' estimated age $>=$ ancient lower bound".format(
                     100 * np.sum((
                         constants.GENERATION_TIME * df[method[2][1]]) > df.index)
                     / df.shape[0]
@@ -1982,6 +2009,364 @@ class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         f.text(0.5, 0.05, 'True Time', ha='center', size=25)
         f.text(0.08, 0.5, 'Estimated Time', va='center',
                rotation='vertical', size=25)
+
+        self.save(self.name)
+
+class TmrcaClustermap(Figure):
+    """
+    """
+
+    name = "tmrca_clustermap"
+    data_path = "all-data"
+    filename = ["merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"]
+    sgdp_region_map = {
+                    "Abkhasian": "West Eurasia",
+                    "Adygei": "West Eurasia",
+                    "Albanian": "West Eurasia",
+                    "Aleut": "Central Asia Siberia",
+                    "Altaian": "Central Asia Siberia",
+                    "Ami": "East Asia",
+                    "Armenian": "West Eurasia",
+                    "Atayal": "East Asia",
+                    "Australian": "Oceania",
+                    "Balochi": "South Asia",
+                    "BantuHerero": "Africa",
+                    "BantuKenya": "Africa",
+                    "BantuTswana": "Africa",
+                    "Basque": "West Eurasia",
+                    "BedouinB": "West Eurasia",
+                    "Bengali": "South Asia",
+                    "Bergamo": "West Eurasia",
+                    "Biaka": "Africa",
+                    "Bougainville": "Oceania",
+                    "Brahmin": "South Asia",
+                    "Brahui": "South Asia",
+                    "Bulgarian": "West Eurasia",
+                    "Burmese": "East Asia",
+                    "Burusho": "South Asia",
+                    "Cambodian": "East Asia",
+                    "Chane": "Americas",
+                    "Chechen": "West Eurasia",
+                    "Chipewyan": "Americas",
+                    "Chukchi": "Central Asia Siberia",
+                    "Cree": "Americas",
+                    "Crete": "West Eurasia",
+                    "Czech": "West Eurasia",
+                    "Dai": "East Asia",
+                    "Daur": "East Asia",
+                    "Dinka": "Africa",
+                    "Druze": "West Eurasia",
+                    "Dusun": "Oceania",
+                    "English": "West Eurasia",
+                    "Esan": "Africa",
+                    "Eskimo_Chaplin": "Central Asia Siberia",
+                    "Eskimo_Naukan": "Central Asia Siberia",
+                    "Eskimo_Sireniki": "Central Asia Siberia",
+                    "Estonian": "West Eurasia",
+                    "Even": "Central Asia Siberia",
+                    "Finnish": "West Eurasia",
+                    "French": "West Eurasia",
+                    "Gambian": "Africa",
+                    "Georgian": "West Eurasia",
+                    "Greek": "West Eurasia",
+                    "Han": "East Asia",
+                    "Hawaiian": "Oceania",
+                    "Hazara": "South Asia",
+                    "Hezhen": "East Asia",
+                    "Hungarian": "West Eurasia",
+                    "Icelandic": "West Eurasia",
+                    "Igbo": "Africa",
+                    "Igorot": "Oceania",
+                    "Iranian": "West Eurasia",
+                    "Iraqi_Jew": "West Eurasia",
+                    "Irula": "South Asia",
+                    "Itelman": "Central Asia Siberia",
+                    "Japanese": "East Asia",
+                    "Jordanian": "West Eurasia",
+                    "Ju_hoan_North": "Africa",
+                    "Kalash": "South Asia",
+                    "Kapu": "South Asia",
+                    "Karitiana": "Americas",
+                    "Kashmiri_Pandit": "South Asia",
+                    "Kharia": "South Asia",
+                    "Khomani_San": "Africa",
+                    "Khonda_Dora": "South Asia",
+                    "Kinh": "East Asia",
+                    "Kongo": "Africa",
+                    "Korean": "East Asia",
+                    "Kurumba": "South Asia",
+                    "Kusunda": "South Asia",
+                    "Kyrgyz": "Central Asia Siberia",
+                    "Lahu": "East Asia",
+                    "Lemande": "Africa",
+                    "Lezgin": "West Eurasia",
+                    "Luhya": "Africa",
+                    "Luo": "Africa",
+                    "Madiga": "South Asia",
+                    "Makrani": "South Asia",
+                    "Mala": "South Asia",
+                    "Mandenka": "Africa",
+                    "Mansi": "Central Asia Siberia",
+                    "Maori": "Oceania",
+                    "Masai": "Africa",
+                    "Mayan": "Americas",
+                    "Mbuti": "Africa",
+                    "Mende": "Africa",
+                    "Miao": "East Asia",
+                    "Mixe": "Americas",
+                    "Mixtec": "Americas",
+                    "Mongola": "Central Asia Siberia",
+                    "Mozabite": "Africa",
+                    "Nahua": "Americas",
+                    "Naxi": "East Asia",
+                    "North_Ossetian": "West Eurasia",
+                    "Norwegian": "West Eurasia",
+                    "Onge": "South Asia",
+                    "Orcadian": "West Eurasia",
+                    "Oroqen": "East Asia",
+                    "Palestinian": "West Eurasia",
+                    "Papuan": "Oceania",
+                    "Pathan": "South Asia",
+                    "Piapoco": "Americas",
+                    "Pima": "Americas",
+                    "Polish": "West Eurasia",
+                    "Punjabi": "South Asia",
+                    "Quechua": "Americas",
+                    "Relli": "South Asia",
+                    "Russian": "West Eurasia",
+                    "Saami": "West Eurasia",
+                    "Saharawi": "Africa",
+                    "Samaritan": "West Eurasia",
+                    "Sardinian": "West Eurasia",
+                    "She": "East Asia",
+                    "Sherpa": "South Asia",
+                    "Sindhi": "South Asia",
+                    "Somali": "Africa",
+                    "Spanish": "West Eurasia",
+                    "Surui": "Americas",
+                    "Tajik": "West Eurasia",
+                    "Thai": "East Asia",
+                    "Tibetan": "South Asia",
+                    "Tlingit": "Central Asia Siberia",
+                    "Tubalar": "Central Asia Siberia",
+                    "Tu": "East Asia",
+                    "Tujia": "East Asia",
+                    "Turkish": "West Eurasia",
+                    "Tuscan": "West Eurasia",
+                    "Ulchi": "Central Asia Siberia",
+                    "Uygur": "East Asia",
+                    "Xibo": "East Asia",
+                    "Yadava": "South Asia",
+                    "Yakut": "Central Asia Siberia",
+                    "Yemenite_Jew": "West Eurasia",
+                    "Yi": "East Asia",
+                    "Yoruba": "Africa",
+                    "Zapotec": "Americas",
+                }
+    hgdp_region_map = {
+                    "Brahui": "Central South Asia",
+                    "Balochi": "Central South Asia",
+                    "Hazara": "Central South Asia",
+                    "Makrani": "Central South Asia",
+                    "Sindhi": "Central South Asia",
+                    "Pathan": "Central South Asia",
+                    "Kalash": "Central South Asia",
+                    "Burusho": "Central South Asia",
+                    "Mbuti": "Africa",
+                    "Biaka": "Africa",
+                    "Bougainville": "Oceania",
+                    "French": "Europe",
+                    "PapuanSepik": "Oceania",
+                    "PapuanHighlands": "Oceania",
+                    "Druze": "Middle East",
+                    "Bedouin": "Middle East",
+                    "Sardinian": "Europe",
+                    "Palestinian": "Middle East",
+                    "Colombian": "Americas",
+                    "Cambodian": "East Asia",
+                    "Japanese": "East Asia",
+                    "Han": "East Asia",
+                    "Orcadian": "Europe",
+                    "Surui": "Americas",
+                    "Maya": "Americas",
+                    "Russian": "Europe",
+                    "Mandenka": "Africa",
+                    "Yoruba": "Africa",
+                    "Yakut": "East Asia",
+                    "San": "Africa",
+                    "BantuSouthAfrica": "Africa",
+                    "Karitiana": "Americas",
+                    "Pima": "Americas",
+                    "Tujia": "East Asia",
+                    "BergamoItalian": "Europe",
+                    "Tuscan": "Europe",
+                    "Yi": "East Asia",
+                    "Miao": "East Asia",
+                    "Oroqen": "East Asia",
+                    "Daur": "East Asia",
+                    "Mongolian": "East Asia",
+                    "Hezhen": "East Asia",
+                    "Xibo": "East Asia",
+                    "Mozabite": "Middle East",
+                    "NorthernHan": "East Asia",
+                    "Uygur": "Central South Asia",
+                    "Dai": "East Asia",
+                    "Lahu": "East Asia",
+                    "She": "East Asia",
+                    "Naxi": "East Asia",
+                    "Tu": "East Asia",
+                    "Basque": "Europe",
+                    "Adygei": "Europe",
+                    "BantuKenya": "Africa",
+                }
+
+
+    tgp_region_pop = {
+        'Americas': ['CLM', 'MXL', 'PUR', 'PEL'],
+        'Africa': ['LWK', 'ASW', 'GWD', 'MSL', 'YRI', 'ACB', 'ESN'],
+        'East Asia': ['CHS', 'KHV', 'JPT', 'CHB', 'CDX'],
+        'South Asia': ['BEB', 'STU', 'GIH', 'PJL', 'ITU'],
+        'Europe': ['FIN', 'GBR', 'IBS', 'CEU', 'TSI']
+    }
+
+    def get_tgp_region_colours(self):
+        return {
+            "EAS": sns.color_palette("Greens", 2)[1],
+            "EUR": sns.color_palette("Blues", 1)[0],
+            "AFR": sns.color_palette("Wistia", 3)[0],
+            "AMR": sns.color_palette("Reds", 2)[1],
+            "SAS": sns.color_palette("Purples", 2)[1],
+        }
+
+    def get_sgdp_region_colours(self):
+        cols = self.get_tgp_region_colours()
+        return {
+            'Africa': cols["AFR"],
+            'America': cols["AMR"],
+            'EastAsia': cols["EAS"],
+            'SouthAsia': cols["SAS"],
+            'Oceania': "brown",
+            'WestEurasia': cols["EUR"],
+            'CentralAsiaSiberia': "pink"
+         }
+
+    def get_hgdp_region_colours(self):
+        cols = self.get_tgp_region_colours()
+        return {
+            'AFRICA': cols["AFR"],
+            'AMERICA': cols["AMR"],
+            'EAST_ASIA': cols["EAS"],
+            'CENTRAL_SOUTH_ASIA': cols["SAS"],
+            'OCEANIA': "brown",
+            'EUROPE': cols["EUR"],
+            'MIDDLE_EAST': "teal"
+         }
+
+    def get_tgp_hgdp_sgdp_region_colours(self):
+        dict_combined = dict(self.get_hgdp_region_colours(), **self.get_tgp_region_colours(), **self.get_sgdp_region_colours())
+        return dict_combined
+
+    def make_symmetric(self, df):
+        """
+        Make TMRCA dataframe symmetric
+        """
+        df_arr = df.values
+        i_upper = np.tril_indices(df.shape[0], 0)
+        df_arr[i_upper] = df_arr.T[i_upper]
+        return df 
+
+    def plot(self):
+        df = self.data[0]
+        df = df.set_index(df.columns[0])
+        tmrcas = self.make_symmetric(df)
+        tgp_region_map = {}
+        for region, pop in self.tgp_region_pop.items():
+            for p in pop:
+                tgp_region_map[p] = region
+
+        pop_names = tmrcas.columns
+        pop_names = [pop.split(".")[0] for pop in pop_names]
+        regions = list()
+        pop_name_suffixes = list()
+        for pop in pop_names[0:54]:
+            pop_name_suffixes.append(pop + "_HGDP")
+            regions.append(self.hgdp_region_map[pop])
+        for pop in pop_names[54:80]:
+            pop_name_suffixes.append(pop + "_TGP")
+            regions.append(tgp_region_map[pop])
+        for pop in pop_names[80:210]:
+            pop_name_suffixes.append(pop + "_SGDP")
+            regions.append(self.sgdp_region_map[pop])
+        for pop in pop_names[210:]:
+            pop_name_suffixes.append(pop)
+            regions.append("Ancients")
+        pop_names = pop_name_suffixes
+        tmrcas.columns=pop_names
+        tmrcas["region"] = regions
+        tgp_origin = {pop: "white" for pop in tmrcas.columns}
+        sgdp_origin = {pop: "white" for pop in tmrcas.columns}
+        hgdp_origin = {pop: "white" for pop in tmrcas.columns}
+        ancient_origin = {pop: "white" for pop in tmrcas.columns}
+        for pop in tmrcas.columns:
+            if "TGP" in pop:
+                tgp_origin[pop] = "black"
+            elif "SGDP" in pop:
+                sgdp_origin[pop] = "black"
+            elif "HGDP" in pop:
+                hgdp_origin[pop] = "black"
+            else:
+                ancient_origin[pop] = "black"
+
+        colours = {}
+        region_colours = self.get_tgp_hgdp_sgdp_region_colours()
+        region_colours["Ancients"] = "orange"
+
+        new_names = ["Africa", "Americas", "East Asia", "Central South Asia", "Oceania", "Europe", "Middle East", "East Asia",
+        "Europe", "Africa", "Americas", "South Asia", "Africa", "Americas", "East Asia", "South Asia", "Oceania", "West Eurasia",
+        "Central Asia Siberia", "Ancients"]
+        new_region_colours = {}
+        for new_name, (key, val) in zip(new_names, region_colours.items()):
+            new_region_colours[new_name] = val
+        for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
+            colours[pop_suffix] = new_region_colours[region]
+
+
+        tmrcas = tmrcas.drop(columns="region")
+        tmrcas.index = tmrcas.columns
+        mergedg = tmrcas
+
+        colours = pd.Series(colours)
+        colours.name = "Region"
+        tgp_origin = pd.Series(tgp_origin)
+        tgp_origin.name = "TGP"
+        hgdp_origin = pd.Series(hgdp_origin)
+        hgdp_origin.name = "HGDP"
+        sgdp_origin = pd.Series(sgdp_origin)
+        sgdp_origin.name = "SGDP"
+        ancient_origin = pd.Series(ancient_origin)
+        ancient_origin.name = "Ancient"
+        col_colors = pd.concat([tgp_origin, hgdp_origin, sgdp_origin, ancient_origin], axis=1)
+        cg = sns.clustermap(mergedg, method="average", xticklabels=True, yticklabels=True, figsize=(30,30), rasterized=True,
+                            row_colors=colours, col_colors= col_colors ,cbar_pos=(0.55, 0.77, 0.4, 0.07),cmap=plt.cm.inferno_r,
+                            cbar_kws = dict(orientation="horizontal",
+                                            label="Average TMRCA (generations)"))
+        cg.cax.tick_params(labelsize=20)
+        cg.cax.set_xlabel("Average TMRCA (generations)", size=20)
+
+        cg.ax_heatmap.set_xticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+        cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+
+        for region, col in new_region_colours.items():
+            cg.ax_col_dendrogram.bar(0, 0, color=col, label=region, linewidth=0)
+
+        cg.ax_col_dendrogram.set_xlim([0,0])
+        pos = cg.ax_col_colors.get_position()
+        cg.ax_col_colors.set_position([pos.bounds[0], pos.bounds[1], pos.bounds[2], pos.bounds[3]/4])
+
+        handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
+
+        cg.ax_col_dendrogram.legend(handles, labels, loc="upper left", ncol=3, fontsize=20, frameon=True,
+                                   bbox_to_anchor=(-0.1, 0.2), title="Region", title_fontsize=25)
 
         self.save(self.name)
 
