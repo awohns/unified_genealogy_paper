@@ -33,28 +33,28 @@ import tsdate
 data_prefix = "all-data"
 
 def get_relate_tgp_age_df():
-    if path.exists("all-data/1kg_chr20_relate_mutation_ages_geometric.csv"):
-        relate_ages = pd.read_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv", index_col=0)
-    else:
-        relate_ts = tskit.load("/home/jk/large_files/relate/relate_chr20_metdata.trees")
-        relate_mut_ages, relate_mut_upper_bound, mut_ids = get_mut_ages(relate_ts,
-                unconstrained=False)
-        relate_frequencies = get_site_frequencies(relate_ts)
-        relate_ages = pd.DataFrame(
-            {
-                "position": relate_ts.tables.sites.position[
-                    relate_ts.tables.mutations.site
-                ][mut_ids],
-                "relate_age": relate_mut_ages,
-                "relate_upper_bound": relate_mut_upper_bound,
-                "relate_ancestral_allele": np.array(tskit.unpack_strings(relate_ts.tables.sites.ancestral_state,
-                    relate_ts.tables.sites.ancestral_state_offset))[relate_ts.tables.mutations.site][mut_ids],
-                "relate_derived_allele": np.array(tskit.unpack_strings(relate_ts.tables.mutations.derived_state,
-                    relate_ts.tables.mutations.derived_state_offset))[mut_ids],
-                "relate_frequency": relate_frequencies
-            }
-        )
-        relate_ages.to_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv")
+#    if path.exists("all-data/1kg_chr20_relate_mutation_ages_geometric.csv"):
+#        relate_ages = pd.read_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv", index_col=0)
+#    else:
+    relate_ts = tskit.load("/home/jk/large_files/relate/relate_chr20_metdata.trees")
+    relate_mut_ages, relate_mut_upper_bound, mut_ids = get_mut_ages(relate_ts,
+            unconstrained=False, geometric=False)
+    relate_frequencies = get_site_frequencies(relate_ts)
+    relate_ages = pd.DataFrame(
+        {
+            "position": relate_ts.tables.sites.position[
+                relate_ts.tables.mutations.site
+            ][mut_ids],
+            "relate_age": relate_mut_ages,
+            "relate_upper_bound": relate_mut_upper_bound,
+            "relate_ancestral_allele": np.array(tskit.unpack_strings(relate_ts.tables.sites.ancestral_state,
+                relate_ts.tables.sites.ancestral_state_offset))[relate_ts.tables.mutations.site][mut_ids],
+            "relate_derived_allele": np.array(tskit.unpack_strings(relate_ts.tables.mutations.derived_state,
+                relate_ts.tables.mutations.derived_state_offset))[mut_ids],
+            "relate_frequency": relate_frequencies
+        }
+    )
+    relate_ages.to_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv")
     return relate_ages
 
 def get_geva_tgp_age_df():
@@ -132,7 +132,7 @@ def get_site_frequencies(ts):
         site_freq[var.site.id] = np.sum(var.genotypes) / ts.num_samples
     return site_freq 
 
-def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False):
+def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=True):
     mut_ages = np.zeros(ts.num_sites)
     mut_upper_bounds = np.zeros(ts.num_sites)
     node_ages = ts.tables.nodes.time
@@ -153,7 +153,10 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False):
         for site in tree.sites():
             for mut in site.mutations:
                 parent_age = node_ages[tree.parent(mut.node)]
-                age = np.sqrt(node_ages[mut.node] * parent_age)
+                if geometric:
+                    age = np.sqrt(node_ages[mut.node] * parent_age)
+                else:
+                    age = (node_ages[mut.node] + parent_age) / 2
                 if mut_ages[site.id] < age:
                     mut_upper_bounds[site.id] = parent_age
                     mut_ages[site.id] = age
@@ -197,7 +200,7 @@ def get_ancient_constraints_tgp():
     except:
         raise ValueError("tgp_mutations.csv does not exist. Must run tgp_dates first")
     tgp_muts_constraints = pd.merge(
-        tgp_mut_ests, constraint_df,
+        tgp_mut_ests, constraint_df, how="left",
         left_on=["Position", "tsdate_ancestral_allele", "tsdate_derived_allele"],
         right_on=["Position", "Reference Allele", "Alternative Allele"])
     tgp_muts_constraints.to_csv("all-data/tgp_muts_constraints.csv")
@@ -244,19 +247,22 @@ def get_mutations_by_sample():
 
 
 def get_tgp_recurrent_mutations():
-    filename = os.path.join(data_prefix, "1kg_chr20_ma0.1_ms0.01_p13.simplify.trees")
+    #filename = os.path.join(data_prefix, "1kg_chr20_ma0.1_ms0.01_p13.simplify.trees")
+    filename = os.path.join(
+            data_prefix,
+            "1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.simplified.dated.insideoutside.trees")
 
     ts = tskit.load(filename)
     recurrent_counts, recurrent_counts_nosamples, sites_by_muts_nodouble, recurrent_counts_two_muts = get_recurrent_mutations(ts)
     df = pd.DataFrame(recurrent_counts, columns=["recurrent_counts"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts.csv")
+    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts.csv")
     df = pd.DataFrame(recurrent_counts_nosamples, columns=["recurrent_counts_nosamples"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nosamples.csv")
+    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples.csv")
     df = pd.DataFrame(sites_by_muts_nodouble, columns=["recurrent_counts_nodouble"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nodouble.csv")
+    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nodouble.csv")
 
     df = pd.DataFrame(recurrent_counts_two_muts, columns=["recurrent_counts_two_muts"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nosamples_two_muts.csv")
+    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples_two_muts.csv")
 
 def get_hgdp_recurrent_mutations():
     filename = os.path.join(data_prefix, "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.trees")

@@ -385,10 +385,17 @@ class Figure2Ancients(Figure):
             ncols=3, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
         )
         
+        msle = msle.apply(np.sqrt)
+        msle_ooa = msle_ooa.apply(np.sqrt)
+        msle_amh = msle_amh.apply(np.sqrt)
         df = msle
         comb_df = pd.concat([msle, msle_ooa, msle_amh])
         sns.boxplot(x=comb_df["tsdate_inferred"], orient="v", ax=ax[0,0], color="silver")
         sns.boxplot(x=comb_df["iter_dated_inferred"], orient="v", ax=ax[0,1], color="silver")
+        plt.setp(ax[0, 0].artists, edgecolor = 'k', facecolor='silver')
+        plt.setp(ax[0, 1].artists, edgecolor = 'k', facecolor='silver')
+        plt.setp(ax[0, 0].lines, color='k')
+        plt.setp(ax[0, 1].lines, color='k')
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -436,6 +443,10 @@ class Figure2Ancients(Figure):
 
         sns.boxplot(x=comb_df["inferred"], orient="v", ax=ax[1,0], color="silver")
         sns.boxplot(x=comb_df["reinferred"], orient="v", ax=ax[1,1], color="silver")
+        plt.setp(ax[1, 0].artists, edgecolor = 'k', facecolor='silver')
+        plt.setp(ax[1, 1].artists, edgecolor = 'k', facecolor='silver')
+        plt.setp(ax[1, 0].lines, color='k')
+        plt.setp(ax[1, 1].lines, color='k')
 
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
 
@@ -480,7 +491,7 @@ class Figure2Ancients(Figure):
         ax[1, 2].scatter(groupby.index, groupby["value"], s=80, marker="P", color="black", zorder=3, alpha=0.8)
 
         ax[0, 1].set_ylabel("")
-        ax[0, 0].set_ylabel("Mean Squared Log Error")
+        ax[0, 0].set_ylabel("Root Mean Squared Log Error")
         ax[0, 2].set_xlabel("")
         ax[0, 1].tick_params(left="off")
         ax[0, 2].tick_params(labelbottom=False)
@@ -884,7 +895,7 @@ class AncientConstraints(Figure):
             )
             ax = ax_main[i][1]
             ax.set_title(method[0])
-            ax.text(0.1, 0.09, 'Ancient Derived Variant Lower Bound', rotation=36.51,
+            ax.text(0.1, 0.09, 'Ancient Derived Variant Lower Bound', rotation=39.6,
                     transform=ax.transAxes)
             diag = [ax.get_xlim(), ax.get_xlim()]
             upper_lim = ax.get_ylim()
@@ -892,21 +903,21 @@ class AncientConstraints(Figure):
             ax.fill_between(diag[0], diag[1], (diag[1][0], diag[1][0]), color="grey",
                              alpha=shading_alpha)
             ax.text(
-                0.20,
-                0.08,
-                "{0:.2f}% variants' estimated upper bound $>=$ ancient lower bound"
+                0.16,
+                0.06,
+                "{0:.2f}% est. upper bound $>=$ lower bound"
                 .format(100 / df_old.shape[0] * np.sum((
                     constants.GENERATION_TIME * df_old[method[1][0]]) > df_old.index)),
-                fontsize=10,
+                fontsize=8,
                 transform=ax.transAxes,
             )
             ax.text(
-                0.20,
-                0.04,
-                "{0:.2f}% variants' estimated age $>=$ ancient lower bound"
+                0.16,
+                0.02,
+                "{0:.2f}% est. age $>=$ lower bound"
                 .format(100 / df_old.shape[0] * np.sum((
                     constants.GENERATION_TIME * df_old[method[1][1]]) > df_old.index)),
-                fontsize=10,
+                fontsize=8,
                 transform=ax.transAxes,
             )
             scatter = ax.scatter(
@@ -982,16 +993,16 @@ class ScalingFigure(Figure):
         elif length and xlabel:
             ax.set_xlabel("Length (Kb)", fontsize=12)
         ax.plot(
-            index, means_arr[0], label="tsdate", color=constants.colors["tsdate"]
+            index, means_arr[0], '-.', label="tsdate", color=constants.colors["tsdate"]
         )
         ax.plot(
-            index, means_arr[1], label="tsinfer", color=constants.colors["tsinfer"]
+            index, means_arr[1], "--", label="tsinfer", color=constants.colors["tsdate"], 
         )
         ax.plot(
             index,
             means_arr[0] + means_arr[1],
             label="tsinfer +\n tsdate",
-            color=constants.colors["tsinfer + tsdate"],
+            color=constants.colors["tsdate"],
         )
         ax.plot(
             index, means_arr[2], label="relate", color=constants.colors["relate"]
@@ -1299,41 +1310,40 @@ class RecurrentMutations(Figure):
     name = "recurrent_mutations"
     data_path = "data"
     filename = [
-        "1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts",
-        "1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nosamples",
-        "1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nodouble",
-        "1kg_chr20_ma0.1_ms0.01_p13.recurrent_counts_nosamples_two_muts",
+        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts",
+        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples",
+        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nodouble",
+        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples_two_muts",
     ]
     plt_title = "recurrent_mutations_fig"
 
     def plot(self):
         fig, ax = plt.subplots(
-            nrows=3, ncols=1, figsize=(18, 6), sharex=True, sharey=True
+            nrows=3, ncols=1, figsize=(18, 12), sharex=True, sharey=True
         )
+        plt.subplots_adjust(bottom=0.05)
         self.data[0] = self.data[0].set_index(self.data[0].columns[0])
         self.data[1] = self.data[1].set_index(self.data[1].columns[0])
-        # self.data[2] = self.data[2].set_index(self.data[2].columns[0])
-        # two_muts_count = np.unique(self.data[2]["recurrent_counts_two_muts"],
-        # return_counts=True)
-        ax[0].bar(self.data[0].index[0:4] + 1, self.data[0]["recurrent_counts"][0:4])
+        ax[0].bar(self.data[0].index + 1, self.data[0]["recurrent_counts"])
         ax[1].bar(
-            self.data[1].index[0:4] + 1, self.data[1]["recurrent_counts_nosamples"][0:4]
+            self.data[1].index + 1, self.data[1]["recurrent_counts_nosamples"]
         )
         ax[2].bar(
-            self.data[2].index[0:4] + 1, self.data[2]["recurrent_counts_nodouble"][0:4]
+            self.data[2].index + 1, self.data[2]["recurrent_counts_nodouble"]
         )
-        # ax[2].bar(two_muts_count[0][0:100], two_muts_count[1][0:100])
-        ax[0].set_title("Number of Mutations per site")
+        ax[0].set_title("Number of Mutations per site", size=15)
         ax[1].set_title(
-            "Number of Mutations per Site, removing mutations on sample edges"
-        )
+                "Number of Mutations per Site, removing mutations on sample edges",
+                size=15)
         ax[2].set_title(
-            "Number of Mutations per Site, removing mutations with one or two samples"
-        )
-        ax[0].set_ylabel("Mutations per site")
-        ax[1].set_ylabel("Mutations per site")
-        ax[2].set_ylabel("Mutations per site")
-        fig.tight_layout()
+                "Number of Mutations per Site, removing mutations with one or two samples",
+                size=15)
+        ax[2].set_xlabel("Mutations per site", size=20)
+        fig.text(0.085, 0.5, 'Frequency',
+                 va='center', rotation='vertical',
+                 size=20)
+
+        ax[0].set_yscale('log')
         self.save(self.name)
 
 
@@ -1777,8 +1787,9 @@ class Chr20SimulatedMutationAccuracy(Figure):
         axes[0, 0].set_ylim(1, 2e5)
         x0, x1 = axes[0, 0].get_xlim()
         y0, y1 = axes[0, 0].get_ylim()
-        row_labels = ["tsdate", "", "tsinfer + tsdate", "Relate", "GEVA"]
-        for (i, name), j, color in zip(enumerate(row_labels), [1, 2, 2, 2, 2], ["Blue", "", "Blue", "Red", "Green"]):
+        row_labels = ["tsdate", "", "mismatch tsinfer + tsdate \n(iteration)", "Relate", "GEVA"]
+        for (i, name), j, color in zip(enumerate(row_labels), [1, 2, 2, 2, 2],
+                [constants.colors["tsdate"], "", constants.colors["tsdate"], constants.colors["Relate"], constants.colors["GEVA"]]):
             axes[i, j].set_ylabel(name, rotation=90,
                                 color=color, size=20)
             axes[i, j].yaxis.set_label_position("right")
@@ -1798,17 +1809,25 @@ class Chr20SimulatedMutationAccuracy(Figure):
                 comparable_sites = np.logical_and(sim > 0, result > 0)
                 cur_true_ages = sim[comparable_sites]
                 cur_results = result[comparable_sites]
-                self.mutation_accuracy(
-                        axes[row, col], cur_true_ages,
-                            cur_results, "", cmap=cmap,
-                            kc_distance_0=np.mean(kc_df.loc[0][method]),
-                                kc_distance_1=np.mean(kc_df.loc[1][method]))
-        axes[0, 1].set_title("tsdate using Simulated Topology")
-        axes[2, 0].set_title("No Error")
-        axes[2, 1].set_title("Empirical Error")
-        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
-        f.text(0.5, 0.05, 'True Time', ha='center', size=25)
-        f.text(0.08, 0.4, 'Estimated Time', va='center',
+                kc_0 = np.mean(kc_df.loc[0][method])
+                kc_1 = np.mean(kc_df.loc[1][method])
+                if np.isnan(kc_0) or np.isnan(kc_1):
+                    self.mutation_accuracy(
+                            axes[row, col], cur_true_ages,
+                                cur_results, "", cmap=cmap)
+                else:
+                    self.mutation_accuracy(
+                            axes[row, col], cur_true_ages,
+                                cur_results, "", cmap=cmap,
+                                kc_distance_0=kc_0,
+                                    kc_distance_1=kc_1)
+
+        axes[0, 1].set_title("tsdate using Simulated Topology", color="black", size=20)
+        axes[2, 0].set_title("No Error", color="black", size=20)
+        axes[2, 1].set_title("Empirical Error", color="black", size=20)
+        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error", color="black")
+        f.text(0.5, 0.06, 'True Time', ha='center', size=25)
+        f.text(0.06, 0.4, 'Estimated Time', va='center',
                rotation='vertical', size=25)
 
         self.save(self.name)

@@ -650,7 +650,7 @@ def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
 
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
-        cmd = [sys.executable, tsdate_executable, input_fn, ts_out.name, str(Ne)]
+        cmd = ["tsdate", "date", input_fn, ts_out.name, str(Ne)]
         # cmd += ["--mutation-rate", str(mut_rate), "--timepoints", str(timepoints), "--method", str(method)]
         cpu_time, memory_use = time_cmd(cmd)
         dated_ts = tskit.load(ts_out.name)
@@ -819,7 +819,9 @@ def get_kc_distances(ts_list, method_names):
     first_ts = ts_list[0]
     results_lambda_0 = dict()
     results_lambda_1 = dict()
+    print(first_ts.first().num_roots)
     for ts, method_name in zip(ts_list[1:], method_names[1:]):
+        print(ts.first().num_roots)
         results_lambda_0[method_name] = first_ts.kc_distance(ts, lambda_=0)
         results_lambda_1[method_name] = first_ts.kc_distance(ts, lambda_=1)
     return pd.DataFrame.from_dict([results_lambda_0, results_lambda_1])
@@ -855,13 +857,13 @@ def run_tsinfer(
 ):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
         cmd = [
-            sys.executable,
-            tsinfer_executable,
+            "tsinfer",
+            "infer",
             sample_fn,
-            "--length",
-            str(int(length)),
+            "-O",
+            ts_out.name
         ]
-        cmd += ["--threads", str(num_threads), ts_out.name]
+        #cmd += ["--threads", str(num_threads), ts_out.name]
         if inject_real_ancestors_from_ts_fn:
             logging.debug(
                 "Injecting real ancestors constructed from {}".format(
