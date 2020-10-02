@@ -72,8 +72,7 @@ class LinkedView(plugins.PluginBase):
             histline.data[i+1][1] = histdata[tri_index][i];        
         }
         histline.elements().transition()
-            .attr("d", histline.datafunc(histline.data))
-            .style("stroke", this.style.fill);
+            .attr("d", histline.datafunc(histline.data));
         meanline.data[0][0] = meandata[tri_index];
         meanline.data[1][0] = meandata[tri_index];
         meanline.elements().transition()
@@ -126,6 +125,11 @@ assert row_order==col_order
 # Require python 3.6 so that dict retains order
 order = {o:mean_tmrca_df.columns[o] for o in col_order}
 
+legend = result.ax_cbar
+pos1 = legend.get_position() # get the original position 
+pos2 = [pos1.x0+0.04,  pos1.y0-0.06, pos1.width, pos1.height*1.5]
+legend.set_position(pos2)
+
 mesh_obj = heatmap_plot.collections[0]
 histogram_plot = result.ax_col_dendrogram  # put the histogram where the column dendrogram normally goes
 histogram_plot.clear()
@@ -140,7 +144,7 @@ histogram_plot.set_xticklabels([1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5])
 
 x, y = np.append(bins, bins[-1]), np.pad(np.zeros(dist_tmrcas.shape[1]), 1) # initial hist is all at 0
 # create the histogram as a line object (easier to manipulate)
-histogram_plot.step(x, y, '-')
+histogram_plot.step(x, y, '-', color='k')
 # Add a line at the mean
 histogram_plot.plot([0, 0], [0, 1], linewidth=4, color='w')  # Hide the mean line marker by making it white
 histogram_plot.text(bins[1], 1.5, " ", verticalalignment='top')
