@@ -115,6 +115,9 @@ heatmap_plot = result.ax_heatmap
 result.cax.tick_params(labelsize=8)
 result.cax.set_xlabel("Average TMRCA (generations)", size=10)
 heatmap_plot.set_xticklabels(result.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+heatmap_plot.invert_xaxis()
+heatmap_plot.invert_yaxis()
+result.ax_row_dendrogram.invert_yaxis()
 
 # Clustermap reorders the cols & rows, so we must use the new order for the source data
 row_order = getattr(result.dendrogram_row, 'reordered_ind', np.arange(mean_tmrca_df.shape[0]))
