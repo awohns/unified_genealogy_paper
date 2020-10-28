@@ -28,16 +28,8 @@ def main():
         'Ne', type=float,
         help="Effective population size")
     parser.add_argument(
-        "-t", "--timepoints", default=20, type=int,
-        help="The number of timepoints to use")
-    parser.add_argument(
         "--mutation-rate", default=1e-8, type=float,
         help="Mutation rate")
-    parser.add_argument(
-        "-m", "--method", default="inside_outside",
-        choices=['inside_outside', 'maximization'],
-        help="Which implementation to use, inside-outside (more accurate) \
-        or maximization (more stable)")
     parser.add_argument(
         "-V", "--version", action='version', version=description)
 
@@ -46,10 +38,9 @@ def main():
     if not os.path.isfile(args.input):
         raise ValueError("No input tree sequence file")
     input_ts = tskit.load(args.input)
-    prior = tsdate.build_prior_grid(input_ts, timepoints=args.timepoints, 
-                                    approximate_prior=True)
+    prior = tsdate.build_prior_grid(input_ts, approximate_priors=True)
     ts = tsdate.date(
-        input_ts, args.Ne, mutation_rate=args.mutation_rate, method=args.method, prior=prior)
+        input_ts, args.Ne, mutation_rate=args.mutation_rate, priors=prior)
     ts.dump(args.output)
 
 

@@ -419,7 +419,6 @@ def make_sampledata_compatible(args):
     """
     Make a list of sampledata files compatible with the first file.
     """
-    sampledata_files = list()
     new_names = list()
 
     # Load all the sampledata files into a list
@@ -443,7 +442,6 @@ def make_sampledata_compatible(args):
         newname = fn[: -len(".samples")] + ".subset.samples"
         small_cur_sd_copy = small_cur_sd.copy(newname)
         small_cur_sd_copy.finalise()
-        sampledata_files.append(small_cur_sd_copy)
         print(
             "Subsetted to {} sites from {}. Output can be found at {}.".format(
                 len(keep_sites), fn, newname
@@ -514,7 +512,6 @@ def combined_ts_constrained_samples(args):
     all_samples_copy.finalise()
     min_site_times = all_samples_copy.min_site_times(individuals_only=False)
     high_cov_samples_copy = high_cov_samples.copy(args.output)
-    high_cov_samples_copy.sites_time[:] = min_site_times
     high_cov_samples_copy.sites_time[:] = min_site_times
     high_cov_samples_copy.individuals_time[:] = (
             high_cov_samples_copy.individuals_time[:] / 25)

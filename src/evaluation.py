@@ -650,7 +650,8 @@ def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
 
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
-        cmd = ["tsdate", "date", input_fn, ts_out.name, str(Ne)]
+        cmd = [sys.executable, tsdate_executable, input_fn, ts_out.name, str(Ne), "--mutation-rate", str(mut_rate)]
+        #cmd = ["tsdate", "date", input_fn, ts_out.name, str(Ne)]
         # cmd += ["--mutation-rate", str(mut_rate), "--timepoints", str(timepoints), "--method", str(method)]
         cpu_time, memory_use = time_cmd(cmd)
         dated_ts = tskit.load(ts_out.name)
@@ -921,6 +922,8 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, out
                 output,
                 "--map",
                 os.path.join(cur_dir, genetic_map_path),
+                "--memory",
+                "32"
             ]
         )
         subprocess.check_output(

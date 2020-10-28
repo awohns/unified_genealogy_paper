@@ -212,24 +212,18 @@ class CpuScalingSampleSize(DataGeneration):
     """
     Plot CPU times of tsdate, tsinfer, tsdate+tsinfer, Relate, and GEVA
     Run the following to occupy other threads: nice -n 15 stress -c 40
+    WARNING: GEVA uses a *large* amount of memory, ~20Gb per run when the SampleSize
+    is 2000.
     """
 
     name = "cpu_scaling_samplesize"
+    default_replicates = 5
+    include_geva = True
 
     def __init__(self):
         DataGeneration.__init__(self)
-        self.sample_sizes = [
-            10,
-            250,
-            500,
-            750,
-            1000,
-            1250,
-            1500,
-            1750,
-            2000,
-        ]
-        # self.sample_sizes = [10, 20, 40, 64, 100]
+        self.sample_sizes = np.linspace(104, 2000, 5, dtype=int)
+        self.length = 1e6
         self.sim_cols = self.sim_cols + [
             "filename",
             "replicate",
@@ -253,7 +247,10 @@ class CpuScalingSampleSize(DataGeneration):
             "geva_cpu",
             "geva_memory",
         ]
-        self.tools = ["tsdate", "tsinfer", "relate", "geva"]
+        if self.include_geva:
+            self.tools = ["tsdate", "tsinfer", "relate", "geva"]
+        else:
+            self.tools = ["tsdate", "tsinfer", "relate"]
         self.num_rows = len(self.sample_sizes) * self.default_replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.rng = random.Random(self.default_seed)
@@ -261,7 +258,7 @@ class CpuScalingSampleSize(DataGeneration):
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        row_data["length"] = 5e6
+        row_data["length"] = self.length
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
@@ -326,10 +323,12 @@ class CpuScalingSampleSize(DataGeneration):
         )
 
         row["relate_cpu", "relate_memory"] = [relate_cpu, relate_memory]
-        _, geva_cpu, geva_memory = evaluation.run_geva(
-            path_to_file, row["Ne"], row["mut_rate"], row["rec_rate"]
-        )
-        row["geva_cpu", "geva_memory"] = [geva_cpu, geva_memory]
+
+        if self.include_geva:
+            _, geva_cpu, geva_memory = evaluation.run_geva(
+                path_to_file, row["Ne"], row["mut_rate"], row["rec_rate"]
+            )
+            row["geva_cpu", "geva_memory"] = [geva_cpu, geva_memory]
 
         # Delete all generated files to save diskspace
         self.clear(row["filename"])
@@ -362,13 +361,15 @@ class CpuScalingLength(CpuScalingSampleSize):
 
     def __init__(self):
         CpuScalingSampleSize.__init__(self)
-        self.lengths = np.linspace(1e5, 1e7, 10, dtype=int)
-        #self.lengths = np.linspace(1e5, 2e6, 4, dtype=int)
+        self.lengths = np.linspace(1e5, 1e7, 5, dtype=int)
+        #self.lengths = np.linspace(1e5, 5e5, 4, dtype=int)
+        self.sample_size = 500
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
         row_data["Ne"] = 10000
-        row_data["sample_size"] = 1000
+        row_data["sample_size"] = self.sample_size
+        #row_data["sample_size"] = 50 
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
@@ -387,6 +388,37 @@ class CpuScalingLength(CpuScalingSampleSize):
         DataGeneration.setup(
             self, "length", self.lengths, simulate_func, self.make_genetic_map, row_data
         )
+
+
+class CpuScalingSampleSizeNoGeva(CpuScalingSampleSize):
+    """
+    Plot CPU times of tsdate, tsinfer, tsdate+tsinfer, and Relate with increasing
+    numbers of samples.
+    """
+
+    name = "cpu_scaling_samplesize_nogeva"
+    include_geva = False
+
+    def __init__(self):
+        CpuScalingSampleSize.__init__(self)
+        self.sample_sizes = np.linspace(12, 2000, 8, dtype=int)
+        self.length = 5e6
+
+
+class CpuScalingLengthNoGeva(CpuScalingLength):
+    """
+    Plot CPU times of tsdate, tsinfer, tsdate+tsinfer, and Relate with increasing
+    lengths of simulated sequence.
+    """
+
+    name = "cpu_scaling_length_nogeva"
+    include_geva = False
+
+    def __init__(self):
+        CpuScalingLength.__init__(self)
+        self.lengths = np.linspace(1e5, 2e7, 8, dtype=int)
+        self.sample_size = 1000 
+
 
 
 class NeutralSimulatedMutationAccuracy(DataGeneration):
@@ -1852,10 +1884,6 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
         #tables = modern_sim.dump_tables()
         #tables.sequence_length = sim.get_sequence_length()
         #modern_sim = tables.tree_sequence()
-        for tree in modern_sim.trees():
-            if tree.num_roots != 1:
-                print("UHOHOHOHOHOHOHOHOHOHOHOH")
-                raise ValueError
 
         dated_inferred_ts_pos = dated.tables.sites.position
         dated = dated.keep_intervals([[
@@ -1868,20 +1896,6 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
         tables = iter_dated.dump_tables()
         tables.sequence_length = modern_sim.get_sequence_length()
         iter_dated = tables.tree_sequence()
-
-        for tree in dated.trees():
-            if tree.num_roots != 1:
-                print("UHOHOHOHOHOHOHOHOHOHOHOH", tree.index)
-                raise ValueError
-        for tree in iter_dated.trees():
-            if tree.num_roots != 1:
-                print("UHOHOHOHOHOHOHOHOHOHOHOH")
-                raise ValueError
-        for ts in iter_ts_moderns_only:
-            for tree in ts.trees():
-                if tree.num_roots != 1:
-                    print("UHOHOHOHOHOHOHOHOHOHOHOH", ts.num_samples, tree.index)
-                    raise ValueError
 
         print(modern_sim.first().num_roots, dated.first().num_roots,
                 iter_dated.first().num_roots, iter_ts_moderns_only[0].first().num_roots, iter_ts_moderns_only[1].first().num_roots)

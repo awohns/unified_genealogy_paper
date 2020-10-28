@@ -7,20 +7,11 @@ import itertools
 from tqdm import tqdm
 import collections
 
-ts = tskit.load("merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
+ts = tskit.load("all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
 
 node_ages = ts.tables.nodes.time[:]
 deleted_trees = [tree.index for tree in ts.trees() if tree.parent(0) == -1]  
 
-metadata = ts.tables.nodes.metadata[:]
-metadata_offset = ts.tables.nodes.metadata_offset[:]
-for index, met in enumerate(tskit.unpack_bytes(metadata, metadata_offset)):
-    if index not in ts.samples():
-        try:
-            node_ages[index] = json.loads(met.decode())["mn"]
-        except json.decoder.JSONDecodeError:
-            raise ValueError(
-                    "Tree Sequence must be dated to use unconstrained=True")
 pop_nodes = ts.tables.nodes.population[ts.samples()]
 pop_nodes = [np.where(pop_nodes == pop.id)[0] for pop in ts.populations()]
 rand_nodes = list()
@@ -33,13 +24,12 @@ for nodes in pop_nodes:
 
 def get_pairwise_tmrca_pops(ts):
     pop_names = [json.loads(pop.metadata)["name"] for pop in ts.populations()]
-    if input == "1kg_sgdp_hgdp":
-        pop_name_suffixes = pop_names[0:26]
-        for pop in pop_names[26:156]:
-            pop_name_suffixes.append(pop + "_SGDP")
-        for pop in pop_names[156:]:
-            pop_name_suffixes.append(pop + "_HGDP")
-        pop_names = pop_name_suffixes
+    pop_name_suffixes = pop_names[0:26]
+    for pop in pop_names[26:156]:
+        pop_name_suffixes.append(pop + "_SGDP")
+    for pop in pop_names[156:]:
+        pop_name_suffixes.append(pop + "_HGDP")
+    pop_names = pop_name_suffixes
     tmrca_df = pd.DataFrame(columns=pop_names, index=pop_names)
     pop_rows = list()
     combos = list(itertools.combinations_with_replacement(np.arange(0, ts.num_populations),2))

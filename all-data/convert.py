@@ -20,6 +20,8 @@ import multiprocessing
 
 import tskit
 
+GENERATION_TIME = 25
+
 try:
     import bgen_reader
 
@@ -813,7 +815,7 @@ class MaxPlanckConverter(VcfConverter):
             row = lines[1].split(" ")
             name = row[0]
             metadata["name"] = name
-            metadata["age"] = row[2]
+            metadata["age"] = int(row[2]) / GENERATION_TIME
             population = row[1]
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
@@ -908,8 +910,11 @@ class AfanasievoConverter(MaxPlanckConverter):
         for name in individual_names:
             metadata = {}
             metadata["name"] = name
-            metadata["age"] = 5500
-            self.samples.add_individual(metadata=metadata, time=5500, population=pop_id, ploidy=2)
+            if "Son" in name:
+                metadata["age"] = 4100 / GENERATION_TIME
+            else:
+                metadata["age"] = 4125 / GENERATION_TIME
+            self.samples.add_individual(metadata=metadata, time=metadata["age"], population=pop_id, ploidy=2)
         self.num_samples = len(individual_names) * 2
 
 
@@ -948,7 +953,7 @@ class ReichConverter(VcfConverter):
                 population_name = metadata.pop("country")
                 populations[name] = population_id_map[population_name]
                 age = metadata.pop("average_of_95.4%_date_range_in_calbp")
-                metadata["age"] = age
+                metadata["age"] = int(age) / GENERATION_TIME
                 rows[name] = metadata
                 try:
                     location = [
