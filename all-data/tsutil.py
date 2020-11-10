@@ -25,7 +25,6 @@ import humanize
 import cyvcf2
 
 
-
 def run_simplify(args):
     ts = tskit.load(args.input)
     ts = ts.simplify()
@@ -36,7 +35,7 @@ def run_get_dated_samples(args):
     samples = tsinfer.load(args.samples)
     ts = tskit.load(args.ts)
     assert args.samples.endswith(".samples")
-    prefix = args.samples[0:-len(".samples")]
+    prefix = args.samples[0 : -len(".samples")]
     copy = samples.copy(prefix + ".dated.samples")
     copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
@@ -378,6 +377,7 @@ def run_compute_hgdp_1kg_sgdp_gnn(args):
     df = pd.DataFrame(cols)
     df.to_csv(args.output)
 
+
 def run_snip_centromere(args):
     with open(args.centromeres) as csvfile:
         reader = csv.DictReader(csvfile)
@@ -400,7 +400,7 @@ def run_snip_centromere(args):
     # since we're just searching for the largest gap anyway. However, it can
     # be useful in UKBB, since it's perfectly possible that the largest
     # gap between sites isn't in the centromere.
-    X = position[s_index: e_index + 1]
+    X = position[s_index : e_index + 1]
     if len(X) > 0:
         j = np.argmax(X[1:] - X[:-1])
         real_start = X[j] + 1
@@ -505,17 +505,12 @@ def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
     all_samples = tsinfer.load(args.all_samples)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
-    all_samples_copy = all_samples.copy()
-    # Using 25 years as generation time
-    all_samples_copy.individuals_time[:] = all_samples_copy.individuals_time[:] / 25
-    all_samples_copy.sites_time[:] = tsdate.get_sites_time(dated_hgdp_1kg_sgdp_ts)
-    all_samples_copy.finalise()
-    min_site_times = all_samples_copy.min_site_times(individuals_only=False)
-    high_cov_samples_copy = high_cov_samples.copy(args.output)
-    high_cov_samples_copy.sites_time[:] = min_site_times
-    high_cov_samples_copy.individuals_time[:] = (
-            high_cov_samples_copy.individuals_time[:] / 25)
+    sites_time = tsdate.sites_time_from_ts(dated_ts)
+    dated_samples = tsdate.add_sampledata_times(
+                  high_cov_samples, sites_time)
+    high_cov_samples_copy = dated_samples.copy(args.output)
     high_cov_samples_copy.finalise()
+
 
 
 def main():
@@ -641,19 +636,13 @@ def main():
 
     subparser = subparsers.add_parser("combined-ts-dated-samples")
     subparser.add_argument(
-        "--high-cov",
-        type=str,
-        help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
+        "--high-cov", type=str, help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
     )
     subparser.add_argument(
-        "--all-samples",
-        type=str,
-        help="HGDP + 1kg + SGDP + All Ancients.",
+        "--all-samples", type=str, help="HGDP + 1kg + SGDP + All Ancients.",
     )
     subparser.add_argument(
-        "--dated-ts",
-        type=str,
-        help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+        "--dated-ts", type=str, help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
     subparser.add_argument("--output", type=str, help="Output sampledata file name")
     subparser.set_defaults(func=combined_ts_constrained_samples)

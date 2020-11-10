@@ -601,17 +601,17 @@ def find_ancient_descendants():
     # find the proportion of the chromosome which descends from each ancestral node
     # of interest
 
-    def ancestral_anywhere(nodes, descendants):
-        ancestral_lengths = np.ones(ts.num_nodes)
-        for tree in ts.trees():
-            for node in nodes:
-                if len(list(tree.leaves(node))) > 1:
-                    ancestral_lengths[node] += tree.span
-        ancestral_lengths = ancestral_lengths / ts.get_sequence_length()
-        descendants = descendants * ancestral_lengths[:, np.newaxis]
-        return descendants
-
-    # Altai proxy nodes
+#    def ancestral_anywhere(nodes, descendants):
+#        ancestral_lengths = np.ones(ts.num_nodes)
+#        for tree in ts.trees():
+#            for node in nodes:
+#                if len(list(tree.leaves(node))) > 1:
+#                    ancestral_lengths[node] += tree.span
+#        ancestral_lengths = ancestral_lengths / ts.get_sequence_length()
+#        descendants = descendants * ancestral_lengths[:, np.newaxis]
+#        return descendants
+#
+#    # Altai proxy nodes
     altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
     chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
     denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
@@ -626,14 +626,14 @@ def find_ancient_descendants():
             afanasievo_proxy,
         ]
     )
-    descendants = ancestral_anywhere(nodes, descendants)
+#    descendants = ancestral_anywhere(nodes, descendants)
     reference_set_lens = np.array([len(ref_set) for ref_set in reference_sets])
-    ref_set_normalised_descendants = (
+    normalised_descendants = (
         descendants / np.array(reference_set_lens)[np.newaxis, :]
     )
     np.savetxt(
         "data/combined_ts_ancient_descendants.csv",
-        ref_set_normalised_descendants[nodes],
+        normalised_descendants[nodes],
         delimiter=",",
     )
 
@@ -697,20 +697,36 @@ def find_ancient_descent_haplotypes():
         afanasievo_corrcoef_df,
         afanasievo_descendants,
     ) = find_descent(ts, afanasievo_proxy, 100, "Afanasievo", ref_set_map, pop_names)
+    np.savetxt("data/combined_ts_afanasievo_descent_arr.csv", afanasievo_descent_arr)
+    np.savetxt("data/combined_ts_afanasievo_descendants.csv", afanasievo_descendants)
+    afanasievo_corrcoef_df.to_csv("data/combined_ts_afanasievo_corrcoef_df.csv")
     vindija_descent_arr, vindija_corrcoef_df, vindija_descendants = find_descent(
         ts, vindija_proxy, 100, "vindija", ref_set_map, pop_names
     )
+    np.savetxt("data/combined_ts_vindija_descent_arr.csv", vindija_descent_arr)
+    np.savetxt("data/combined_ts_vindija_descendants.csv", vindija_descendants)
+    vindija_corrcoef_df.to_csv("data/combined_ts_vindija_corrcoef_df.csv")
     denisovan_descent_arr, denisovan_corrcoef_df, denisovan_descendants = find_descent(
         ts, denisovan_proxy, 100, "denisovan", ref_set_map, pop_names
     )
+    np.savetxt("data/combined_ts_denisovan_descent_arr.csv", denisovan_descent_arr)
+    np.savetxt("data/combined_ts_denisovan_descendants.csv", denisovan_descendants)
+    denisovan_corrcoef_df.to_csv("data/combined_ts_denisovan_corrcoef_df.csv")
     (
         chagyrskaya_descent_arr,
         chagyrskaya_corrcoef_df,
         chagyrskaya_descendants,
     ) = find_descent(ts, chagyrskaya_proxy, 100, "chagyrskaya", ref_set_map, pop_names)
+    np.savetxt("data/combined_ts_chagyrskaya_descent_arr.csv", chagyrskaya_descent_arr)
+    np.savetxt("data/combined_ts_chagyrskaya_descendants.csv", chagyrskaya_descendants)
+    chagyrskaya_corrcoef_df.to_csv("data/combined_ts_chagyrskaya_corrcoef_df.csv")
+
     altai_descent_arr, altai_corrcoef_df, altai_descendants = find_descent(
         ts, altai_proxy, 500, "altai", ref_set_map, pop_names
     )
+    np.savetxt("data/combined_ts_altai_descent_arr.csv", altai_descent_arr)
+    np.savetxt("data/combined_ts_altai_descendants.csv", altai_descendants)
+    altai_corrcoef_df.to_csv("data/combined_ts_altai_corrcoef_df.csv")
 
 
 def find_archaic_relationships():

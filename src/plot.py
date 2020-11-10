@@ -14,6 +14,7 @@ from sklearn.metrics import mean_squared_log_error
 import pandas as pd
 import numpy as np
 
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import (
@@ -31,8 +32,8 @@ sgdp_region_map = {
     "Abkhasian": "West Eurasia",
     "Adygei": "West Eurasia",
     "Albanian": "West Eurasia",
-    "Aleut": "Central Asia Siberia",
-    "Altaian": "Central Asia Siberia",
+    "Aleut": "Central Asia/Siberia",
+    "Altaian": "Central Asia/Siberia",
     "Ami": "East Asia",
     "Armenian": "West Eurasia",
     "Atayal": "East Asia",
@@ -56,7 +57,7 @@ sgdp_region_map = {
     "Chane": "Americas",
     "Chechen": "West Eurasia",
     "Chipewyan": "Americas",
-    "Chukchi": "Central Asia Siberia",
+    "Chukchi": "Central Asia/Siberia",
     "Cree": "Americas",
     "Crete": "West Eurasia",
     "Czech": "West Eurasia",
@@ -67,11 +68,11 @@ sgdp_region_map = {
     "Dusun": "Oceania",
     "English": "West Eurasia",
     "Esan": "Africa",
-    "Eskimo_Chaplin": "Central Asia Siberia",
-    "Eskimo_Naukan": "Central Asia Siberia",
-    "Eskimo_Sireniki": "Central Asia Siberia",
+    "Eskimo_Chaplin": "Central Asia/Siberia",
+    "Eskimo_Naukan": "Central Asia/Siberia",
+    "Eskimo_Sireniki": "Central Asia/Siberia",
     "Estonian": "West Eurasia",
-    "Even": "Central Asia Siberia",
+    "Even": "Central Asia/Siberia",
     "Finnish": "West Eurasia",
     "French": "West Eurasia",
     "Gambian": "Africa",
@@ -88,7 +89,7 @@ sgdp_region_map = {
     "Iranian": "West Eurasia",
     "Iraqi_Jew": "West Eurasia",
     "Irula": "South Asia",
-    "Itelman": "Central Asia Siberia",
+    "Itelman": "Central Asia/Siberia",
     "Japanese": "East Asia",
     "Jordanian": "West Eurasia",
     "Ju_hoan_North": "Africa",
@@ -104,7 +105,7 @@ sgdp_region_map = {
     "Korean": "East Asia",
     "Kurumba": "South Asia",
     "Kusunda": "South Asia",
-    "Kyrgyz": "Central Asia Siberia",
+    "Kyrgyz": "Central Asia/Siberia",
     "Lahu": "East Asia",
     "Lemande": "Africa",
     "Lezgin": "West Eurasia",
@@ -114,7 +115,7 @@ sgdp_region_map = {
     "Makrani": "South Asia",
     "Mala": "South Asia",
     "Mandenka": "Africa",
-    "Mansi": "Central Asia Siberia",
+    "Mansi": "Central Asia/Siberia",
     "Maori": "Oceania",
     "Masai": "Africa",
     "Mayan": "Americas",
@@ -123,7 +124,7 @@ sgdp_region_map = {
     "Miao": "East Asia",
     "Mixe": "Americas",
     "Mixtec": "Americas",
-    "Mongola": "Central Asia Siberia",
+    "Mongola": "Central Asia/Siberia",
     "Mozabite": "Africa",
     "Nahua": "Americas",
     "Naxi": "East Asia",
@@ -155,31 +156,32 @@ sgdp_region_map = {
     "Tajik": "West Eurasia",
     "Thai": "East Asia",
     "Tibetan": "South Asia",
-    "Tlingit": "Central Asia Siberia",
-    "Tubalar": "Central Asia Siberia",
+    "Tlingit": "Central Asia/Siberia",
+    "Tubalar": "Central Asia/Siberia",
     "Tu": "East Asia",
     "Tujia": "East Asia",
     "Turkish": "West Eurasia",
     "Tuscan": "West Eurasia",
-    "Ulchi": "Central Asia Siberia",
+    "Ulchi": "Central Asia/Siberia",
     "Uygur": "East Asia",
     "Xibo": "East Asia",
     "Yadava": "South Asia",
-    "Yakut": "Central Asia Siberia",
+    "Yakut": "Central Asia/Siberia",
     "Yemenite_Jew": "West Eurasia",
     "Yi": "East Asia",
     "Yoruba": "Africa",
     "Zapotec": "Americas",
 }
+
 hgdp_region_map = {
-    "Brahui": "Central South Asia",
-    "Balochi": "Central South Asia",
-    "Hazara": "Central South Asia",
-    "Makrani": "Central South Asia",
-    "Sindhi": "Central South Asia",
-    "Pathan": "Central South Asia",
-    "Kalash": "Central South Asia",
-    "Burusho": "Central South Asia",
+    "Brahui": "Central/South Asia",
+    "Balochi": "Central/South Asia",
+    "Hazara": "Central/South Asia",
+    "Makrani": "Central/South Asia",
+    "Sindhi": "Central/South Asia",
+    "Pathan": "Central/South Asia",
+    "Kalash": "Central/South Asia",
+    "Burusho": "Central/South Asia",
     "Mbuti": "Africa",
     "Biaka": "Africa",
     "Bougainville": "Oceania",
@@ -217,7 +219,7 @@ hgdp_region_map = {
     "Xibo": "East Asia",
     "Mozabite": "Middle East",
     "NorthernHan": "East Asia",
-    "Uygur": "Central South Asia",
+    "Uygur": "Central/South Asia",
     "Dai": "East Asia",
     "Lahu": "East Asia",
     "She": "East Asia",
@@ -263,11 +265,14 @@ def get_tgp_hgdp_sgdp_region_colours():
     return {
         "East Asia": sns.color_palette("Greens", 2)[1],
         "West Eurasia": sns.color_palette("Blues", 1)[0],
+        "Europe": sns.color_palette("Blues", 1)[0],
         "Africa": sns.color_palette("Wistia", 3)[0],
         "Americas": sns.color_palette("Reds", 2)[1],
         "South Asia": sns.color_palette("Purples", 2)[1],
-        "Oceania": "brown",
-        "Central Asia-Siberia": "pink",
+        "Central/South Asia": sns.color_palette("Purples", 2)[1],
+        "Middle East": "teal",
+        "Oceania": "saddlebrown",
+        "Central Asia/Siberia": "pink",
         "Ancients": "Orange",
     }
 
@@ -2707,253 +2712,7 @@ class TmrcaClustermap(Figure):
     filename = [
         "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
     ]
-    #    sgdp_region_map = {
-    #                    "Abkhasian": "West Eurasia",
-    #                    "Adygei": "West Eurasia",
-    #                    "Albanian": "West Eurasia",
-    #                    "Aleut": "Central Asia Siberia",
-    #                    "Altaian": "Central Asia Siberia",
-    #                    "Ami": "East Asia",
-    #                    "Armenian": "West Eurasia",
-    #                    "Atayal": "East Asia",
-    #                    "Australian": "Oceania",
-    #                    "Balochi": "South Asia",
-    #                    "BantuHerero": "Africa",
-    #                    "BantuKenya": "Africa",
-    #                    "BantuTswana": "Africa",
-    #                    "Basque": "West Eurasia",
-    #                    "BedouinB": "West Eurasia",
-    #                    "Bengali": "South Asia",
-    #                    "Bergamo": "West Eurasia",
-    #                    "Biaka": "Africa",
-    #                    "Bougainville": "Oceania",
-    #                    "Brahmin": "South Asia",
-    #                    "Brahui": "South Asia",
-    #                    "Bulgarian": "West Eurasia",
-    #                    "Burmese": "East Asia",
-    #                    "Burusho": "South Asia",
-    #                    "Cambodian": "East Asia",
-    #                    "Chane": "Americas",
-    #                    "Chechen": "West Eurasia",
-    #                    "Chipewyan": "Americas",
-    #                    "Chukchi": "Central Asia Siberia",
-    #                    "Cree": "Americas",
-    #                    "Crete": "West Eurasia",
-    #                    "Czech": "West Eurasia",
-    #                    "Dai": "East Asia",
-    #                    "Daur": "East Asia",
-    #                    "Dinka": "Africa",
-    #                    "Druze": "West Eurasia",
-    #                    "Dusun": "Oceania",
-    #                    "English": "West Eurasia",
-    #                    "Esan": "Africa",
-    #                    "Eskimo_Chaplin": "Central Asia Siberia",
-    #                    "Eskimo_Naukan": "Central Asia Siberia",
-    #                    "Eskimo_Sireniki": "Central Asia Siberia",
-    #                    "Estonian": "West Eurasia",
-    #                    "Even": "Central Asia Siberia",
-    #                    "Finnish": "West Eurasia",
-    #                    "French": "West Eurasia",
-    #                    "Gambian": "Africa",
-    #                    "Georgian": "West Eurasia",
-    #                    "Greek": "West Eurasia",
-    #                    "Han": "East Asia",
-    #                    "Hawaiian": "Oceania",
-    #                    "Hazara": "South Asia",
-    #                    "Hezhen": "East Asia",
-    #                    "Hungarian": "West Eurasia",
-    #                    "Icelandic": "West Eurasia",
-    #                    "Igbo": "Africa",
-    #                    "Igorot": "Oceania",
-    #                    "Iranian": "West Eurasia",
-    #                    "Iraqi_Jew": "West Eurasia",
-    #                    "Irula": "South Asia",
-    #                    "Itelman": "Central Asia Siberia",
-    #                    "Japanese": "East Asia",
-    #                    "Jordanian": "West Eurasia",
-    #                    "Ju_hoan_North": "Africa",
-    #                    "Kalash": "South Asia",
-    #                    "Kapu": "South Asia",
-    #                    "Karitiana": "Americas",
-    #                    "Kashmiri_Pandit": "South Asia",
-    #                    "Kharia": "South Asia",
-    #                    "Khomani_San": "Africa",
-    #                    "Khonda_Dora": "South Asia",
-    #                    "Kinh": "East Asia",
-    #                    "Kongo": "Africa",
-    #                    "Korean": "East Asia",
-    #                    "Kurumba": "South Asia",
-    #                    "Kusunda": "South Asia",
-    #                    "Kyrgyz": "Central Asia Siberia",
-    #                    "Lahu": "East Asia",
-    #                    "Lemande": "Africa",
-    #                    "Lezgin": "West Eurasia",
-    #                    "Luhya": "Africa",
-    #                    "Luo": "Africa",
-    #                    "Madiga": "South Asia",
-    #                    "Makrani": "South Asia",
-    #                    "Mala": "South Asia",
-    #                    "Mandenka": "Africa",
-    #                    "Mansi": "Central Asia Siberia",
-    #                    "Maori": "Oceania",
-    #                    "Masai": "Africa",
-    #                    "Mayan": "Americas",
-    #                    "Mbuti": "Africa",
-    #                    "Mende": "Africa",
-    #                    "Miao": "East Asia",
-    #                    "Mixe": "Americas",
-    #                    "Mixtec": "Americas",
-    #                    "Mongola": "Central Asia Siberia",
-    #                    "Mozabite": "Africa",
-    #                    "Nahua": "Americas",
-    #                    "Naxi": "East Asia",
-    #                    "North_Ossetian": "West Eurasia",
-    #                    "Norwegian": "West Eurasia",
-    #                    "Onge": "South Asia",
-    #                    "Orcadian": "West Eurasia",
-    #                    "Oroqen": "East Asia",
-    #                    "Palestinian": "West Eurasia",
-    #                    "Papuan": "Oceania",
-    #                    "Pathan": "South Asia",
-    #                    "Piapoco": "Americas",
-    #                    "Pima": "Americas",
-    #                    "Polish": "West Eurasia",
-    #                    "Punjabi": "South Asia",
-    #                    "Quechua": "Americas",
-    #                    "Relli": "South Asia",
-    #                    "Russian": "West Eurasia",
-    #                    "Saami": "West Eurasia",
-    #                    "Saharawi": "Africa",
-    #                    "Samaritan": "West Eurasia",
-    #                    "Sardinian": "West Eurasia",
-    #                    "She": "East Asia",
-    #                    "Sherpa": "South Asia",
-    #                    "Sindhi": "South Asia",
-    #                    "Somali": "Africa",
-    #                    "Spanish": "West Eurasia",
-    #                    "Surui": "Americas",
-    #                    "Tajik": "West Eurasia",
-    #                    "Thai": "East Asia",
-    #                    "Tibetan": "South Asia",
-    #                    "Tlingit": "Central Asia Siberia",
-    #                    "Tubalar": "Central Asia Siberia",
-    #                    "Tu": "East Asia",
-    #                    "Tujia": "East Asia",
-    #                    "Turkish": "West Eurasia",
-    #                    "Tuscan": "West Eurasia",
-    #                    "Ulchi": "Central Asia Siberia",
-    #                    "Uygur": "East Asia",
-    #                    "Xibo": "East Asia",
-    #                    "Yadava": "South Asia",
-    #                    "Yakut": "Central Asia Siberia",
-    #                    "Yemenite_Jew": "West Eurasia",
-    #                    "Yi": "East Asia",
-    #                    "Yoruba": "Africa",
-    #                    "Zapotec": "Americas",
-    #                }
-    #    hgdp_region_map = {
-    #                    "Brahui": "Central South Asia",
-    #                    "Balochi": "Central South Asia",
-    #                    "Hazara": "Central South Asia",
-    #                    "Makrani": "Central South Asia",
-    #                    "Sindhi": "Central South Asia",
-    #                    "Pathan": "Central South Asia",
-    #                    "Kalash": "Central South Asia",
-    #                    "Burusho": "Central South Asia",
-    #                    "Mbuti": "Africa",
-    #                    "Biaka": "Africa",
-    #                    "Bougainville": "Oceania",
-    #                    "French": "Europe",
-    #                    "PapuanSepik": "Oceania",
-    #                    "PapuanHighlands": "Oceania",
-    #                    "Druze": "Middle East",
-    #                    "Bedouin": "Middle East",
-    #                    "Sardinian": "Europe",
-    #                    "Palestinian": "Middle East",
-    #                    "Colombian": "Americas",
-    #                    "Cambodian": "East Asia",
-    #                    "Japanese": "East Asia",
-    #                    "Han": "East Asia",
-    #                    "Orcadian": "Europe",
-    #                    "Surui": "Americas",
-    #                    "Maya": "Americas",
-    #                    "Russian": "Europe",
-    #                    "Mandenka": "Africa",
-    #                    "Yoruba": "Africa",
-    #                    "Yakut": "East Asia",
-    #                    "San": "Africa",
-    #                    "BantuSouthAfrica": "Africa",
-    #                    "Karitiana": "Americas",
-    #                    "Pima": "Americas",
-    #                    "Tujia": "East Asia",
-    #                    "BergamoItalian": "Europe",
-    #                    "Tuscan": "Europe",
-    #                    "Yi": "East Asia",
-    #                    "Miao": "East Asia",
-    #                    "Oroqen": "East Asia",
-    #                    "Daur": "East Asia",
-    #                    "Mongolian": "East Asia",
-    #                    "Hezhen": "East Asia",
-    #                    "Xibo": "East Asia",
-    #                    "Mozabite": "Middle East",
-    #                    "NorthernHan": "East Asia",
-    #                    "Uygur": "Central South Asia",
-    #                    "Dai": "East Asia",
-    #                    "Lahu": "East Asia",
-    #                    "She": "East Asia",
-    #                    "Naxi": "East Asia",
-    #                    "Tu": "East Asia",
-    #                    "Basque": "Europe",
-    #                    "Adygei": "Europe",
-    #                    "BantuKenya": "Africa",
-    #                }
-    #
-    #
-    #    tgp_region_pop = {
-    #        'Americas': ['CLM', 'MXL', 'PUR', 'PEL'],
-    #        'Africa': ['LWK', 'ASW', 'GWD', 'MSL', 'YRI', 'ACB', 'ESN'],
-    #        'East Asia': ['CHS', 'KHV', 'JPT', 'CHB', 'CDX'],
-    #        'South Asia': ['BEB', 'STU', 'GIH', 'PJL', 'ITU'],
-    #        'Europe': ['FIN', 'GBR', 'IBS', 'CEU', 'TSI']
-    #    }
-    #
-    #    def get_tgp_region_colours(self):
-    #        return {
-    #            "EAS": sns.color_palette("Greens", 2)[1],
-    #            "EUR": sns.color_palette("Blues", 1)[0],
-    #            "AFR": sns.color_palette("Wistia", 3)[0],
-    #            "AMR": sns.color_palette("Reds", 2)[1],
-    #            "SAS": sns.color_palette("Purples", 2)[1],
-    #        }
-    #
-    #    def get_sgdp_region_colours(self):
-    #        cols = self.get_tgp_region_colours()
-    #        return {
-    #            'Africa': cols["AFR"],
-    #            'America': cols["AMR"],
-    #            'EastAsia': cols["EAS"],
-    #            'SouthAsia': cols["SAS"],
-    #            'Oceania': "brown",
-    #            'WestEurasia': cols["EUR"],
-    #            'CentralAsiaSiberia': "pink"
-    #         }
-    #
-    #    def get_hgdp_region_colours(self):
-    #        cols = self.get_tgp_region_colours()
-    #        return {
-    #            'AFRICA': cols["AFR"],
-    #            'AMERICA': cols["AMR"],
-    #            'EAST_ASIA': cols["EAS"],
-    #            'CENTRAL_SOUTH_ASIA': cols["SAS"],
-    #            'OCEANIA': "brown",
-    #            'EUROPE': cols["EUR"],
-    #            'MIDDLE_EAST': "teal"
-    #         }
-    #
-    #    def get_tgp_hgdp_sgdp_region_colours(self):
-    #        dict_combined = dict(self.get_hgdp_region_colours(), **self.get_tgp_region_colours(), **self.get_sgdp_region_colours())
-    #        return dict_combined
-
+    
     def make_symmetric(self, df):
         """
         Make TMRCA dataframe symmetric
@@ -2970,17 +2729,18 @@ class TmrcaClustermap(Figure):
 
         pop_names = tmrcas.columns
         pop_names = [pop.split(".")[0] for pop in pop_names]
+        pop_names = [pop.split(" ")[0] for pop in pop_names]
         regions = list()
         pop_name_suffixes = list()
         for pop in pop_names[0:54]:
             pop_name_suffixes.append(pop + "_HGDP")
-            regions.append(self.hgdp_region_map[pop])
+            regions.append(hgdp_region_map[pop])
         for pop in pop_names[54:80]:
             pop_name_suffixes.append(pop + "_TGP")
             regions.append(tgp_region_map[pop])
         for pop in pop_names[80:210]:
             pop_name_suffixes.append(pop + "_SGDP")
-            regions.append(self.sgdp_region_map[pop])
+            regions.append(sgdp_region_map[pop])
         for pop in pop_names[210:]:
             pop_name_suffixes.append(pop)
             regions.append("Ancients")
@@ -3001,44 +2761,19 @@ class TmrcaClustermap(Figure):
             else:
                 ancient_origin[pop] = "black"
 
-        colours = {}
-        region_colours = self.get_tgp_hgdp_sgdp_region_colours()
+        row_colors = {}
+        region_colours = get_tgp_hgdp_sgdp_region_colours()
         region_colours["Ancients"] = "orange"
 
-        new_names = [
-            "Africa",
-            "Americas",
-            "East Asia",
-            "Central South Asia",
-            "Oceania",
-            "Europe",
-            "Middle East",
-            "East Asia",
-            "Europe",
-            "Africa",
-            "Americas",
-            "South Asia",
-            "Africa",
-            "Americas",
-            "East Asia",
-            "South Asia",
-            "Oceania",
-            "West Eurasia",
-            "Central Asia Siberia",
-            "Ancients",
-        ]
-        new_region_colours = {}
-        for new_name, (key, val) in zip(new_names, region_colours.items()):
-            new_region_colours[new_name] = val
         for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
-            colours[pop_suffix] = new_region_colours[region]
+            row_colors[pop_suffix] = region_colours[region]
 
         tmrcas = tmrcas.drop(columns="region")
         tmrcas.index = tmrcas.columns
         mergedg = tmrcas
 
-        colours = pd.Series(colours)
-        colours.name = "Region"
+        row_colors = pd.Series(row_colors)
+        row_colors.name = "Region"
         tgp_origin = pd.Series(tgp_origin)
         tgp_origin.name = "TGP"
         hgdp_origin = pd.Series(hgdp_origin)
@@ -3050,49 +2785,88 @@ class TmrcaClustermap(Figure):
         col_colors = pd.concat(
             [tgp_origin, hgdp_origin, sgdp_origin, ancient_origin], axis=1
         )
+        mask = np.zeros_like(mergedg, dtype=np.bool)
+        n = mask.shape[0]
+        #print(n)
+        #rows = np.concatenate([np.repeat(n - i, i) for i in np.arange(0, n + 1)])
+        #cols = np.concatenate([np.arange(0, i) for i in np.arange(0, n + 1)])
+        #rows = np.concatenate([np.repeat(i - 1, i) for i in np.arange(0, n + 1)])
+        #cols = np.concatenate([np.arange(i, n) for i in reversed(np.arange(0, n + 1))])
+        #print(rows)
+        #print(cols)
+        mask[np.tril_indices_from(mask, k=-1)] = True
+        #mask[rows, cols] = True
+        cg = sns.clustermap(mergedg, mask=mask, method="average")
+        mask = mask[np.argsort(cg.dendrogram_row.reordered_ind),:]
+        mask = mask[:,np.argsort(cg.dendrogram_col.reordered_ind)]
         cg = sns.clustermap(
             mergedg,
+            mask=mask,
             method="average",
             xticklabels=True,
             yticklabels=True,
             figsize=(30, 30),
             rasterized=True,
-            row_colors=colours,
+            row_colors=row_colors,
             col_colors=col_colors,
-            cbar_pos=(0.55, 0.77, 0.4, 0.07),
+            cbar_pos=(0.04, 0.28, 0.04, 0.2),
             cmap=plt.cm.inferno_r,
+            dendrogram_ratio=0.18,
             cbar_kws=dict(
-                orientation="horizontal", label="Average TMRCA (generations)"
+                orientation="vertical"
             ),
         )
+        cg.ax_heatmap.invert_xaxis()
+        cg.ax_heatmap.xaxis.tick_top()
         cg.cax.tick_params(labelsize=20)
-        cg.cax.set_xlabel("Average TMRCA (generations)", size=20)
+        cg.cax.set_xlabel("Average TMRCA\n(generations)", size=20)
 
-        cg.ax_heatmap.set_xticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
-        cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+        cg.ax_heatmap.set_xticklabels([label.get_text().rsplit("_", 1)[0] for label in cg.ax_heatmap.get_xmajorticklabels()], fontsize=7, rotation=90)
+        #cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+        cg.ax_heatmap.set_yticks([])
 
-        for region, col in new_region_colours.items():
+        for region, col in region_colours.items():
             cg.ax_col_dendrogram.bar(0, 0, color=col, label=region, linewidth=0)
 
         cg.ax_col_dendrogram.set_xlim([0, 0])
+
+        # Uncomment to Log Scale the Row Dendrogram
+        # coord = np.array(cg.dendrogram_row.dependent_coord)
+        # coord += 1
+        # coord[coord!= 0] = np.log(coord[coord!= 0] )
+        # cg.dendrogram_row.dependent_coord = coord.tolist()
+        # cg.ax_row_dendrogram.clear()
+        # cg.dendrogram_row.plot(cg.ax_row_dendrogram, {})
+
         pos = cg.ax_col_colors.get_position()
         cg.ax_col_colors.set_position(
-            [pos.bounds[0], pos.bounds[1], pos.bounds[2], pos.bounds[3] / 4]
+            [pos.bounds[0], pos.bounds[1], pos.bounds[2], pos.bounds[3] / 5]
         )
 
-        handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
+        pos = cg.ax_col_colors.get_position()
+        points = pos.get_points()
+        points[0][1] = points[0][1] + 0.03 #- 0.72
+        points[1][1] = points[1][1] + 0.03 #- 0.72
+        cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points ))
 
+        handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
+        labels, handles = zip(*sorted(zip(labels, handles)))
+        #handles = np.array(handles)[~np.isin(labels, ["Europe", "South Asia"])]
+        #labels = np.array(labels)[~np.isin(labels, ["Europe", "South Asia"])]
         cg.ax_col_dendrogram.legend(
             handles,
             labels,
-            loc="upper left",
-            ncol=3,
+            loc="lower left",
+            ncol=1,
             fontsize=20,
             frameon=True,
-            bbox_to_anchor=(-0.1, 0.2),
+            bbox_to_anchor=(-0.25, -4.6),
             title="Region",
             title_fontsize=25,
         )
+
+        # Remove box around the legend
+        cg.ax_col_dendrogram.get_legend().get_frame().set_linewidth(0.0)
 
         self.save(self.name)
 
@@ -3194,7 +2968,7 @@ class AncientDescent(Figure):
     """
 
     def plot_total_median_descent(
-        proxy_node_age, exclude_pop_names, children, axis_label
+        self, proxy_node_age, exclude_pop_names, children, axis_label
     ):
         tables = ts.tables
         exclude_pop = ~np.in1d(pop_names, exclude_pop_names)
@@ -3280,66 +3054,63 @@ class AncientDescent(Figure):
         plt.show()
 
 
-#    def plot_haplotype_linkage(df, children, descendants):
-#        cmap = matplotlib.colors.ListedColormap(["white", "black"])
-# 	fig = plt.figure(figsize=(40,20))
-# 	Y = scipy.cluster.hierarchy.linkage(df, method='average')
-# 	Z2 = scipy.cluster.hierarchy.dendrogram(Y, orientation='left', no_plot=True)
-# 	idx1 = Z2['leaves'][:]
-# 	region_matrix = fig.add_axes([0.,0.1,0.04,0.6])
+    def plot_haplotype_linkage(self, df, children, descendants):
+        cmap = matplotlib.colors.ListedColormap(["white", "black"])
+        fig = plt.figure(figsize=(40,20))
+        Y = scipy.cluster.hierarchy.linkage(df, method='average')
+        Z2 = scipy.cluster.hierarchy.dendrogram(Y, orientation='left', no_plot=True)
+        idx1 = Z2['leaves'][:]
+        region_matrix = fig.add_axes([0.,0.1,0.04,0.6])
 
-# 	num_rows = len(idx1)
-# 	height = [1/num_rows for descent in range(num_rows)]
-# 	errorboxes=[]
-# 	facecolors = [region_colours[region] for region in regions[ref_set_map[descendants[idx1]]]]
-#
-# 	for x, y, xe, ye in zip(np.repeat(0, num_rows), list(reversed(np.arange(0, 1, 1/num_rows))),
-# 				   np.repeat(1, num_rows), height):
-# 	    rect = matplotlib.patches.Rectangle((x, y), xe, ye)
-# 	    errorboxes.append(rect)
-#
-# 	region_matrix.add_collection(matplotlib.collections.PatchCollection(errorboxes, facecolor=facecolors))
-# 	region_matrix.set_xticklabels([])
-# 	region_matrix.set_yticklabels([])
-# 	haplo_matrix_1 = fig.add_axes([0.04,0.1,0.45,0.6])
-# 	D = children[descendants][idx1]
-#    #     top_nodes = afanasievo_descendants[np.argsort(np.sum(children[descendants], axis=1))[-50:]]
-#    #     top_names = [json.loads(ts.population(ts.node(node).population).metadata.decode())["name"] for node in top_nodes]
-#    #     top_node_pos = [np.where(descendants[Z2["leaves"]] == node)[0][0] for node in top_nodes]
-#    #     D[D[top_node_pos] == 0] = 2
-# 	im = haplo_matrix_1.imshow(D[:,:25000], aspect='auto', origin='upper', cmap=cmap)
-# 	haplo_matrix_1.set_xticks(np.arange(0, 25000, 5000))
-# 	haplo_matrix_1.set_xticklabels(np.arange(0, 25000, 5000)/1000, size=18)
-# 	#     axmatrix.set_yticks(np.arange(-0.5, num_rows - 1))
-# 	haplo_matrix_1.set_yticklabels([])
-# 	haplo_matrix_1.grid({"color":"lightgray"})
-# 	haplo_matrix_2 = fig.add_axes([0.51,0.1,0.45,0.6])
-# 	im = haplo_matrix_2.imshow(D[:,30000:], aspect='auto', origin='upper', cmap=cmap)
-# 	haplo_matrix_2.set_xticks(np.concatenate([np.arange(0, 35000, 5000), [34444]]))
-# 	haplo_matrix_2.set_xticklabels(np.concatenate([np.arange(30000, 65000, 5000)/1000, [64]]), size=18)
-#
-# 	#     haplo_matrix_2.yticks([np.where(descendants[Z2["leaves"]] == node)[0][0] for node in top_nodes],
-# 	#                labels=top_names)
-# 	haplo_matrix_2.yaxis.set_label_position("right")
-# 	haplo_matrix_2.yaxis.tick_right()
-# 	haplo_matrix_2.grid({"color":"lightgray"})
-# 	#     dendrogram_ax.invert_yaxis()
-# 	fig.text(0.5, 0.06, "Chromosome 20 Position (Mb)", ha='center', size=30)
-# 	fig.text(0.99, 0.4, "Descendant Chromosomes", va='center', rotation='vertical', size=30)
-# 	fig.show()
+        num_rows = len(idx1)
+        height = [1/num_rows for descent in range(num_rows)]
+        errorboxes=[]
+        facecolors = [region_colours[region] for region in regions[ref_set_map[descendants[idx1]]]]
+
+        for x, y, xe, ye in zip(np.repeat(0, num_rows), list(reversed(np.arange(0, 1, 1/num_rows))),
+                                   np.repeat(1, num_rows), height):
+            rect = matplotlib.patches.Rectangle((x, y), xe, ye)
+            errorboxes.append(rect)
+
+        region_matrix.add_collection(matplotlib.collections.PatchCollection(errorboxes, facecolor=facecolors))
+        region_matrix.set_xticklabels([])
+        region_matrix.set_yticklabels([])
+        haplo_matrix_1 = fig.add_axes([0.04,0.1,0.45,0.6])
+        D = children[descendants][idx1]
+        im = haplo_matrix_1.imshow(D[:,:25000], aspect='auto', origin='upper', cmap=cmap)
+        haplo_matrix_1.set_xticks(np.arange(0, 25000, 5000))
+        haplo_matrix_1.set_xticklabels(np.arange(0, 25000, 5000)/1000, size=18)
+        haplo_matrix_1.set_yticklabels([])
+        haplo_matrix_1.grid({"color":"lightgray"})
+        haplo_matrix_2 = fig.add_axes([0.51,0.1,0.45,0.6])
+        im = haplo_matrix_2.imshow(D[:,30000:], aspect='auto', origin='upper', cmap=cmap)
+        haplo_matrix_2.set_xticks(np.concatenate([np.arange(0, 35000, 5000), [34444]]))
+        haplo_matrix_2.set_xticklabels(np.concatenate([np.arange(30000, 65000, 5000)/1000, [64]]), size=18)
+
+        haplo_matrix_2.yaxis.set_label_position("right")
+        haplo_matrix_2.yaxis.tick_right()
+        haplo_matrix_2.grid({"color":"lightgray"})
+        fig.text(0.5, 0.06, "Chromosome 20 Position (Mb)", ha='center', size=30)
+        fig.text(0.99, 0.4, "Descendant Chromosomes", va='center', rotation='vertical', size=30)
+        fig.show()
 
 
-# class AfanasievoDescent(AncientDescent):
-#    """
-#    Shows descent from the Afanasievo individuals
-#    """
-#
-#    name = "afanasievo_descent"
-#    data_path = "data"
-#    filename = [
-#        "afanasievo_descent"
-#    ]
+class VindiajDescent(AncientDescent):
+    """
+    Find Descendants of the Vindija Neanderthal
+    """
 
+    name = "vindija_descent"
+    data_path = "data"
+    filename = [
+        "combined_ts_vindija_descent_arr", "combined_ts_vindija_descendants", "combined_ts_vindija_corrcoeff_df"
+    ]
+    def plot(self):
+        descent_arr = self.data[0]
+        descendants = self.data[1]
+        corrcoeff_df = self.data[2]
+        self.plot_haplotype_linkage(corrcoef_df, descent_arr, descendants)
+        self.save(self.name)
 
 ######################################
 #
