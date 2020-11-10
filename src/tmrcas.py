@@ -4,19 +4,48 @@ import json
 import numpy as np
 import pandas as pd
 import itertools
-from tqdm import tqdm
+import logging
+import argparse
 import collections
 
+from tqdm import tqdm
+
+
+TmrcaData = collections.namedtuple('TMRCA_data', ['means', 'histogram', 'raw_data'])
+HistData = collections.namedtuple('Hist_data', ['bin_edges', 'data', 'rownames'])
+
 def get_pairwise_tmrca_pops(
-    ts_name, max_pop_nodes, hist_nbins=30, hist_min_gens=1000, return_full_data=False
+    ts_name,
+    max_pop_nodes,
+    hist_nbins=30,
+    hist_min_gens=1000,
+    num_processes=1,
+    restrict_populations=None,
+    return_raw_data=False,
 ):
     """
-    max_pop_nodes gives the maximum number of sample nodes per pop to use
-    hist_nbins determines the number of bins used to save the histogram data,
-    hist_min_gens gives a lower cutoff for the histogram bins, as there is usually
-    very little in the lowest (logged) bins
-    if return_full_data is True, also return the full dataset of weights (which may be
-    huge, as it is ~ num_unique_times * n_pops * n_pops /2
+    Get the mean tMRCA and a histogram of tMRCA times for pairs of populations from a
+    tree sequence.
+    
+    :param int max_pop_nodes: The maximum number of sample nodes per pop to use. This
+        number of samples (or lower, for small populations) will be taken at random from
+        each population as a set of representative samples for which to construct
+        pairwise statistics
+    :param int hist_nbins: The number of bins used to save the histogram data. Bins will
+        be spaced out evenly on a log scale.
+    :param float hist_min_gens: A lower cutoff for the histogram bins, as there is
+        usually very little in the lowest (logged) bins
+    :param int num_processes: The number of CPUs to run in parallel on the calculation.
+    :param list restrict_populations: A list of population IDs or names giving the
+        populations among which to calculate pairwise distances. If ``None`` (default)
+        then use all the populations defined in the tree sequence.
+    :param bool return_raw_data is True, also return the full dataset of weights (which
+        may be huge, as it is ~ num_unique_times * n_pops * n_pops /2
+
+    :return: a TmrcaData object containing a dataframe of the mean values for each
+        pair, a HistData object with the histogram data, and (if return_full_data is
+        ``True``) a potentially huge numpy array of weights of pairs X unique_times
+    :rtype: TmrcaData
     """
     ts = tskit.load(ts_name)
     deleted_trees = [tree.index for tree in ts.trees() if tree.parent(0) == -1]  
@@ -32,9 +61,9 @@ def get_pairwise_tmrca_pops(
                 except json.decoder.JSONDecodeError:
                     raise ValueError(
                             "Tree Sequence must be dated to use unconstrained=True")
-        print("Using tsdate unconstrained node times")
+        logging.info("Using tsdate unconstrained node times")
     except KeyError:
-        print("Using standard ts node times")
+        logging.info("Using standard ts node times")
         node_ages[:] = ts.tables.nodes.time[:]
     unique_times, time_index = np.unique(node_ages, return_inverse=True)
     with np.errstate(divide='ignore'):
@@ -44,14 +73,20 @@ def get_pairwise_tmrca_pops(
     np.random.seed(123)
     pop_nodes = ts.tables.nodes.population[ts.samples()]
     nodes_for_pop = {}
-    for pop in ts.populations():
-        metadata = json.loads(pop.metadata)
+    if restrict_populations is None:
+        pops = [pop.id for pop in ts.populations()]
+    else:
+        # Convert any named populations to population ids
+        name2id = {json.loads(pop.metadata)["name"]:pop.id for pop in ts.populations()}
+        pops = [int(p) if p.isdigit() else name2id[p] for p in restrict_populations]
+    for pop_id in pops:
+        metadata = json.loads(ts.population(pop_id).metadata)
         key = metadata["name"]
         # Hack to distinguish SGDP from HGDP (all uppercase) pop names
         if 'region' in metadata and not metadata['region'].isupper():
             key += " (SGDP)" 
         assert key not in nodes_for_pop  # Check for duplicate names
-        nodes = np.where(pop_nodes == pop.id)[0]
+        nodes = np.where(pop_nodes == pop_id)[0]
         if len(nodes) > max_pop_nodes:
             nodes_for_pop[key] = np.random.choice(nodes, max_pop_nodes, replace=False)
         else:
@@ -70,7 +105,7 @@ def get_pairwise_tmrca_pops(
         itertools.repeat(deleted_trees),
     )
     data = np.zeros((len(combo_map), len(unique_times)), dtype=np.float)
-    with multiprocessing.Pool(processes=64) as pool: 
+    with multiprocessing.Pool(processes=num_processes) as pool: 
         for tmrca_weight, combo in tqdm(
             pool.imap_unordered(get_tmrca_weights, func_params), total=len(combo_map)
         ):
@@ -86,16 +121,19 @@ def get_pairwise_tmrca_pops(
     named_combos = [None] * len(combo_map)
     for combo, i in combo_map.items():
         named_combos[i] = (pop_names[combo[0]], pop_names[combo[1]])
-    named_combos = np.array(named_combos)
-    if return_full_data:
-        return tmrca_df, bins, hist_data, named_combos, data
-    else:
-        return tmrca_df, bins, hist_data, named_combos
+    hist = HistData(bins, hist_data, np.array(named_combos))
+    if return_raw_data is False:
+        data = None
+    return TmrcaData(means=tmrca_df, histogram=hist, raw_data=(log_unique_times, data))
 
 def make_histogram_data(log_unique_times, data, hist_nbins, hist_min_gens):
     """
-    NB: this can also be called on the (saved) full data matrix, if histograms need
-    re-calculating with different bin widths etc.
+    Return an tuple of (bin_edges, array), where the array is of size 
+    number_of_pairs x n_bins.
+    
+    .. note::
+        This can also be called on the (saved) full data matrix, if histograms need
+        re-calculating with different bin widths etc.
     """
     av_weight = np.mean(data, axis=0)
     keep = (av_weight != 0)
@@ -138,12 +176,61 @@ def get_tmrca_weights(params):
     return tmrca_weight, combo
 
 if __name__ == '__main__':
-    fn = "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic"
-    ts_name = fn + ".trees"
-    max_pop_nodes = 20
-    tmrca_df, bins, histdata, combos = get_pairwise_tmrca_pops(ts_name, max_pop_nodes)
-    outfn = fn + f".{max_pop_nodes}nodes.tmrcas"
-    print(f"Writing mean MRCAs to {outfn}.csv")
-    tmrca_df.to_csv(outfn + ".csv")
-    print(f"Writing bins and MRCA histogram distributions to {outfn}.npz")
-    np.savez_compressed(outfn + ".npz", bins=bins, histdata=histdata, combos=combos)
+    parser = argparse.ArgumentParser(
+        description='Calculate pairwise mean tMRCAs from a tree sequence')
+    parser.add_argument(
+        "--tree_sequence",
+        default="all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
+    )
+    parser.add_argument(
+        "--max_pop_nodes", "-m", type=int, default=20, 
+        help='The maximum number of samples nodes to compare per population',
+    )
+    parser.add_argument(
+        '--populations', '-p', nargs='*', default=None, 
+        help=
+            'Restrict pairwise calculations to particular populations. '
+            ' If None, use all population in the tree sequence.',
+    )
+    parser.add_argument(
+        '--num_processes', '-P', type=int, default=64, 
+        help='The number of CPUs to use in the calculation',
+    )
+    parser.add_argument(
+        '--save_raw_data', action='store_true',
+        help='Also save the (potentially huge) raw data file',
+    )
+    parser.add_argument(
+        '--verbosity', '-v', action="count", default=0, 
+        help='verbosity: output extra non-essential info',
+    )
+
+
+    args = parser.parse_args()
+    if args.verbosity==0:
+        logging.basicConfig(level=logging.WARNING)
+    elif args.verbosity==1:
+        logging.basicConfig(level=logging.INFO, format='%(message)s')
+    elif args.verbosity>=2:
+        logging.basicConfig(level=logging.DEBUG)
+    if not args.tree_sequence.endswith(".trees"):
+        raise valueError("Tree sequence must end with '.trees'")
+    fn =  args.tree_sequence[:-len(".trees")]
+    tMRCAS = get_pairwise_tmrca_pops(
+        args.tree_sequence,
+        args.max_pop_nodes,
+        restrict_populations=args.populations,
+        num_processes=args.num_processes,
+        return_raw_data=args.save_raw_data,
+    )
+    popstring = "all" if args.populations is None else "+".join(args.populations)
+    outfn = fn + f".{args.max_pop_nodes}nodes_{popstring}.tmrcas"
+    logging.info(f"Writing mean MRCAs to {outfn}.csv")
+    tMRCAS.means.to_csv(outfn + ".csv")
+    logging.info(f"Writing bins and MRCA histogram distributions to {outfn}.npz")
+    hist = tMRCAS.histogram
+    np.savez_compressed(
+        outfn + ".npz", bins=hist.bin_edges, histdata=hist.data, combos=hist.rownames)
+    if args.save_raw_data:
+        logging.info(f"Saving raw data to {outfn}_RAW.npz")
+        np.savez_compressed(outfn + "_RAW.npz", *tMRCAS.raw_data)
