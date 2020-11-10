@@ -6,7 +6,6 @@ import subprocess
 import os
 import sys
 import math
-import re
 
 import allel
 import numpy as np
@@ -19,6 +18,8 @@ import pandas as pd
 import multiprocessing
 
 import tskit
+
+GENERATION_TIME = 25
 
 try:
     import bgen_reader
@@ -85,7 +86,11 @@ def run_multiprocessing(args, function):
         with multiprocessing.Pool(processes=num_processes, maxtasksperchild=10) as pool:
             for index, row in enumerate(pool.map(function, chunks_iter)):
                 reports.append(row)
-                print("Processed Chunk {}: {} with {} sites added.".format(index, chunks[index][2], row["num_sites"]))
+                print(
+                    "Processed Chunk {}: {} with {} sites added.".format(
+                        index, chunks[index][2], row["num_sites"]
+                    )
+                )
                 if row["num_sites"] > 0:
                     completed_files.append(index)
 
@@ -100,26 +105,13 @@ def run_multiprocessing(args, function):
         filenames = completed_files
         all_samples = []
         for name in filenames:
-            all_samples.append(tsinfer.load(args.output_file + str(name))) 
+            all_samples.append(tsinfer.load(args.output_file + str(name)))
             os.remove(args.output_file + str(name))
 
         samples = all_samples[0].copy(args.output_file)
         samples.append_sites(*all_samples[1:])
         samples.finalise()
-#        filenames = completed_files
-#        samples = tsinfer.load(args.output_file + "0")
-#        copy = samples.copy(args.output_file)
-#        for sampledata_file in filenames[1:]:
-#            cur_sampledata = tsinfer.load(args.output_file + str(sampledata_file))
-#            copy.data["sites/position"].append(cur_sampledata.sites_position[:])
-#            copy.data["sites/alleles"].append(cur_sampledata.sites_alleles[:])
-#            copy.data["sites/genotypes"].append(cur_sampledata.sites_genotypes[:])
-#            copy.data["sites/inference"].append(cur_sampledata.sites_inference[:])
-#            copy.data["sites/metadata"].append(cur_sampledata.sites_metadata[:])
-#            copy.data["sites/time"].append(cur_sampledata.sites_time[:])
-#            os.remove(args.output_file + str(sampledata_file))
-#        copy.finalise()
-        assert np.all(np.diff(samples.sites_position[:]) > 0) 
+        assert np.all(np.diff(samples.sites_position[:]) > 0)
 
     else:
         raise ValueError
@@ -188,7 +180,7 @@ def make_sampledata(args):
                 git=git_provenance,
                 data=data_provenance,
             )
-            assert np.all(np.diff(samples.sites_position[:]) > 0) 
+            assert np.all(np.diff(samples.sites_position[:]) > 0)
     except Exception as e:
         os.unlink(args.output_file)
         if report["num_sites"] == 0:
@@ -206,15 +198,19 @@ def filter_duplicates_target(vcf, target_sites_pos=None):
     If target_sites_pos is not None, only returns variants from this VCF which are present in the target sampledata file.
     """
     if target_sites_pos is not None:
+
         def site_in_target(site):
             return site in target_sites_pos
+
     else:
+
         def site_in_target(site):
             return True
+
     row = next(vcf, None)
     bad_pos = -1
     for next_row in vcf:
-        if bad_pos == -1 and next_row.POS != row.POS: 
+        if bad_pos == -1 and next_row.POS != row.POS:
             if site_in_target(row.POS):
                 yield row
         else:
@@ -328,7 +324,7 @@ class VcfConverter(Converter):
                     missing = True
                 else:
                     all_alleles.add(allele)
-            a[2 * j] = alleles[0] != ancestral_state 
+            a[2 * j] = alleles[0] != ancestral_state
             a[2 * j + 1] = alleles[1] != ancestral_state
 
             if missing:
@@ -796,10 +792,9 @@ class HgdpConverter(VcfConverter):
             )
 
 
-
 class MaxPlanckConverter(VcfConverter):
     """
-    Converts data for Max Planck Data. 
+    Converts data for Max Planck Data.
     """
 
     def process_metadata(self, metadata_file, show_progress=False):
@@ -813,7 +808,7 @@ class MaxPlanckConverter(VcfConverter):
             row = lines[1].split(" ")
             name = row[0]
             metadata["name"] = name
-            metadata["age"] = row[2]
+            metadata["age"] = int(row[2]) / GENERATION_TIME
             population = row[1]
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
@@ -822,7 +817,9 @@ class MaxPlanckConverter(VcfConverter):
         pop_id = self.samples.add_population(
             {"name": population, "super_population": "Max Planck"}
         )
-        self.samples.add_individual(time=metadata["age"], metadata=metadata, population=pop_id, ploidy=2)
+        self.samples.add_individual(
+            time=metadata["age"], metadata=metadata, population=pop_id, ploidy=2
+        )
 
     def convert_genotypes(self, row, ancestral_state):
         def return_genotype(allele, ancestral_state):
@@ -854,7 +851,7 @@ class MaxPlanckConverter(VcfConverter):
                     missing = True
                 else:
                     all_alleles.add(allele)
-            a[2 * j] = alleles[0] != ancestral_state 
+            a[2 * j] = alleles[0] != ancestral_state
             a[2 * j + 1] = alleles[1] != ancestral_state
 
             if missing:
@@ -908,8 +905,13 @@ class AfanasievoConverter(MaxPlanckConverter):
         for name in individual_names:
             metadata = {}
             metadata["name"] = name
-            metadata["age"] = 5500
-            self.samples.add_individual(metadata=metadata, time=5500, population=pop_id, ploidy=2)
+            if "Son" in name:
+                metadata["age"] = 4100 / GENERATION_TIME
+            else:
+                metadata["age"] = 4125 / GENERATION_TIME
+            self.samples.add_individual(
+                metadata=metadata, time=metadata["age"], population=pop_id, ploidy=2
+            )
         self.num_samples = len(individual_names) * 2
 
 
@@ -948,7 +950,7 @@ class ReichConverter(VcfConverter):
                 population_name = metadata.pop("country")
                 populations[name] = population_id_map[population_name]
                 age = metadata.pop("average_of_95.4%_date_range_in_calbp")
-                metadata["age"] = age
+                metadata["age"] = int(age) / GENERATION_TIME
                 rows[name] = metadata
                 try:
                     location = [
@@ -973,76 +975,6 @@ class ReichConverter(VcfConverter):
                 ploidy=2,
                 population=populations[name],
             )
-
-#    def convert_genotypes(self, row, ancestral_state):
-#        ret = None
-#        num_diploids = self.num_samples // 2
-#        a = np.zeros(self.num_samples, dtype=np.int8)
-#        all_alleles = set([ancestral_state])
-#        # Fill in a with genotypes.
-#        bases = np.array(row.gt_bases)
-#        for j in range(num_diploids):
-#            alleles = bases[j].split("/")
-#            if len(alleles) != 2:
-#                self.num_unphased += 1
-#                break
-#            missing = False
-#            for allele in alleles:
-#                if allele == ".":
-#                    missing = True
-#                else:
-#                    all_alleles.add(allele)
-#            a[2 * j] = alleles[0] != ancestral_state
-#            a[2 * j + 1] = alleles[1] != ancestral_state
-#            if missing:
-#                if alleles[0] == ".":
-#                    a[2 * j] = tskit.MISSING_DATA
-#                if alleles[1] == ".":
-#                    a[2 * j + 1] = tskit.MISSING_DATA
-#        else:
-#            freq = np.sum(a)
-#            # The loop above exited without breaking, so we have valid data.
-#            if freq == 0:
-#                self.num_invariant += 1
-#            elif any(len(allele) != 1 for allele in all_alleles):
-#                self.num_indels += 1
-#            elif len(all_alleles) != 2:
-#                self.num_non_biallelic += 1
-#            else:
-#                all_alleles.remove(ancestral_state)
-#                alleles = [ancestral_state, all_alleles.pop()]
-#                metadata = {"ID": row.ID, "REF": row.REF}
-#                ret = Site(
-#                    position=row.POS, alleles=alleles, genotypes=a, metadata=metadata
-#                )
-#        return ret
-#
-#    def process_sites(self, show_progress=False, max_sites=None):
-#        num_data_sites = int(
-#            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
-#        )
-#        progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
-#        seen_positions = list()
-#        num_sites = 0
-#        for index, row in enumerate(filter_duplicates(cyvcf2.VCF(self.data_file))):
-#            ancestral_state = self.get_ancestral_state(row.POS)
-#            if ancestral_state is not None:
-#                site = self.convert_genotypes(row, ancestral_state)
-#                if site is not None:
-#                    self.samples.add_site(
-#                        position=site.position,
-#                        genotypes=site.genotypes,
-#                        alleles=site.alleles,
-#                        metadata=site.metadata,
-#                    )
-#                    seen_positions.append(site.position)
-#                    progress.set_postfix(used=str(num_sites))
-#                    num_sites += 1
-#                    if num_sites == max_sites:
-#                        break
-#            progress.update()
-#
-#        progress.close()
 
 
 class UkbbConverter(Converter):
@@ -1162,7 +1094,7 @@ def main():
         "--target-samples",
         default=None,
         help="A target sampledata file, only variants present in this target file will \
-            will be used in the resulting sampledata file"
+            will be used in the resulting sampledata file",
     )
     parser.add_argument(
         "-p",
