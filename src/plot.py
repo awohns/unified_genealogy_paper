@@ -2705,6 +2705,7 @@ class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
 
 class TmrcaClustermap(Figure):
     """
+    Plot the TMRCA clustermap (Figure 2)
     """
 
     name = "tmrca_clustermap"
@@ -2712,7 +2713,7 @@ class TmrcaClustermap(Figure):
     filename = [
         "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
     ]
-    
+
     def make_symmetric(self, df):
         """
         Make TMRCA dataframe symmetric
@@ -2787,18 +2788,18 @@ class TmrcaClustermap(Figure):
         )
         mask = np.zeros_like(mergedg, dtype=np.bool)
         n = mask.shape[0]
-        #print(n)
-        #rows = np.concatenate([np.repeat(n - i, i) for i in np.arange(0, n + 1)])
-        #cols = np.concatenate([np.arange(0, i) for i in np.arange(0, n + 1)])
-        #rows = np.concatenate([np.repeat(i - 1, i) for i in np.arange(0, n + 1)])
-        #cols = np.concatenate([np.arange(i, n) for i in reversed(np.arange(0, n + 1))])
-        #print(rows)
-        #print(cols)
+        # print(n)
+        # rows = np.concatenate([np.repeat(n - i, i) for i in np.arange(0, n + 1)])
+        # cols = np.concatenate([np.arange(0, i) for i in np.arange(0, n + 1)])
+        # rows = np.concatenate([np.repeat(i - 1, i) for i in np.arange(0, n + 1)])
+        # cols = np.concatenate([np.arange(i, n) for i in reversed(np.arange(0, n + 1))])
+        # print(rows)
+        # print(cols)
         mask[np.tril_indices_from(mask, k=-1)] = True
-        #mask[rows, cols] = True
+        # mask[rows, cols] = True
         cg = sns.clustermap(mergedg, mask=mask, method="average")
-        mask = mask[np.argsort(cg.dendrogram_row.reordered_ind),:]
-        mask = mask[:,np.argsort(cg.dendrogram_col.reordered_ind)]
+        mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
+        mask = mask[:, np.argsort(cg.dendrogram_col.reordered_ind)]
         cg = sns.clustermap(
             mergedg,
             mask=mask,
@@ -2812,17 +2813,22 @@ class TmrcaClustermap(Figure):
             cbar_pos=(0.04, 0.28, 0.04, 0.2),
             cmap=plt.cm.inferno_r,
             dendrogram_ratio=0.18,
-            cbar_kws=dict(
-                orientation="vertical"
-            ),
+            cbar_kws=dict(orientation="vertical"),
         )
         cg.ax_heatmap.invert_xaxis()
         cg.ax_heatmap.xaxis.tick_top()
         cg.cax.tick_params(labelsize=20)
         cg.cax.set_xlabel("Average TMRCA\n(generations)", size=20)
 
-        cg.ax_heatmap.set_xticklabels([label.get_text().rsplit("_", 1)[0] for label in cg.ax_heatmap.get_xmajorticklabels()], fontsize=7, rotation=90)
-        #cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
+        cg.ax_heatmap.set_xticklabels(
+            [
+                label.get_text().rsplit("_", 1)[0]
+                for label in cg.ax_heatmap.get_xmajorticklabels()
+            ],
+            fontsize=7,
+            rotation=90,
+        )
+        # cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
         cg.ax_heatmap.set_yticks([])
 
         for region, col in region_colours.items():
@@ -2845,14 +2851,14 @@ class TmrcaClustermap(Figure):
 
         pos = cg.ax_col_colors.get_position()
         points = pos.get_points()
-        points[0][1] = points[0][1] + 0.03 #- 0.72
-        points[1][1] = points[1][1] + 0.03 #- 0.72
-        cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points ))
+        points[0][1] = points[0][1] + 0.03  # - 0.72
+        points[1][1] = points[1][1] + 0.03  # - 0.72
+        cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points))
 
         handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
         labels, handles = zip(*sorted(zip(labels, handles)))
-        #handles = np.array(handles)[~np.isin(labels, ["Europe", "South Asia"])]
-        #labels = np.array(labels)[~np.isin(labels, ["Europe", "South Asia"])]
+        # handles = np.array(handles)[~np.isin(labels, ["Europe", "South Asia"])]
+        # labels = np.array(labels)[~np.isin(labels, ["Europe", "South Asia"])]
         cg.ax_col_dendrogram.legend(
             handles,
             labels,
@@ -2867,6 +2873,139 @@ class TmrcaClustermap(Figure):
 
         # Remove box around the legend
         cg.ax_col_dendrogram.get_legend().get_frame().set_linewidth(0.0)
+
+        self.save(self.name)
+
+
+class InsetTmrcaHistograms(Figure):
+    """
+    Plot the three inset histograms to the clustermap in Figure 2.
+    """
+
+    name = "inset_tmrca_histograms"
+    data_path = "all-data"
+    filename = [
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
+    ]
+
+    tmrcas = np.load(
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas.npz"
+    )
+    combos = tmrcas["combos"]
+    region_colors = get_tgp_hgdp_sgdp_region_colours()
+
+    def plot(self):
+        fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(10, 12))
+        combos = tmrcas["combos"]
+        region_colours = get_tgp_hgdp_sgdp_region_colours()
+        [ax.set_facecolor("lightgrey") for ax in axes]
+
+        def plot_step(incl_combos, ax, label, color):
+            values = np.mean(tmrcas["histdata"][incl_combos], axis=0)
+            x1, y1 = (
+                np.append((np.exp(tmrcas["bins"])), np.exp(tmrcas["bins"][-1])),
+                np.pad(np.zeros(values.shape[0]), 1),
+            )
+            y1[1:-1] = values / np.max(values)
+            ax.step(x1, y1, "-", color=color, label=label)
+
+        def plot_fill(incl_combos, ax, label, color, alpha=1):
+            values = np.mean(tmrcas["histdata"][incl_combos], axis=0)
+            x1, y1 = (
+                np.append((np.exp(tmrcas["bins"])), np.exp(tmrcas["bins"][-1])),
+                np.pad(np.zeros(values.shape[0]), 1),
+            )  # initial hist is all at 0
+            y1[1:-1] = values / np.max(values)
+            ax.step(x1, y1, "-", color=color, label=label)
+            ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
+            ax.legend(fancybox=True, framealpha=0.5, fontsize=14)
+
+        # First Plot: African/African and Non-African/Non-African
+        african = pop_names[regions == "Africa"]
+        african_combos = np.all(np.isin(combos, african), axis=1)
+        plot_fill(
+            african_combos,
+            axes[0],
+            "African/African",
+            region_colours["Africa"],
+            alpha=0.4,
+        )
+        nonafrican = pop_names[
+            np.logical_and(
+                regions != "Africa",
+                ~np.isin(pop_names, ["Altai", "Chagyrskaya", "Denisovan", "Vindija"]),
+            )
+        ]
+        nonafrican = np.all(np.isin(combos, nonafrican), axis=1)
+        plot_step(nonafrican, axes[0], "African/Non-African \n(ex Archaics)", "black")
+
+        # Second Plot: Papuan+Australian/Denisovan and Denisovan/modern humans (ex papuan + australian)
+        sahul = [
+            "Bougainville",
+            "Bougainville (SGDP)",
+            "PapuanHighlands",
+            "PapuanSepik",
+            "Australian",
+        ]
+        exsahul_denisovan_combos = np.logical_and(
+            np.any(combos == "Denisovan", axis=1),
+            np.all(~np.isin(combos, sahul), axis=1),
+        )
+        archaics = ["Altai", "Vindija", "Chagyrskaya"]
+        exarchaic_exsahul_denisovan_combos = np.logical_and(
+            exsahul_denisovan_combos, np.all(~np.isin(combos, archaics), axis=1)
+        )
+        exarchaic_exsahul_denisovan_combos = np.logical_and(
+            exarchaic_exsahul_denisovan_combos, ~np.all(combos == "Denisovan", axis=1)
+        )
+        plot_fill(
+            exarchaic_exsahul_denisovan_combos,
+            axes[1],
+            "Denisovan/Modern Humans \n(ex Papauans, Australians)",
+            "white",
+        )
+        sahul_combos = np.logical_and(
+            np.any(combos == "Denisovan", axis=1),
+            np.any(np.isin(combos, sahul), axis=1),
+        )
+        plot_step(
+            sahul_combos,
+            axes[1],
+            "Denisovan/Papuans+Australians",
+            region_colours["Oceania"],
+        )
+
+        # Third Plot: Samaritan/Samaritan and Samaritan/Others
+        exsamaritan_combos = np.logical_and(
+            np.any(combos == "Samaritan (SGDP)", axis=1),
+            ~np.all(combos == "Samaritan (SGDP)", axis=1),
+        )
+        archaics = ["Altai", "Vindija", "Chagyrskaya", "Denisovan"]
+        exarchaic_exsamaritan_combos = np.logical_and(
+            exsamaritan_combos, np.all(~np.isin(combos, archaics), axis=1)
+        )
+        plot_fill(
+            exarchaic_exsamaritan_combos,
+            axes[2],
+            "Samaritan/Modern Humans \n(ex Samaritan)",
+            "white",
+        )
+        samaritan_combo = np.all(combos == "Samaritan (SGDP)", axis=1)
+        plot_step(
+            samaritan_combo,
+            axes[2],
+            "Samaritan/Samaritan",
+            region_colours["West Eurasia"],
+        )
+
+        axes[0].set_xscale("log")
+        axes[0].set_xticks([1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5])
+        axes[0].set_xticklabels([1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5])
+        axes[0].set_yticks([])
+        axes[0].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+
+        plt.xlabel("Time to Most Recent Common Ancestor (generations)")
+        plt.show()
 
         self.save(self.name)
 
@@ -3009,11 +3148,8 @@ class AncientDescent(Figure):
             total += np.sum(df["regions"] == region)
 
         axes[0].set_xticks([])
-        #     yticks = axes[0].get_yticks()
-        #     axes[0].set_yticks(yticks[1:])
         axes[0].set_yticklabels(axes[0].get_yticks(), size=16)
         axes[0].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
-        #     print(axes[0].get_yticks())
         axes[0].set_ylabel(
             "Normalised Descent from \n" + axis_label + "-like Ancestry", size=19
         )
@@ -3053,45 +3189,65 @@ class AncientDescent(Figure):
         axes[1].xaxis.grid(alpha=0.5)
         plt.show()
 
-
     def plot_haplotype_linkage(self, df, children, descendants):
         cmap = matplotlib.colors.ListedColormap(["white", "black"])
-        fig = plt.figure(figsize=(40,20))
-        Y = scipy.cluster.hierarchy.linkage(df, method='average')
-        Z2 = scipy.cluster.hierarchy.dendrogram(Y, orientation='left', no_plot=True)
-        idx1 = Z2['leaves'][:]
-        region_matrix = fig.add_axes([0.,0.1,0.04,0.6])
+        fig = plt.figure(figsize=(40, 20))
+        Y = scipy.cluster.hierarchy.linkage(df, method="average")
+        Z2 = scipy.cluster.hierarchy.dendrogram(Y, orientation="left", no_plot=True)
+        idx1 = Z2["leaves"][:]
+        region_matrix = fig.add_axes([0.0, 0.1, 0.04, 0.6])
 
         num_rows = len(idx1)
-        height = [1/num_rows for descent in range(num_rows)]
-        errorboxes=[]
-        facecolors = [region_colours[region] for region in regions[ref_set_map[descendants[idx1]]]]
+        height = [1 / num_rows for descent in range(num_rows)]
+        errorboxes = []
+        facecolors = [
+            region_colours[region] for region in regions[ref_set_map[descendants[idx1]]]
+        ]
 
-        for x, y, xe, ye in zip(np.repeat(0, num_rows), list(reversed(np.arange(0, 1, 1/num_rows))),
-                                   np.repeat(1, num_rows), height):
+        for x, y, xe, ye in zip(
+            np.repeat(0, num_rows),
+            list(reversed(np.arange(0, 1, 1 / num_rows))),
+            np.repeat(1, num_rows),
+            height,
+        ):
             rect = matplotlib.patches.Rectangle((x, y), xe, ye)
             errorboxes.append(rect)
 
-        region_matrix.add_collection(matplotlib.collections.PatchCollection(errorboxes, facecolor=facecolors))
+        region_matrix.add_collection(
+            matplotlib.collections.PatchCollection(errorboxes, facecolor=facecolors)
+        )
         region_matrix.set_xticklabels([])
         region_matrix.set_yticklabels([])
-        haplo_matrix_1 = fig.add_axes([0.04,0.1,0.45,0.6])
+        haplo_matrix_1 = fig.add_axes([0.04, 0.1, 0.45, 0.6])
         D = children[descendants][idx1]
-        im = haplo_matrix_1.imshow(D[:,:25000], aspect='auto', origin='upper', cmap=cmap)
+        im = haplo_matrix_1.imshow(
+            D[:, :25000], aspect="auto", origin="upper", cmap=cmap
+        )
         haplo_matrix_1.set_xticks(np.arange(0, 25000, 5000))
-        haplo_matrix_1.set_xticklabels(np.arange(0, 25000, 5000)/1000, size=18)
+        haplo_matrix_1.set_xticklabels(np.arange(0, 25000, 5000) / 1000, size=18)
         haplo_matrix_1.set_yticklabels([])
-        haplo_matrix_1.grid({"color":"lightgray"})
-        haplo_matrix_2 = fig.add_axes([0.51,0.1,0.45,0.6])
-        im = haplo_matrix_2.imshow(D[:,30000:], aspect='auto', origin='upper', cmap=cmap)
+        haplo_matrix_1.grid({"color": "lightgray"})
+        haplo_matrix_2 = fig.add_axes([0.51, 0.1, 0.45, 0.6])
+        im = haplo_matrix_2.imshow(
+            D[:, 30000:], aspect="auto", origin="upper", cmap=cmap
+        )
         haplo_matrix_2.set_xticks(np.concatenate([np.arange(0, 35000, 5000), [34444]]))
-        haplo_matrix_2.set_xticklabels(np.concatenate([np.arange(30000, 65000, 5000)/1000, [64]]), size=18)
+        haplo_matrix_2.set_xticklabels(
+            np.concatenate([np.arange(30000, 65000, 5000) / 1000, [64]]), size=18
+        )
 
         haplo_matrix_2.yaxis.set_label_position("right")
         haplo_matrix_2.yaxis.tick_right()
-        haplo_matrix_2.grid({"color":"lightgray"})
-        fig.text(0.5, 0.06, "Chromosome 20 Position (Mb)", ha='center', size=30)
-        fig.text(0.99, 0.4, "Descendant Chromosomes", va='center', rotation='vertical', size=30)
+        haplo_matrix_2.grid({"color": "lightgray"})
+        fig.text(0.5, 0.06, "Chromosome 20 Position (Mb)", ha="center", size=30)
+        fig.text(
+            0.99,
+            0.4,
+            "Descendant Chromosomes",
+            va="center",
+            rotation="vertical",
+            size=30,
+        )
         fig.show()
 
 
@@ -3103,14 +3259,18 @@ class VindiajDescent(AncientDescent):
     name = "vindija_descent"
     data_path = "data"
     filename = [
-        "combined_ts_vindija_descent_arr", "combined_ts_vindija_descendants", "combined_ts_vindija_corrcoeff_df"
+        "combined_ts_vindija_descent_arr",
+        "combined_ts_vindija_descendants",
+        "combined_ts_vindija_corrcoeff_df",
     ]
+
     def plot(self):
         descent_arr = self.data[0]
         descendants = self.data[1]
         corrcoeff_df = self.data[2]
         self.plot_haplotype_linkage(corrcoef_df, descent_arr, descendants)
         self.save(self.name)
+
 
 ######################################
 #
