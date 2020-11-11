@@ -2788,15 +2788,7 @@ class TmrcaClustermap(Figure):
         )
         mask = np.zeros_like(mergedg, dtype=np.bool)
         n = mask.shape[0]
-        # print(n)
-        # rows = np.concatenate([np.repeat(n - i, i) for i in np.arange(0, n + 1)])
-        # cols = np.concatenate([np.arange(0, i) for i in np.arange(0, n + 1)])
-        # rows = np.concatenate([np.repeat(i - 1, i) for i in np.arange(0, n + 1)])
-        # cols = np.concatenate([np.arange(i, n) for i in reversed(np.arange(0, n + 1))])
-        # print(rows)
-        # print(cols)
         mask[np.tril_indices_from(mask, k=-1)] = True
-        # mask[rows, cols] = True
         cg = sns.clustermap(mergedg, mask=mask, method="average")
         mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
         mask = mask[:, np.argsort(cg.dendrogram_col.reordered_ind)]
@@ -2854,11 +2846,13 @@ class TmrcaClustermap(Figure):
         points[0][1] = points[0][1] + 0.03  # - 0.72
         points[1][1] = points[1][1] + 0.03  # - 0.72
         cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points))
-
         handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
         labels, handles = zip(*sorted(zip(labels, handles)))
-        # handles = np.array(handles)[~np.isin(labels, ["Europe", "South Asia"])]
-        # labels = np.array(labels)[~np.isin(labels, ["Europe", "South Asia"])]
+        labels = np.array(labels)
+        remove_bool = ~np.isin(labels, ["West Eurasia", "South Asia"])
+        labels[labels == "Europe"] = "Europe/West Eurasia"
+        handles = [handles[i] for i in np.where(remove_bool)[0]]
+        labels = list(np.array(labels)[remove_bool])
         cg.ax_col_dendrogram.legend(
             handles,
             labels,
@@ -2887,10 +2881,8 @@ class InsetTmrcaHistograms(Figure):
     filename = [
         "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
     ]
-
-    tmrcas = np.load(
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas.npz"
-    )
+    fn =  "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas.npz"
+    tmrcas = np.load(os.path.join(data_path, fn))
     combos = tmrcas["combos"]
     region_colors = get_tgp_hgdp_sgdp_region_colours()
 
