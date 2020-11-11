@@ -2728,7 +2728,7 @@ class TmrcaClustermap(Figure):
         df = df.set_index(df.columns[0])
         tmrcas = self.make_symmetric(df)
 
-        pop_names = tmrcas.columns
+        pop_names = self.tmrcas.columns
         pop_names = [pop.split(".")[0] for pop in pop_names]
         pop_names = [pop.split(" ")[0] for pop in pop_names]
         regions = list()
@@ -2820,7 +2820,6 @@ class TmrcaClustermap(Figure):
             fontsize=7,
             rotation=90,
         )
-        # cg.ax_heatmap.set_yticklabels(cg.ax_heatmap.get_xmajorticklabels(), fontsize=7)
         cg.ax_heatmap.set_yticks([])
 
         for region, col in region_colours.items():
@@ -2887,29 +2886,48 @@ class InsetTmrcaHistograms(Figure):
     region_colors = get_tgp_hgdp_sgdp_region_colours()
 
     def plot(self):
+        df = self.data[0]
+        df = df.set_index(df.columns[0])
+
         fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(10, 12))
-        combos = tmrcas["combos"]
+        combos = self.tmrcas["combos"]
         region_colours = get_tgp_hgdp_sgdp_region_colours()
         [ax.set_facecolor("lightgrey") for ax in axes]
 
-        def plot_step(incl_combos, ax, label, color):
-            values = np.mean(tmrcas["histdata"][incl_combos], axis=0)
+        pop_names = df.columns
+        pop_names = [pop.split(".")[0] for pop in pop_names]
+        pop_names = np.array([pop.split(" ")[0] for pop in pop_names])
+
+        regions = list()
+        for pop in pop_names[0:54]:
+            regions.append(hgdp_region_map[pop])
+        for pop in pop_names[54:80]:
+            regions.append(tgp_region_map[pop])
+        for pop in pop_names[80:210]:
+            regions.append(sgdp_region_map[pop])
+        for pop in pop_names[210:]:
+            regions.append("Ancients")
+        regions = np.array(regions)
+
+        def plot_fill(incl_combos, ax, label, color, alpha=1):
+            values = np.mean(self.tmrcas["histdata"][incl_combos], axis=0)
             x1, y1 = (
-                np.append((np.exp(tmrcas["bins"])), np.exp(tmrcas["bins"][-1])),
+                np.append((np.exp(self.tmrcas["bins"])), np.exp(self.tmrcas["bins"][-1])),
                 np.pad(np.zeros(values.shape[0]), 1),
             )
             y1[1:-1] = values / np.max(values)
             ax.step(x1, y1, "-", color=color, label=label)
+            ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
+            ax.legend(fancybox=True, framealpha=0.5, fontsize=14)
 
-        def plot_fill(incl_combos, ax, label, color, alpha=1):
-            values = np.mean(tmrcas["histdata"][incl_combos], axis=0)
+        def plot_step(incl_combos, ax, label, color):
+            values = np.mean(self.tmrcas["histdata"][incl_combos], axis=0)
             x1, y1 = (
-                np.append((np.exp(tmrcas["bins"])), np.exp(tmrcas["bins"][-1])),
+                np.append((np.exp(self.tmrcas["bins"])), np.exp(self.tmrcas["bins"][-1])),
                 np.pad(np.zeros(values.shape[0]), 1),
-            )  # initial hist is all at 0
+            )
             y1[1:-1] = values / np.max(values)
             ax.step(x1, y1, "-", color=color, label=label)
-            ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
             ax.legend(fancybox=True, framealpha=0.5, fontsize=14)
 
         # First Plot: African/African and Non-African/Non-African
