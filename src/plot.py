@@ -471,6 +471,326 @@ class TsdateNeutralSims(Figure):
         self.save(self.name)
 
 
+class MismatchSimulationWithError(Figure):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_simulated"
+    data_path = "data"
+    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
+    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
+
+    focal_ma = 1
+    focal_ms = 1
+    cmap='viridis_r'
+    linestyles = {
+        "rel_ma_mis": dict(linestyle="--", dashes=(10, 2)),
+        "rel_ms_mis": dict(linestyle=":"),
+    }
+    
+    def plot(self):
+        sim_data = self.data[0]
+        sim_data['edges1000'] = sim_data['edges'] / 1000
+        sim_data['muts1000'] = sim_data['muts'] / 1000
+        sim_data['edges_muts_1000'] = (sim_data['edges1000'] + sim_data['muts1000'])
+
+        assert np.allclose(np.diff(sim_data['kc_max'][np.isfinite(sim_data['kc_max'])]), 0)
+        kc_max = np.mean(sim_data['kc_max'][np.isfinite(sim_data['kc_max'])])
+        assert np.allclose(np.diff(sim_data['kc_max_split'][np.isfinite(sim_data['kc_max_split'])]), 0)
+        kc_max_split = np.mean(sim_data['kc_max_split'][np.isfinite(sim_data['kc_max_split'])])
+        assert np.allclose(np.diff(sim_data['num_sites']), 0)
+        num_sites = np.mean(sim_data['num_sites'])
+
+        sim_data['rel_ts_size'] = sim_data['ts_bytes']/sim_data['sim_ts_min_bytes']
+        sim_data['KCpoly'] = sim_data['kc_poly']/kc_max
+        sim_data['KCsplit'] = sim_data['kc_split']/kc_max_split
+        # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
+        sim_data['RFsplit'] = sim_data['RFsplit'] / (2 * sim_data['n'] - 4)
+
+        sim_data=sim_data.sort_values(["rel_ma_mis", "rel_ms_mis"])
+        unique_vals = {
+            "rel_ma_mis": np.unique(sim_data["rel_ma_mis"]),
+            "rel_ms_mis": np.unique(sim_data["rel_ms_mis"]),
+        }
+
+        ms_map = {v:i for i, v in enumerate(unique_vals['rel_ms_mis'])}
+        ma_map = {v:i for i, v in enumerate(unique_vals['rel_ma_mis'])}
+        
+        metrics = {
+            "edges_muts_1000": "# edges + mutations (1000's)",
+            "rel_ts_size": "Relative filesize",
+            "KCpoly": "Normalised KC distance",
+            "KCsplit": "Normalised KC distance (polytomies split)",
+            "RFsplit": "Normalised RF distance (polytomies split)",
+            #"arity_mean": "Mean arity",
+        }
+
+        fig, axs = plt.subplots(2, len(metrics), figsize=(24, 10))
+        plt.subplots_adjust(wspace=0.3)
+
+        legend=False
+        for i, (metric, metric_lab) in enumerate(metrics.items()):
+            # Top (heatmap) plot
+            Z = np.zeros((len(ms_map), len(ma_map)))
+            for _, row in sim_data.iterrows():
+                Z[ms_map[row.rel_ms_mis], ma_map[row.rel_ma_mis]] = row[metric]
+            ax_top = axs[0, i]
+            cs = ax_top.contour(
+                unique_vals['rel_ma_mis'], unique_vals['rel_ms_mis'], Z, colors='gray')
+            ax_top.contourf(cs, cmap=self.cmap)
+            ax_top.clabel(cs, inline=0, colors=["k"])
+            ax_top.axvline(self.focal_ma, c="k", **self.linestyles['rel_ms_mis'])
+            ax_top.axhline(self.focal_ms, c="k", **self.linestyles['rel_ma_mis'])
+            if i==0:
+                ax_top.set_ylabel(r"Sample mismatch rate (relative to $\tilde{\rho}$)")
+            ax_top.set_xlabel(r"Ancestor mismatch rate (relative to $\tilde{\rho}$)")
+            ax_top.set_title(metric_lab, pad=15, fontsize="x-large")
+            ax_top.set_xscale("log")
+            ax_top.set_yscale("log")
+
+            # Bottom (line) plot(s)
+            ma_mask = sim_data["rel_ma_mis"]==self.focal_ma
+            ms_mask = sim_data["rel_ms_mis"]==self.focal_ms
+            ax_bottom = axs[1, i]
+            if metric == "edges_muts_1000":
+                # Edges vs muts plot is different
+                gs = ax_bottom.get_gridspec()
+                ax_bottom.set_ylabel(metric_lab, labelpad=35)
+                ax_bottom.xaxis.set_visible(False) # make this subplot x axis invisible
+                plt.setp(ax_bottom.spines.values(), visible=False) # make box invisible
+                ax_bottom.tick_params(left=False, labelleft=False) # remove ticks+labels 
+                gs_sub = gs[1,i].subgridspec(2, 1, hspace=0.5)
+                for i, (mm_lab, mask, title) in enumerate([
+                    ('rel_ma_mis', ms_mask, 'Ancestor'),
+                    ('rel_ms_mis', ma_mask, 'Sample')]
+                ):
+                    ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
+                    mm = sim_data[mm_lab][mask]
+                    ax_sub_bottom.fill_between(
+                        mm, 0, sim_data['muts1000'][mask], color="orange")
+                    ax_sub_bottom.fill_between(
+                        mm, sim_data['muts1000'][mask],
+                        sim_data['muts1000'][mask] + sim_data['edges1000'][mask],
+                        color="tab:brown"
+                    )
+                    ax_sub_bottom.plot(
+                        sim_data[mm_lab][mask],
+                        sim_data[metric][mask],
+                        c="k", **self.linestyles[mm_lab])
+                    ax_sub_bottom.text(
+                        unique_vals[mm_lab][-2],
+                        np.mean(sim_data['muts1000'][mask]/2),
+                        "Mutations",
+                        ha="right",
+                        va="bottom",
+                        bbox=dict(facecolor='w', alpha=0.9, ec='none')
+                    )
+                    ax_sub_bottom.text(
+                        unique_vals[mm_lab][-2],
+                        np.mean(
+                            (
+                                sim_data['muts1000'][ma_mask] * 2 +
+                                sim_data['edges1000'][ma_mask]
+                            ) / 2),
+                        "Edges",
+                        ha="right",
+                        va="bottom",
+                        bbox=dict(facecolor='w', alpha=0.9, ec='none')
+                    )
+                    ax_sub_bottom.set_xlabel(
+                        title + r" mismatch rate (relative to $\tilde{\rho}$)")
+                    ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
+                    ax_sub_bottom.set_ylim(0)
+                    ax_sub_bottom.set_xscale("log")
+                    ax_sub_bottom.axhline(num_sites / 1000, c="grey")
+                    ax_sub_bottom.text(
+                        unique_vals[mm_lab][2], (num_sites / 1000) * 0.95, "Min # mutations",
+                        va="center", color="k",
+                        bbox=dict(boxstyle='square,pad=0', facecolor='orange', alpha=0.9, ec='none'))
+            else:
+                for i, (mm_lab, mask, title) in enumerate([
+                    ('rel_ma_mis', ms_mask, 'Ancestor'),
+                    ('rel_ms_mis', ma_mask, 'Sample')]
+                ):
+                    ax_bottom.plot(
+                        sim_data[mm_lab][mask],
+                        sim_data[metric][mask],
+                        c="k", label=title + " mismatch",
+                        **self.linestyles[mm_lab]
+                    )
+                if not legend:
+                    ax_bottom.legend(loc='upper left')
+                    legend = True
+                ax_bottom.set_xlabel(r"Mismatch rate (relative to $\tilde{\rho}$)")
+                ax_bottom.set_xlim(
+                    np.min(np.concatenate(list(unique_vals.values()))),
+                    np.max(np.concatenate(list(unique_vals.values()))))
+                ax_bottom.set_ylabel(metric_lab)
+                ax_bottom.set_xscale("log")
+
+        self.save(self.name)
+
+class MismatchRealDataWithError(Figure):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_tgp_hgdp"
+    data_path = "data"
+    filename = [
+        "1kg_chr20_1000000-1100000_results",
+        "hgdp_chr20_1000000-1100000_results",
+    ]
+    plt_title = "Effect of mismatch parameters on inference of real data"
+
+    focal_ma = 1
+    focal_ms = 1
+    cmap='viridis_r'
+    linestyles = {
+        "rel_ma_mis": dict(linestyle="--", dashes=(10, 2)),
+        "rel_ms_mis": dict(linestyle=":"),
+    }
+
+    def plot(self):
+        metrics = {
+            "edges_muts_1000": "# edges + mutations (1000's)",
+            "ts_size_Mb": "Filesize (Mb)",
+            #"arity_mean": "Mean arity",
+        }
+        fig, axs = plt.subplots(2, 5, figsize=(24, 10))
+        plt.subplots_adjust(wspace=0.3)
+        axs[0,2].remove()
+        axs[1,2].remove()
+        fig.text(
+            0.55, 0.5, 'Human Genome Diversity Project',
+            ha='center', va='center', rotation=90, size=30)
+
+        for label, rot, lab_x, data, start_subplot_col in [
+            ('Thousand Genomes Project', -90, 0.45, self.data[0], 0),
+            ('Human Genome Diversity Project', 90, 0.55, self.data[1], 3),
+        ]:
+            data['ts_size_Mb'] = data['ts_bytes'] / 1e6
+            data['edges1000'] = data['edges'] / 1000
+            data['muts1000'] = data['muts'] / 1000
+            data['edges_muts_1000'] = (data['edges1000'] + data['muts1000'])
+            data=data.sort_values(["rel_ma_mis", "rel_ms_mis"])
+            assert np.allclose(np.diff(data['num_sites']), 0)
+            num_sites = np.mean(data['num_sites'])
+
+            fig.text(lab_x, 0.5, label, ha='center', va='center', rotation=rot, size=30)
+            unique_vals = {
+                "rel_ma_mis": np.unique(data["rel_ma_mis"]),
+                "rel_ms_mis": np.unique(data["rel_ms_mis"]),
+            }
+            ma_map = {v:i for i, v in enumerate(unique_vals['rel_ma_mis'])}
+            ms_map = {v:i for i, v in enumerate(unique_vals['rel_ms_mis'])}
+            legend = False
+            for i, (metric, metric_lab) in enumerate(metrics.items()):
+                Z = np.zeros((len(ma_map), len(ms_map)))
+                for _, row in data.iterrows():
+                    Z[ma_map[row.rel_ma_mis], ms_map[row.rel_ms_mis]] = row[metric]
+        
+                ax_top = axs[0, i + start_subplot_col]
+                cs = ax_top.contour(
+                    unique_vals['rel_ms_mis'],
+                    unique_vals['rel_ma_mis'],
+                    Z,
+                    colors='gray',
+                )
+                ax_top.contourf(cs, cmap=self.cmap)
+                ax_top.clabel(cs, inline=0, colors=["k"])
+        
+                ax_top.axvline(self.focal_ma, c="k", **self.linestyles['rel_ms_mis'])
+                ax_top.axhline(self.focal_ms, c="k", **self.linestyles['rel_ma_mis'])
+                if i==0:
+                    ax_top.set_ylabel(
+                        r"Sample mismatch rate (relative to $\tilde{\rho}$)")
+                ax_top.set_xlabel(
+                    r"Ancestor mismatch rate (relative to $\tilde{\rho}$)")
+        
+                ax_top.set_title(metric_lab, pad=15, fontsize="x-large")
+                ax_top.set_xscale("log")
+                ax_top.set_yscale("log")
+        
+        
+                ma_mask = data["rel_ma_mis"] == self.focal_ma
+                ms_mask = data["rel_ms_mis"] == self.focal_ms
+        
+                ax_bottom = axs[1, i + start_subplot_col]
+                if metric == "edges_muts_1000":
+                    gs = ax_bottom.get_gridspec()
+                    ax_bottom.set_ylabel(metric_lab, labelpad=35)
+                    ax_bottom.xaxis.set_visible(False)  # subplot x axis invisible
+                    plt.setp(ax_bottom.spines.values(), visible=False)  # Box invisible
+                    ax_bottom.tick_params(left=False, labelleft=False)  # No ticks/labels 
+                    gs_sub = gs[1, i + start_subplot_col].subgridspec(2, 1, hspace=0.5)
+
+                    for i, (mm_lab, mask, title) in enumerate([
+                        ('rel_ma_mis', ms_mask, 'Ancestor'),
+                        ('rel_ms_mis', ma_mask, 'Sample')]
+                    ):
+                        ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
+                        mm = data[mm_lab][mask]
+                        ax_sub_bottom.fill_between(
+                            mm, 0, data['muts1000'][mask], color="orange")
+                        ax_sub_bottom.fill_between(
+                            mm, data['muts1000'][mask],
+                            data['muts1000'][mask] + data['edges1000'][mask],
+                            color="tab:brown"
+                        )
+                        ax_sub_bottom.plot(
+                            data[mm_lab][mask],
+                            data[metric][mask],
+                            c="k", **self.linestyles[mm_lab])
+                        ax_sub_bottom.text(
+                            unique_vals[mm_lab][-2],
+                            np.mean(data['muts1000'][mask]/2),
+                            "Mutations",
+                            ha="right",
+                            va="bottom",
+                            bbox=dict(facecolor='w', alpha=0.9, ec='none')
+                        )
+                        ax_sub_bottom.text(
+                            unique_vals[mm_lab][-2],
+                            np.mean((data['muts1000'][ma_mask]*2+data['edges1000'][ma_mask])/2),
+                            "Edges",
+                            ha="right",
+                            va="bottom",
+                            bbox=dict(facecolor='w', alpha=0.9, ec='none')
+                        )
+                        ax_sub_bottom.set_xlabel(
+                            title + r" mismatch rate (relative to $\tilde{\rho}$)")
+                        ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
+                        ax_sub_bottom.set_ylim(0)
+                        ax_sub_bottom.set_xscale("log")
+                        ax_sub_bottom.axhline(num_sites / 1000, c="grey")
+                        ax_sub_bottom.text(
+                            unique_vals[mm_lab][2], (num_sites / 1000) * 0.95,
+                            "Min # mutations",
+                            va="center", color="k",
+                            bbox=dict(
+                                boxstyle='square,pad=0',
+                                facecolor='orange', alpha=0.9, ec='none'))
+                else:
+                    ax_bottom.plot(
+                        data["rel_ms_mis"][ma_mask],
+                        data[metric][ma_mask],
+                        c="k", linestyle=":", label="Samples mismatch"
+                    )
+                    ax_bottom.plot(
+                        data["rel_ma_mis"][ms_mask],
+                        data[metric][ms_mask],
+                        c="k", linestyle="--", dashes=(10, 2), label="Ancestors mismatch"
+                    )
+                    if not legend:
+                        ax_bottom.legend(loc='upper right')
+                        legend = True
+                    ax_bottom.set_xlabel("Mismatch rate")
+                    ax_bottom.set_xlim(
+                        np.min(np.concatenate(list(unique_vals.values()))),
+                        np.max(np.concatenate(list(unique_vals.values()))),
+                    )
+                    ax_bottom.set_ylabel(metric_lab)
+                    ax_bottom.set_xscale("log")
+        
+        self.save(self.name)
+
+
 class Chr20AncientIteration(Figure):
     """
     Figure 1d. Accuracy of increasing number of ancient samples.
@@ -736,10 +1056,8 @@ class TmrcaClustermap(Figure):
                 hgdp_origin[pop] = "black"
             else:
                 ancient_origin[pop] = "black"
-
         row_colors = {}
         region_colors["Ancients"] = "orange"
-
         for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
             row_colors[pop_suffix] = region_colors[region]
 
