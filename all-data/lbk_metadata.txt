@@ -1,0 +1,2 @@
+sample population age
+LBK LBK 7000
