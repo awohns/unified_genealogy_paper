@@ -175,25 +175,66 @@ def get_tmrca_weights(params):
                 tmrca_weight[time_index[tree.mrca(node_0, node_1)]] += tree.span
     return tmrca_weight, combo
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description='Calculate pairwise mean tMRCAs from a tree sequence')
-    parser.add_argument(
-        "--tree_sequence",
-        default="all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
+
+def save_tmrcas(
+    ts_file, max_pop_nodes, populations=None, num_processes=1, save_raw_data=False
+):
+    if not ts_file.endswith(".trees"):
+        raise valueError("Tree sequence must end with '.trees'")
+    fn =  ts_file[:-len(".trees")]
+    tMRCAS = get_pairwise_tmrca_pops(
+        ts_file,
+        max_pop_nodes,
+        restrict_populations=populations,
+        num_processes=num_processes,
+        return_raw_data=save_raw_data,
     )
+    popstring = "all" if populations is None else "+".join(populations)
+    outfn = fn + f".{max_pop_nodes}nodes_{popstring}.tmrcas"
+    logging.info(f"Writing mean MRCAs to {outfn}.csv")
+    tMRCAS.means.to_csv(outfn + ".csv")
+    logging.info(f"Writing bins and MRCA histogram distributions to {outfn}.npz")
+    hist = tMRCAS.histogram
+    np.savez_compressed(
+        outfn + ".npz", bins=hist.bin_edges, histdata=hist.data, combos=hist.rownames)
+    if save_raw_data:
+        logging.info(f"Saving raw data to {outfn}_RAW.npz")
+        np.savez_compressed(outfn + "_RAW.npz", *tMRCAS.raw_data)
+
+def main(args):
+    if args.verbosity==0:
+        logging.basicConfig(level=logging.WARNING)
+    elif args.verbosity==1:
+        logging.basicConfig(level=logging.INFO, format='%(message)s')
+    elif args.verbosity>=2:
+        logging.basicConfig(level=logging.DEBUG)
+
+    save_tmrcas(
+        args.tree_sequence,
+        args.max_pop_nodes,
+        args.populations,
+        args.num_processes,
+        args.save_raw_data,
+    )
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=
+            "Calculate pairwise mean tMRCAs from a tree sequence. "
+            "This can be quite time-consuming if there are many populations")
+    parser.add_argument("tree_sequence")
     parser.add_argument(
         "--max_pop_nodes", "-m", type=int, default=20, 
         help='The maximum number of samples nodes to compare per population',
     )
     parser.add_argument(
-        '--populations', '-p', nargs='*', default=None, 
+        '--populations', '-P', nargs='*', default=None, 
         help=
             'Restrict pairwise calculations to particular populations. '
-            ' If None, use all population in the tree sequence.',
+            ' If None, use all populations in the tree sequence.',
     )
     parser.add_argument(
-        '--num_processes', '-P', type=int, default=64, 
+        '--num_processes', '-p', type=int, default=64, 
         help='The number of CPUs to use in the calculation',
     )
     parser.add_argument(
@@ -204,33 +245,7 @@ if __name__ == '__main__':
         '--verbosity', '-v', action="count", default=0, 
         help='verbosity: output extra non-essential info',
     )
+    return parser.parse_args()
 
-
-    args = parser.parse_args()
-    if args.verbosity==0:
-        logging.basicConfig(level=logging.WARNING)
-    elif args.verbosity==1:
-        logging.basicConfig(level=logging.INFO, format='%(message)s')
-    elif args.verbosity>=2:
-        logging.basicConfig(level=logging.DEBUG)
-    if not args.tree_sequence.endswith(".trees"):
-        raise valueError("Tree sequence must end with '.trees'")
-    fn =  args.tree_sequence[:-len(".trees")]
-    tMRCAS = get_pairwise_tmrca_pops(
-        args.tree_sequence,
-        args.max_pop_nodes,
-        restrict_populations=args.populations,
-        num_processes=args.num_processes,
-        return_raw_data=args.save_raw_data,
-    )
-    popstring = "all" if args.populations is None else "+".join(args.populations)
-    outfn = fn + f".{args.max_pop_nodes}nodes_{popstring}.tmrcas"
-    logging.info(f"Writing mean MRCAs to {outfn}.csv")
-    tMRCAS.means.to_csv(outfn + ".csv")
-    logging.info(f"Writing bins and MRCA histogram distributions to {outfn}.npz")
-    hist = tMRCAS.histogram
-    np.savez_compressed(
-        outfn + ".npz", bins=hist.bin_edges, histdata=hist.data, combos=hist.rownames)
-    if args.save_raw_data:
-        logging.info(f"Saving raw data to {outfn}_RAW.npz")
-        np.savez_compressed(outfn + "_RAW.npz", *tMRCAS.raw_data)
+if __name__ == '__main__':
+    main(parse_args())

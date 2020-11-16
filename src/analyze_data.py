@@ -19,6 +19,7 @@ import tsdate
 from tqdm import tqdm
 
 import utility
+import tmrcas
 
 data_prefix = "all-data"
 
@@ -128,7 +129,7 @@ def get_tsdate_tgp_age_df():
     return tsdate_ages
 
 
-def tgp_date_estimates():
+def tgp_date_estimates(args):
     """
     Produce comparable set of mutations from tgp
     """
@@ -200,7 +201,7 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
     return mut_ages, mut_upper_bounds, oldest_mut_ids.astype(int)
 
 
-def get_ancient_constraints_tgp():
+def get_ancient_constraints_tgp(args):
     if os.path.exists("all-data/1kg_ancients_only_chr20.samples"):
         ancient_samples = tsinfer.load("all-data/1kg_ancients_only_chr20.samples")
     else:
@@ -316,7 +317,7 @@ def get_mutations_by_sample():
     """
 
 
-def get_tgp_recurrent_mutations():
+def get_tgp_recurrent_mutations(args):
     filename = os.path.join(
         data_prefix,
         """1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.simplified.dated.
@@ -343,7 +344,7 @@ def get_tgp_recurrent_mutations():
     df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples_two_muts.csv")
 
 
-def get_hgdp_recurrent_mutations():
+def get_hgdp_recurrent_mutations(args):
     filename = os.path.join(
         data_prefix, "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.trees"
     )
@@ -380,7 +381,7 @@ def get_hgdp_recurrent_mutations():
     )
 
 
-def get_sgdp_recurrent_mutations():
+def get_sgdp_recurrent_mutations(args):
     filename = os.path.join(data_prefix, "sgdp_chr20.tsinferred.trees")
 
     ts = tskit.load(filename)
@@ -403,7 +404,7 @@ def get_sgdp_recurrent_mutations():
     df.to_csv("data/sgdp_chr20.tsinferred.recurrent_counts_nosamples_two_muts.csv")
 
 
-def min_site_times_ancients():
+def min_site_times_ancients(args):
     samples = tsinfer.load("all-data/1kg_ancients_noreich_chr20.samples")
     min_times = samples.min_site_times(individuals_only=True)
     df = pd.DataFrame(np.unique(min_times, return_counts=True))
@@ -487,7 +488,7 @@ class AncestralGeography:
         return self.locations
 
 
-def find_ancestral_geographies():
+def find_ancestral_geographies(args):
     """
     Calculate ancestral geographies
     """
@@ -556,7 +557,7 @@ region_remapping = {
 }
 
 
-def find_ancient_descendants():
+def find_ancient_descendants(args):
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
     )
@@ -676,7 +677,7 @@ def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_
     return descendants_arr[ts.samples()], corrcoef_df, high_descendants
 
 
-def find_ancient_descent_haplotypes():
+def find_ancient_descent_haplotypes(args):
     """
     Finds patterns of descent from the eight ancient individuals in the combined tree
     sequence
@@ -729,7 +730,7 @@ def find_ancient_descent_haplotypes():
     altai_corrcoef_df.to_csv("data/combined_ts_altai_corrcoef_df.csv")
 
 
-def find_archaic_relationships():
+def find_archaic_relationships(args):
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
     )
@@ -945,6 +946,14 @@ def find_archaic_relationships():
         file.write(json.dumps(d_descent))
         file.write(json.dumps(v_descent))
 
+def get_tmrcas(args):
+    ts_fn = os.path.join(
+        data_prefix,
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
+    )
+    tmrcas.save_tmrcas(
+        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True)
+
 
 def main():
     name_map = {
@@ -958,6 +967,7 @@ def main():
         "archaic_relationships": find_archaic_relationships,
         "ancient_descendants": find_ancient_descendants,
         "ancient_descent_haplotypes": find_ancient_descent_haplotypes,
+        "all_mrcas": get_tmrcas,
     }
 
     parser = argparse.ArgumentParser(
@@ -966,9 +976,13 @@ def main():
     parser.add_argument(
         "name", type=str, help="figure name", choices=list(name_map.keys())
     )
+    parser.add_argument(
+        '--num_processes', '-p', type=int, default=1, 
+        help='The number of CPUs to use in for some of the more intensive calculations',
+    )
 
     args = parser.parse_args()
-    name_map[args.name]()
+    name_map[args.name](args)
 
 
 if __name__ == "__main__":

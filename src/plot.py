@@ -2878,22 +2878,24 @@ class InsetTmrcaHistograms(Figure):
     name = "inset_tmrca_histograms"
     data_path = "all-data"
     filename = [
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes_all.tmrcas"
     ]
-    fn =  "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas.npz"
-    tmrcas = np.load(os.path.join(data_path, fn))
-    combos = tmrcas["combos"]
-    region_colors = get_tgp_hgdp_sgdp_region_colours()
+
+    def __init__(self):
+        base_name = self.filename[0]
+        hist_data = np.load(os.path.join(self.data_path, base_name + ".npz"))
+        raw_data = np.load(os.path.join(self.data_path, base_name + "_RAW.npz"))
+        raw_logtimes = raw_data[list(raw_data.keys())[0]]
+        # Make data accessible to plot code: everything under 1 generation get put at 1
+        self.raw_logtimes = np.where(np.exp(raw_logtimes)< 1, np.log(1), raw_logtimes)
+        self.raw_weights = raw_data[list(raw_data.keys())[1]]
+        self.data_rownames = hist_data["combos"]
+        super().__init__()
 
     def plot(self):
         df = self.data[0]
         df = df.set_index(df.columns[0])
-
-        fig, axes = plt.subplots(3, 1, sharex=True, sharey=True, figsize=(10, 12))
-        combos = self.tmrcas["combos"]
         region_colours = get_tgp_hgdp_sgdp_region_colours()
-        [ax.set_facecolor("lightgrey") for ax in axes]
-
         pop_names = df.columns
         pop_names = [pop.split(".")[0] for pop in pop_names]
         pop_names = np.array([pop.split(" ")[0] for pop in pop_names])
@@ -2909,113 +2911,138 @@ class InsetTmrcaHistograms(Figure):
             regions.append("Ancients")
         regions = np.array(regions)
 
-        def plot_fill(incl_combos, ax, label, color, alpha=1):
-            values = np.mean(self.tmrcas["histdata"][incl_combos], axis=0)
+        def plot_hist(rows, label, color, num_bins, min_bin, ax, fill=False, alpha=1):
+            ax.set_facecolor("lightgrey")
+            av_weight = np.mean(self.raw_weights[rows, :], axis=0)
+            assert av_weight.shape[0] == len(self.raw_logtimes)
+            keep = (av_weight != 0)
+            _, bins = np.histogram(
+                self.raw_logtimes[keep],
+                weights=av_weight[keep],
+                bins=num_bins,
+                range=[np.log(1), max(self.raw_logtimes)])
+            # If any bins are < 20 generations, merge them into the lowest bin
+            bins = np.concatenate((bins[:1], bins[np.exp(bins)>=20]))
+            values, bins = np.histogram(self.raw_logtimes[keep],
+                weights=av_weight[keep],
+                bins=bins,
+                density=True)
             x1, y1 = (
-                np.append((np.exp(self.tmrcas["bins"])), np.exp(self.tmrcas["bins"][-1])),
-                np.pad(np.zeros(values.shape[0]), 1),
+                np.append(bins, bins[-1]),
+                np.zeros(values.shape[0] + 2),
             )
-            y1[1:-1] = values / np.max(values)
+            y1[1:-1] = values
             ax.step(x1, y1, "-", color=color, label=label)
-            ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
-            ax.legend(fancybox=True, framealpha=0.5, fontsize=14)
+            if fill:
+                ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
+            ax.legend(fancybox=True, fontsize=18, facecolor="white")
 
-        def plot_step(incl_combos, ax, label, color):
-            values = np.mean(self.tmrcas["histdata"][incl_combos], axis=0)
-            x1, y1 = (
-                np.append((np.exp(self.tmrcas["bins"])), np.exp(self.tmrcas["bins"][-1])),
-                np.pad(np.zeros(values.shape[0]), 1),
-            )
-            y1[1:-1] = values / np.max(values)
-            ax.step(x1, y1, "-", color=color, label=label)
-            ax.legend(fancybox=True, framealpha=0.5, fontsize=14)
+        #############
+        xticks = np.array([10, 20, 50, 1e2, 2e2, 5e2, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4])
+        minor_xticks = np.outer(10 ** np.arange(1, 5), np.arange(1, 10)).flatten()
+        xmax = np.log(1e5)
+        archaic_names = ["Altai", "Chagyrskaya", "Denisovan", "Vindija"]
+        #############
 
-        # First Plot: African/African and Non-African/Non-African
-        african = pop_names[regions == "Africa"]
-        african_combos = np.all(np.isin(combos, african), axis=1)
-        plot_fill(
-            african_combos,
-            axes[0],
-            "African/African",
-            region_colours["Africa"],
-            alpha=0.4,
+        fig, axes = plt.subplots(
+            3, 1, constrained_layout=True, figsize=(15, 10), sharex=True)
+
+        ## Bottom Plot:
+        # Samaritan/Samaritan and Samaritan/Others
+        xmin = np.log(10)
+        ax2 = axes[2]
+        params = {'num_bins': 60, 'min_bin': 10, 'ax': ax2}
+        exsamaritan = np.logical_and(
+            np.any(self.data_rownames == "Samaritan (SGDP)", axis=1),
+            ~np.all(self.data_rownames == "Samaritan (SGDP)", axis=1),
         )
-        nonafrican = pop_names[
-            np.logical_and(
-                regions != "Africa",
-                ~np.isin(pop_names, ["Altai", "Chagyrskaya", "Denisovan", "Vindija"]),
-            )
-        ]
-        nonafrican = np.all(np.isin(combos, nonafrican), axis=1)
-        plot_step(nonafrican, axes[0], "African/Non-African \n(ex Archaics)", "black")
+        exarchaic_exsamaritan = np.logical_and(
+            exsamaritan, np.all(~np.isin(self.data_rownames, archaic_names), axis=1)
+        )
+        label, col = "Samaritan/Modern Humans \n(ex Samaritan)", "white"
+        plot_hist(exarchaic_exsamaritan, label, col, fill=True, **params)
+        samaritan = np.all(self.data_rownames == "Samaritan (SGDP)", axis=1)
+        label, col = "Samaritan/Samaritan",  region_colours["West Eurasia"]
+        plot_hist(samaritan, label, col, **params)
 
-        # Second Plot: Papuan+Australian/Denisovan and Denisovan/modern humans (ex papuan + australian)
-        sahul = [
+        ax2.set_yticks([])
+        ax2.set_xlim(xmin, xmax)
+        ax2.set_xticks(np.log(xticks))
+        ax2.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax2.set_xticklabels([str(int(x)) for x in xticks])
+
+        ## Middle Plot:
+        # Papuan+Australian/Denisovan & Denisovan/modern humans (ex papuan + australian)
+        xmin=np.log(100)
+        ylim = axes[1].get_ylim()
+        ax1 = axes[1].inset_axes(
+            [xmin, ylim[0], xmax - xmin, ylim[1]-ylim[0]],
+            transform=axes[1].transData,
+        )
+        params = {'num_bins': 60, 'min_bin': 1000, 'ax': ax1}
+        sahul_names = [
             "Bougainville",
             "Bougainville (SGDP)",
             "PapuanHighlands",
             "PapuanSepik",
             "Australian",
         ]
-        exsahul_denisovan_combos = np.logical_and(
-            np.any(combos == "Denisovan", axis=1),
-            np.all(~np.isin(combos, sahul), axis=1),
+        exsahul_denisovan = np.logical_and(
+            np.any(self.data_rownames == "Denisovan", axis=1),
+            np.all(~np.isin(self.data_rownames, sahul_names), axis=1),
         )
-        archaics = ["Altai", "Vindija", "Chagyrskaya"]
-        exarchaic_exsahul_denisovan_combos = np.logical_and(
-            exsahul_denisovan_combos, np.all(~np.isin(combos, archaics), axis=1)
+        neanderthal_names = ["Altai", "Vindija", "Chagyrskaya"]
+        exarchaic_exsahul_denisovan = np.logical_and(
+            exsahul_denisovan,
+            np.all(~np.isin(self.data_rownames, neanderthal_names), axis=1),
         )
-        exarchaic_exsahul_denisovan_combos = np.logical_and(
-            exarchaic_exsahul_denisovan_combos, ~np.all(combos == "Denisovan", axis=1)
+        exarchaic_exsahul_denisovan = np.logical_and(
+            exarchaic_exsahul_denisovan,
+            ~np.all(self.data_rownames == "Denisovan", axis=1),
         )
-        plot_fill(
-            exarchaic_exsahul_denisovan_combos,
-            axes[1],
-            "Denisovan/Modern Humans \n(ex Papauans, Australians)",
-            "white",
+        label, col = "Denisovan/Modern Humans \n(ex Papauans, Australians)", "white"
+        plot_hist(exarchaic_exsahul_denisovan, label, col, fill=True, **params)
+        sahul = np.logical_and(
+            np.any(self.data_rownames == "Denisovan", axis=1),
+            np.any(np.isin(self.data_rownames, sahul_names), axis=1),
         )
-        sahul_combos = np.logical_and(
-            np.any(combos == "Denisovan", axis=1),
-            np.any(np.isin(combos, sahul), axis=1),
-        )
-        plot_step(
-            sahul_combos,
-            axes[1],
-            "Denisovan/Papuans+Australians",
-            region_colours["Oceania"],
-        )
+        label, col = "Denisovan/Papuans+Australians", region_colours["Oceania"]
+        plot_hist(sahul, label, col, **params)
+        
+        axes[1].axis('off')  # Hide the encapsulating axis
+        ax1.set_yticks([])
+        ax1.set_xlim([xmin, xmax])
+        ax1.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
+        ax1.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax1.set_xticklabels([])
 
-        # Third Plot: Samaritan/Samaritan and Samaritan/Others
-        exsamaritan_combos = np.logical_and(
-            np.any(combos == "Samaritan (SGDP)", axis=1),
-            ~np.all(combos == "Samaritan (SGDP)", axis=1),
+        ## Top Plot:
+        # African/African and Non-African/Non-African
+        xmin=np.log(1000)
+        ylim = axes[0].get_ylim()
+        ax0 = axes[0].inset_axes(
+            [xmin, ylim[0], xmax-xmin, ylim[1]-ylim[0]],
+            transform=axes[0].transData
         )
-        archaics = ["Altai", "Vindija", "Chagyrskaya", "Denisovan"]
-        exarchaic_exsamaritan_combos = np.logical_and(
-            exsamaritan_combos, np.all(~np.isin(combos, archaics), axis=1)
-        )
-        plot_fill(
-            exarchaic_exsamaritan_combos,
-            axes[2],
-            "Samaritan/Modern Humans \n(ex Samaritan)",
-            "white",
-        )
-        samaritan_combo = np.all(combos == "Samaritan (SGDP)", axis=1)
-        plot_step(
-            samaritan_combo,
-            axes[2],
-            "Samaritan/Samaritan",
-            region_colours["West Eurasia"],
-        )
-
-        axes[0].set_xscale("log")
-        axes[0].set_xticks([1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5])
-        axes[0].set_xticklabels([1e3, 2e3, 5e3, 1e4, 2e4, 5e4, 1e5])
-        axes[0].set_yticks([])
-        axes[0].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-
-        plt.xlabel("Time to Most Recent Common Ancestor (generations)")
-        plt.show()
+        params = {'num_bins': 60, 'min_bin': 1000, 'ax': ax0}
+        african_names = pop_names[regions == "Africa"]
+        african = np.all(np.isin(self.data_rownames, african_names), axis=1)
+        label, col = "African/African", region_colours["Africa"]
+        plot_hist(african, label, col, fill=True, alpha=0.4, **params)
+        nonafrican_names = pop_names[
+            np.logical_and(regions != "Africa",  ~np.isin(pop_names, archaic_names))
+        ]
+        nonafricans = np.all(np.isin(self.data_rownames, nonafrican_names), axis=1)
+        label, col = "Non-African/Non-African \n(ex Archaics)", "black"
+        plot_hist(nonafricans, label, col, **params)
+        
+        axes[0].axis('off')  # Hide the encapsulating axis
+        ax0.set_yticks([])
+        ax0.set_xlim([xmin, xmax])
+        ax0.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
+        ax0.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax0.set_xticklabels([])
+        plt.xlabel("Time to Most Recent Common Ancestor (generations)", fontsize=16)
 
         self.save(self.name)
 
