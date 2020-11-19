@@ -77,7 +77,8 @@ DETAILS = $(CONTIG)_$(START_SITE)-$(END_SITE)
 
 hgdp_$(DETAILS)_results.csv: hgdp_$(DETAILS).samples
 	python3 ../tsinfer-benchmarking/analysis/test_mismatch_rates.py \
-	hgdp_$(DETAILS).samples -vv -k -p $(NUM_PROCS)
+	hgdp_$(DETAILS).samples -vv -k -p $(NUM_PROCS) \
+	-m ../all-data/recomb-hg38/genetic_map_GRCh38_$(CONTIG).txt
 
 hgdp_$(DETAILS).samples:
 	python3 -c 'import tsinfer; sd=tsinfer.load("../all-data/hgdp_$(CONTIG).samples"); \

@@ -482,8 +482,8 @@ class MismatchSimulationWithError(Figure):
     focal_ms = 1
     cmap='viridis_r'
     linestyles = {
-        "rel_ma_mis": dict(linestyle="--", dashes=(10, 2)),
-        "rel_ms_mis": dict(linestyle=":"),
+        "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
+        "ms_mis_ratio": dict(linestyle=":"),
     }
     
     def plot(self):
@@ -503,23 +503,23 @@ class MismatchSimulationWithError(Figure):
         sim_data['KCpoly'] = sim_data['kc_poly']/kc_max
         sim_data['KCsplit'] = sim_data['kc_split']/kc_max_split
         # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
-        sim_data['RFsplit'] = sim_data['RFsplit'] / (2 * sim_data['n'] - 4)
+        #sim_data['RFsplit'] = sim_data['RFsplit'] / (2 * sim_data['n'] - 4)
 
-        sim_data=sim_data.sort_values(["rel_ma_mis", "rel_ms_mis"])
+        sim_data=sim_data.sort_values(["ma_mis_ratio", "ms_mis_ratio"])
         unique_vals = {
-            "rel_ma_mis": np.unique(sim_data["rel_ma_mis"]),
-            "rel_ms_mis": np.unique(sim_data["rel_ms_mis"]),
+            "ma_mis_ratio": np.unique(sim_data["ma_mis_ratio"]),
+            "ms_mis_ratio": np.unique(sim_data["ms_mis_ratio"]),
         }
 
-        ms_map = {v:i for i, v in enumerate(unique_vals['rel_ms_mis'])}
-        ma_map = {v:i for i, v in enumerate(unique_vals['rel_ma_mis'])}
+        ma_map = {v:i for i, v in enumerate(unique_vals['ma_mis_ratio'])}
+        ms_map = {v:i for i, v in enumerate(unique_vals['ms_mis_ratio'])}
         
         metrics = {
             "edges_muts_1000": "# edges + mutations (1000's)",
             "rel_ts_size": "Relative filesize",
             "KCpoly": "Normalised KC distance",
             "KCsplit": "Normalised KC distance (polytomies split)",
-            "RFsplit": "Normalised RF distance (polytomies split)",
+            #"RFsplit": "Normalised RF distance (polytomies split)",
             #"arity_mean": "Mean arity",
         }
 
@@ -531,14 +531,14 @@ class MismatchSimulationWithError(Figure):
             # Top (heatmap) plot
             Z = np.zeros((len(ms_map), len(ma_map)))
             for _, row in sim_data.iterrows():
-                Z[ms_map[row.rel_ms_mis], ma_map[row.rel_ma_mis]] = row[metric]
+                Z[ms_map[row.ms_mis_ratio], ma_map[row.ma_mis_ratio]] = row[metric]
             ax_top = axs[0, i]
             cs = ax_top.contour(
-                unique_vals['rel_ma_mis'], unique_vals['rel_ms_mis'], Z, colors='gray')
+                unique_vals['ma_mis_ratio'], unique_vals['ms_mis_ratio'], Z, colors='gray')
             ax_top.contourf(cs, cmap=self.cmap)
             ax_top.clabel(cs, inline=0, colors=["k"])
-            ax_top.axvline(self.focal_ma, c="k", **self.linestyles['rel_ms_mis'])
-            ax_top.axhline(self.focal_ms, c="k", **self.linestyles['rel_ma_mis'])
+            ax_top.axvline(self.focal_ma, c="k", **self.linestyles['ms_mis_ratio'])
+            ax_top.axhline(self.focal_ms, c="k", **self.linestyles['ma_mis_ratio'])
             if i==0:
                 ax_top.set_ylabel(r"Sample mismatch rate (relative to $\tilde{\rho}$)")
             ax_top.set_xlabel(r"Ancestor mismatch rate (relative to $\tilde{\rho}$)")
@@ -547,8 +547,8 @@ class MismatchSimulationWithError(Figure):
             ax_top.set_yscale("log")
 
             # Bottom (line) plot(s)
-            ma_mask = sim_data["rel_ma_mis"]==self.focal_ma
-            ms_mask = sim_data["rel_ms_mis"]==self.focal_ms
+            ma_mask = sim_data["ma_mis_ratio"]==self.focal_ma
+            ms_mask = sim_data["ms_mis_ratio"]==self.focal_ms
             ax_bottom = axs[1, i]
             if metric == "edges_muts_1000":
                 # Edges vs muts plot is different
@@ -559,8 +559,8 @@ class MismatchSimulationWithError(Figure):
                 ax_bottom.tick_params(left=False, labelleft=False) # remove ticks+labels 
                 gs_sub = gs[1,i].subgridspec(2, 1, hspace=0.5)
                 for i, (mm_lab, mask, title) in enumerate([
-                    ('rel_ma_mis', ms_mask, 'Ancestor'),
-                    ('rel_ms_mis', ma_mask, 'Sample')]
+                    ('ma_mis_ratio', ms_mask, 'Ancestor'),
+                    ('ms_mis_ratio', ma_mask, 'Sample')]
                 ):
                     ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
                     mm = sim_data[mm_lab][mask]
@@ -607,8 +607,8 @@ class MismatchSimulationWithError(Figure):
                         bbox=dict(boxstyle='square,pad=0', facecolor='orange', alpha=0.9, ec='none'))
             else:
                 for i, (mm_lab, mask, title) in enumerate([
-                    ('rel_ma_mis', ms_mask, 'Ancestor'),
-                    ('rel_ms_mis', ma_mask, 'Sample')]
+                    ('ma_mis_ratio', ms_mask, 'Ancestor'),
+                    ('ms_mis_ratio', ma_mask, 'Sample')]
                 ):
                     ax_bottom.plot(
                         sim_data[mm_lab][mask],
@@ -642,8 +642,8 @@ class MismatchRealDataWithError(Figure):
     focal_ms = 1
     cmap='viridis_r'
     linestyles = {
-        "rel_ma_mis": dict(linestyle="--", dashes=(10, 2)),
-        "rel_ms_mis": dict(linestyle=":"),
+        "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
+        "ms_mis_ratio": dict(linestyle=":"),
     }
 
     def plot(self):
@@ -668,35 +668,35 @@ class MismatchRealDataWithError(Figure):
             data['edges1000'] = data['edges'] / 1000
             data['muts1000'] = data['muts'] / 1000
             data['edges_muts_1000'] = (data['edges1000'] + data['muts1000'])
-            data=data.sort_values(["rel_ma_mis", "rel_ms_mis"])
+            data=data.sort_values(["ma_mis_ratio", "ms_mis_ratio"])
             assert np.allclose(np.diff(data['num_sites']), 0)
             num_sites = np.mean(data['num_sites'])
 
             fig.text(lab_x, 0.5, label, ha='center', va='center', rotation=rot, size=30)
             unique_vals = {
-                "rel_ma_mis": np.unique(data["rel_ma_mis"]),
-                "rel_ms_mis": np.unique(data["rel_ms_mis"]),
+                "ma_mis_ratio": np.unique(data["ma_mis_ratio"]),
+                "ms_mis_ratio": np.unique(data["ms_mis_ratio"]),
             }
-            ma_map = {v:i for i, v in enumerate(unique_vals['rel_ma_mis'])}
-            ms_map = {v:i for i, v in enumerate(unique_vals['rel_ms_mis'])}
+            ms_map = {v:i for i, v in enumerate(unique_vals['ms_mis_ratio'])}
+            ma_map = {v:i for i, v in enumerate(unique_vals['ma_mis_ratio'])}
             legend = False
             for i, (metric, metric_lab) in enumerate(metrics.items()):
                 Z = np.zeros((len(ma_map), len(ms_map)))
                 for _, row in data.iterrows():
-                    Z[ma_map[row.rel_ma_mis], ms_map[row.rel_ms_mis]] = row[metric]
+                    Z[ma_map[row.ma_mis_ratio], ms_map[row.ms_mis_ratio]] = row[metric]
         
                 ax_top = axs[0, i + start_subplot_col]
                 cs = ax_top.contour(
-                    unique_vals['rel_ms_mis'],
-                    unique_vals['rel_ma_mis'],
+                    unique_vals['ms_mis_ratio'],
+                    unique_vals['ma_mis_ratio'],
                     Z,
                     colors='gray',
                 )
                 ax_top.contourf(cs, cmap=self.cmap)
                 ax_top.clabel(cs, inline=0, colors=["k"])
         
-                ax_top.axvline(self.focal_ma, c="k", **self.linestyles['rel_ms_mis'])
-                ax_top.axhline(self.focal_ms, c="k", **self.linestyles['rel_ma_mis'])
+                ax_top.axvline(self.focal_ma, c="k", **self.linestyles['ms_mis_ratio'])
+                ax_top.axhline(self.focal_ms, c="k", **self.linestyles['ma_mis_ratio'])
                 if i==0:
                     ax_top.set_ylabel(
                         r"Sample mismatch rate (relative to $\tilde{\rho}$)")
@@ -708,8 +708,8 @@ class MismatchRealDataWithError(Figure):
                 ax_top.set_yscale("log")
         
         
-                ma_mask = data["rel_ma_mis"] == self.focal_ma
-                ms_mask = data["rel_ms_mis"] == self.focal_ms
+                ma_mask = data["ma_mis_ratio"] == self.focal_ma
+                ms_mask = data["ms_mis_ratio"] == self.focal_ms
         
                 ax_bottom = axs[1, i + start_subplot_col]
                 if metric == "edges_muts_1000":
@@ -721,8 +721,8 @@ class MismatchRealDataWithError(Figure):
                     gs_sub = gs[1, i + start_subplot_col].subgridspec(2, 1, hspace=0.5)
 
                     for i, (mm_lab, mask, title) in enumerate([
-                        ('rel_ma_mis', ms_mask, 'Ancestor'),
-                        ('rel_ms_mis', ma_mask, 'Sample')]
+                        ('ma_mis_ratio', ms_mask, 'Ancestor'),
+                        ('ms_mis_ratio', ma_mask, 'Sample')]
                     ):
                         ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
                         mm = data[mm_lab][mask]
@@ -768,12 +768,12 @@ class MismatchRealDataWithError(Figure):
                                 facecolor='orange', alpha=0.9, ec='none'))
                 else:
                     ax_bottom.plot(
-                        data["rel_ms_mis"][ma_mask],
+                        data["ms_mis_ratio"][ma_mask],
                         data[metric][ma_mask],
                         c="k", linestyle=":", label="Samples mismatch"
                     )
                     ax_bottom.plot(
-                        data["rel_ma_mis"][ms_mask],
+                        data["m`_mis_ratio"][ms_mask],
                         data[metric][ms_mask],
                         c="k", linestyle="--", dashes=(10, 2), label="Ancestors mismatch"
                     )
