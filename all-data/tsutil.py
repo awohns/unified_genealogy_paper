@@ -3,16 +3,10 @@
 Various utilities for manipulating tree sequences and running tsinfer.
 """
 import argparse
-import subprocess
 import time
 import collections
 import json
-import sys
-import csv
-import itertools
 import os.path
-import re
-from functools import reduce
 
 import tskit
 import tsinfer
@@ -35,7 +29,7 @@ def run_get_dated_samples(args):
     samples = tsinfer.load(args.samples)
     ts = tskit.load(args.ts)
     assert args.samples.endswith(".samples")
-    prefix = args.samples[0 : -len(".samples")]
+    prefix = args.samples[0: -len(".samples")]
     copy = samples.copy(prefix + ".dated.samples")
     copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
@@ -87,7 +81,7 @@ def run_sequential_augment(args):
     while n < num_samples // 4:
         augmented_file = base + ".augmented_{}.ancestors.trees".format(n)
         final_file = base + ".augmented_{}.nosimplify.trees".format(n)
-        subset = samples[j : j + n]
+        subset = samples[j: j + n]
         subset.sort()
         ancestors_ts = run_augment(sample_data, ancestors_ts, subset, args.num_threads)
         ancestors_ts.dump(augmented_file)
@@ -159,8 +153,8 @@ def get_augmented_samples(tables):
     ids = np.where(nodes.flags == tsinfer.NODE_IS_SAMPLE_ANCESTOR)[0]
     sample_ids = np.zeros(len(ids), dtype=int)
     for j, node_id in enumerate(tqdm.tqdm(ids)):
-        offset = nodes.metadata_offset[node_id : node_id + 2]
-        buff = bytearray(nodes.metadata[offset[0] : offset[1]])
+        offset = nodes.metadata_offset[node_id: node_id + 2]
+        buff = bytearray(nodes.metadata[offset[0]: offset[1]])
         md = json.loads(buff.decode())
         sample_ids[j] = md["sample"]
     return sample_ids
@@ -358,7 +352,6 @@ def run_compute_hgdp_1kg_sgdp_gnn(args):
     region = []
     for j, u in enumerate(ts.samples()):
         node = ts.node(u)
-        ind = json.loads(ts.individual(node.individual).metadata.decode())
         population.append(population_name[node.population])
         region.append(region_name[node.population])
 
@@ -378,48 +371,10 @@ def run_compute_hgdp_1kg_sgdp_gnn(args):
     df.to_csv(args.output)
 
 
-def run_snip_centromere(args):
-    with open(args.centromeres) as csvfile:
-        reader = csv.DictReader(csvfile)
-        match = re.search(r"(chr\d+)", args.chrom)
-        chrom = match.group(1)
-        for row in reader:
-            if row["chrom"] == chrom:
-                start = int(row["start"])
-                end = int(row["end"])
-                break
-        else:
-            raise ValueError("Did not find row")
-    ts = tskit.load(args.input)
-    position = ts.tables.sites.position
-    s_index = np.searchsorted(position, start)
-    e_index = np.searchsorted(position, end)
-    # We have a bunch of sites within the centromere. Get the largest
-    # distance between these and call these the start and end. Probably
-    # pointless having the centromere coordinates as input in the first place,
-    # since we're just searching for the largest gap anyway. However, it can
-    # be useful in UKBB, since it's perfectly possible that the largest
-    # gap between sites isn't in the centromere.
-    X = position[s_index : e_index + 1]
-    if len(X) > 0:
-        j = np.argmax(X[1:] - X[:-1])
-        real_start = X[j] + 1
-        real_end = X[j + 1]
-        print(
-            "Centromere at", start, end, "Snipping topology from ", real_start, real_end
-        )
-        snipped_ts = ts.delete_intervals([[real_start, real_end]])
-        snipped_ts.dump(args.output)
-    else:
-        print("No gap detected")
-        ts.dump(args.output)
-
-
 def make_sampledata_compatible(args):
     """
     Make a list of sampledata files compatible with the first file.
     """
-    new_names = list()
 
     # Load all the sampledata files into a list
     print(
@@ -503,14 +458,19 @@ def remove_moderns_reich(args):
 
 def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
-    all_samples = tsinfer.load(args.all_samples)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
-    sites_time = tsdate.sites_time_from_ts(dated_ts)
+    sites_time = tsdate.sites_time_from_ts(dated_hgdp_1kg_sgdp_ts)
     dated_samples = tsdate.add_sampledata_times(
                   high_cov_samples, sites_time)
+    # Record number of constrained sites
+    print("Total number of sites: ", sites_time.shape[0])
+    print(
+        "Number of ancient lower bounds: ",
+        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0))
+    print("Number of corrected times: ",
+          np.sum(dated_samples.sites_time[:] != sites_time))
     high_cov_samples_copy = dated_samples.copy(args.output)
     high_cov_samples_copy.finalise()
-
 
 
 def main():
@@ -585,15 +545,6 @@ def main():
     subparser.add_argument("output", type=str, help="Filename to write CSV to.")
     subparser.add_argument("--num-threads", type=int, default=16)
     subparser.set_defaults(func=run_compute_hgdp_1kg_sgdp_gnn)
-
-    subparser = subparsers.add_parser("snip-centromere")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Output tree sequence")
-    subparser.add_argument("chrom", type=str, help="Chromosome name")
-    subparser.add_argument(
-        "centromeres", type=str, help="CSV file containing centromere coordinates."
-    )
-    subparser.set_defaults(func=run_snip_centromere)
 
     subparser = subparsers.add_parser("make-sampledata-compatible")
     subparser.add_argument(

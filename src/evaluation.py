@@ -127,7 +127,7 @@ def sample_times(ancient_sample_size, generation_time):
     Pick the sample times from the Reich dataset
     """
     sample_times = np.genfromtxt(
-        "all-data/ancient_sample_times/reich_ancient_samples_age.txt", skip_header=1
+        "data/reich_ancient_samples_age.txt", skip_header=1
     )
     age_hist = np.histogram(sample_times, bins=100)
     age_distribution = age_hist[0] / sample_times.shape[0]

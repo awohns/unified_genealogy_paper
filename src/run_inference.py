@@ -42,6 +42,16 @@ def run(params):
     else:
         anc = tsinfer.load(prefix + ".ancestors")
     ga_process_time = time.process_time() - ga_start_time
+
+    anc_w_proxy = anc.insert_proxy_samples(params.sample_data, allow_mutation=True)
+    # If any proxy ancestors were added, save the proxy ancestors file and use for matching
+    if anc_w_proxy.num_ancestors != anc.num_ancestors:
+        anc = anc_w_proxy.copy(path=prefix + ".proxy.ancestors")
+        anc.finalise()
+        path_compression=False
+    else:
+        path_compression=True
+
     rec_rate = get_rho(anc, params.filename)
     rho = rec_rate[1:]
     base_rec_prob = np.quantile(rho, 0.5)
@@ -69,6 +79,7 @@ def run(params):
             precision=precision,
             recombination_rate=rec_rate,
             mismatch_rate=base_rec_prob * params.ma_mut_rate,
+            path_compression=path_compression,
             progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 1, 0, 0),
         )
         inferred_anc_ts.dump(path=prefix + ".atrees")
@@ -87,11 +98,13 @@ def run(params):
             recombination_rate=rec_rate,
             mismatch_rate=base_rec_prob * params.ms_mut_rate,
             progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1),
+            force_sample_times=True,
+            simplify=False
         )
         print(f"MS done: ms_mut rate = {params.ms_mut_rate})")
         process_time = time.process_time() - start_time
         ms_process_time = time.process_time() - ms_start_time
-        ts_path = prefix + ".trees"
+        ts_path = prefix + ".nosimplify.trees"
         inferred_ts.dump(path=ts_path)
     else:
         raise ValueError("Inferred tree sequence already present")

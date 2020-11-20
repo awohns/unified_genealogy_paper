@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Generate data for plots in tsdate paper
- python3 src/generate_data.py PLOT_NAME
+Simulation based evaluation for the unified genealogy paper
+Pattern for generating data for each figure is:
+ python3 src/run_evaluation.py PLOT_NAME --setup
+ python3 src/run_evaluation.py PLOT_NAME --inference
 """
 import argparse
 import pickle
@@ -107,7 +109,7 @@ class DataGeneration:
                 # Create sampledata file
                 samples = tsinfer.formats.SampleData.from_tree_sequence(
                     sim,
-                    use_times=False,
+                    use_sites_time=False,
                 )
                 sample_data_indiv_times = samples.copy(
                     path=os.path.join(self.data_dir, filename + ".samples")
@@ -981,7 +983,7 @@ class IterativeApproachNoAncients(NeutralSimulatedMutationAccuracy):
 
         # Infer the ts based on sample data with keep_times
         keep_time_samples = tsinfer.formats.SampleData.from_tree_sequence(
-            sim, use_times=True
+            sim, use_sites_time=True
         )
         inferred_ts_keep_times = tsinfer.infer(keep_time_samples)
         inferred_ts_keep_times = inferred_ts_keep_times.simplify()
@@ -1069,7 +1071,7 @@ class IterativeApproach_Chr20_no_ancients(Chr20SimulatedMutationAccuracy):
 
         # Infer the ts based on sample data with keep_times
         tsinfer.formats.SampleData.from_tree_sequence(
-            sim, path=path_to_file + ".keep_times.samples", use_times=True
+            sim, path=path_to_file + ".keep_times.samples", use_sites_time=True
         )
         inferred_ts_keep_times, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
             path_to_file + ".keep_times.samples", sim.get_sequence_length()
@@ -1107,10 +1109,6 @@ class IterativeApproach_Chr20_no_ancients(Chr20SimulatedMutationAccuracy):
             tsdate_keep_times,
             tsdate_true_topo,
         )
-
-        #        compare_df = evaluation.compare_mutation_msle_noancients(
-        #            sim, tsdate_dates, iter_dates, tsdate_keep_times,
-        #            tsdate_true_topo)
 
         return index, row, compare_df
 
@@ -1223,7 +1221,7 @@ class SimulateVanillaAncient(DataGeneration):
         # Create sampledata file, with and without keeping times
         # Need to add the time of ancient samples from nodes
         sample_data = tsinfer.formats.SampleData.from_tree_sequence(
-            sim, use_times=False,
+            sim, use_sites_time=False,
         )
         sample_data_indiv_times = sample_data.copy(
             path=os.path.join(self.data_dir, filename + ".samples")
@@ -1236,7 +1234,7 @@ class SimulateVanillaAncient(DataGeneration):
         tsinfer.formats.SampleData.from_tree_sequence(
             sim,
             path=os.path.join(self.data_dir, filename + ".keep_times.samples"),
-            use_times=True,
+            use_sites_time=True,
         )
 
         evaluation.add_error(
@@ -1815,7 +1813,7 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
         modern_sim = modern_sim.keep_intervals(
                 [[np.floor(sim_pos[0]), np.ceil(sim_pos[-1])]]).trim()
         assert sim.num_sites == modern_sim.num_sites
-        modern_samples_keeptimes = tsinfer.formats.SampleData.from_tree_sequence(modern_sim, use_times=True)
+        modern_samples_keeptimes = tsinfer.formats.SampleData.from_tree_sequence(modern_sim, use_sites_time=True)
         inferred_modern = tsinfer.infer(modern_samples_keeptimes)
         inferred_modern_dated = tsdate.date(inferred_modern.simplify(), 10000, 1e-8)
 
@@ -1986,7 +1984,7 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
 #
 #            # Create sampledata file, with and without keeping times
 #            sample_data = tsinfer.formats.SampleData.from_tree_sequence(
-#                sim, use_times=False,
+#                sim, use_sites_time=False,
 #            )
 #            sample_data_indiv_times = sample_data.copy(
 #                path=os.path.join(self.data_dir, filename + ".samples")
@@ -1999,7 +1997,7 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
 #           # tsinfer.formats.SampleData.from_tree_sequence(
 #           #     modern_ts,
 #           #     path=os.path.join(self.data_dir, filename + ".keep_times.samples"),
-#           #     use_times=True,
+#           #     use_sites_time=True,
 #           # )
 #
 #            # Update dataframe with details of simulation
@@ -2145,7 +2143,7 @@ class TsdateAccuracy(DataGeneration):
 
                 mutated_ts = msprime.mutate(ts, rate=param, random_seed=random_seed)
                 sample_data = tsinfer.formats.SampleData.from_tree_sequence(
-                    mutated_ts, use_times=False)
+                    mutated_ts, use_sites_time=False)
                 inferred_ts = tsinfer.infer(sample_data).simplify()
                 io_dated = tsdate.date(
                     mutated_ts, mutation_rate=param, Ne=Ne, method='inside_outside')
@@ -2355,16 +2353,6 @@ class TsdateChr20(NeutralSimulatedMutationAccuracy):
                        "muts_anc_err": anc_error_mut_df, "kc_noerr": kc_df, "kc_err": error_kc_df,
                        "kc_anc_err": anc_error_kc_df}
         return index, row, return_vals
-
-
-
-#    def run_multiprocessing(self, function, num_processes=1):
-#        try:
-#            data = pd.read_csv(self.data_file, index_col=0)
-#        except FileNotFoundError:
-#            logging.error("Must run with --setup flag first")
-#
-#        function(data, num_threads=num_processes)
 
 
 def get_subclasses(cls):

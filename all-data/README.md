@@ -32,6 +32,7 @@ The pipelines require:
 - Python 3
 - bcftools
 - vcftools
+- samtools
 - tabix
 - convertf
 - Picard
