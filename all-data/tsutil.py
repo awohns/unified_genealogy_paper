@@ -501,6 +501,14 @@ def remove_moderns_reich(args):
     copy.finalise()
 
 
+def add_ancient_samples(args):
+    ancient_samples = tsinfer.load(args.samples)
+    ancesors = tsinfer.load(args.ancestors)
+    ancestors = ancestors.insert_proxy_samples(samples, allow_mutations=True)
+    ancestors_copy = ancestors.copy(path=args.output + ".proxy.ancestors")
+    ancestors_copy.finalise()
+    
+
 def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
     all_samples = tsinfer.load(args.all_samples)
@@ -510,7 +518,6 @@ def combined_ts_constrained_samples(args):
                   high_cov_samples, sites_time)
     high_cov_samples_copy = dated_samples.copy(args.output)
     high_cov_samples_copy.finalise()
-
 
 
 def main():
