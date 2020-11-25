@@ -21,15 +21,6 @@ import tskit
 
 GENERATION_TIME = 25
 
-try:
-    import bgen_reader
-
-    # Local module used to work around slow genotype access in bgen_reader
-    import simplebgen
-except ImportError:
-    # bgen-reader isn't available for Python 3.4.
-    print("WARNING: Cannot import bgen reader")
-
 
 @attr.s()
 class Site(object):
@@ -43,8 +34,8 @@ class Site(object):
 def run_multiprocessing(args, function):
     """
     Run multiprocessing of sampledata files.
-    We use multiple threads by splitting the VCF file into chunks and using the vcf_subset
-    function of cyvcf2.
+    We use multiple threads by splitting the VCF file into chunks and using the
+    vcf_subset function of cyvcf2.
     """
     vcf_fn = args.data_file
     num_processes = args.num_threads
@@ -93,6 +84,8 @@ def run_multiprocessing(args, function):
                 )
                 if row["num_sites"] > 0:
                     completed_files.append(index)
+                else:
+                    os.remove(args.output_file + str(index) + "-lock")
 
         # Combine reports and print
         master_report = reports[0]
@@ -124,13 +117,18 @@ def make_sampledata(args):
         args = args[0]
     else:
         vcf_subset = None
-    git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"])
-    git_provenance = {
-        "repo": "git@github.com:mcveanlab/treeseq-inference.git",
-        "hash": git_hash.decode().strip(),
-        "dir": "human-data",
-        "notes:": ("Use the Makefile to download and process the upstream data files"),
-    }
+    try:
+        git_hash = subprocess.check_output(["git", "rev-parse", "HEAD"])
+        git_provenance = {
+            "repo": "git@github.com:mcveanlab/treeseq-inference.git",
+            "hash": git_hash.decode().strip(),
+            "dir": "human-data",
+            "notes:": (
+                "Use the Makefile to download and process the upstream data files"),
+        }
+    except FileNotFoundError:
+        git_hash = "Git unavailable"
+        git_provenance = "Git unavailable"
     data_provenance = {
         "ancestral_states_url": args.ancestral_states_url,
         "reference_name": args.reference_name,
@@ -147,7 +145,6 @@ def make_sampledata(args):
     converter_class = {
         "1kg": ThousandGenomesConverter,
         "sgdp": SgdpConverter,
-        "ukbb": UkbbConverter,
         "hgdp": HgdpConverter,
         "max-planck": MaxPlanckConverter,
         "afanasievo": AfanasievoConverter,
@@ -195,7 +192,8 @@ def filter_duplicates_target(vcf, target_sites_pos=None):
     """
     Returns the variants from this VCF with duplicate sites filtered
     out. If any site position appears more than once, throw all variants away.
-    If target_sites_pos is not None, only returns variants from this VCF which are present in the target sampledata file.
+    If target_sites_pos is not None, only returns variants from this VCF which
+    are present in the target sampledata file.
     """
     if target_sites_pos is not None:
 
@@ -273,7 +271,7 @@ class Converter(object):
     def get_ancestral_state(self, position):
         # From the ancestral states README:
         # The convention for the sequence is:
-        #    ACTG : high-confidence call, ancestral state supproted by the other two sequences
+        #    ACTG : high-confidence call, ancestral state supported by other 2 sequences
         #    actg : low-confindence call, ancestral state supported by one sequence only
         #    N    : failure, the ancestral state is not supported by any other sequence
         #    -    : the extant species contains an insertion at this postion
@@ -364,7 +362,6 @@ class VcfConverter(Converter):
             vcf = cyvcf2.VCF(self.data_file)
         else:
             vcf = cyvcf2.VCF(self.data_file)(vcf_subset)
-            start_pos = vcf_subset.replace(":", " ").replace("-", " ").split()[1]
         for row in filter_duplicates_target(vcf, self.target_sites_pos):
             ancestral_state = self.get_ancestral_state(row.POS)
             if ancestral_state is not None:
@@ -889,7 +886,7 @@ class MaxPlanckConverter(VcfConverter):
 
 class AfanasievoConverter(MaxPlanckConverter):
     """
-    Converts data for Afanasievo Family. 
+    Converts data for Afanasievo Family.
     """
 
     def process_metadata(self, show_progress=False):
@@ -943,7 +940,6 @@ class ReichConverter(VcfConverter):
             ]
             rows = {}
             populations = {}
-            locations = {}
             for line in md_file:
                 metadata = dict(zip(sane_names, line.strip().split("\t")))
                 name = metadata["index"] + "_" + metadata["instance_id"]
@@ -952,14 +948,6 @@ class ReichConverter(VcfConverter):
                 age = metadata.pop("average_of_95.4%_date_range_in_calbp")
                 metadata["age"] = int(age) / GENERATION_TIME
                 rows[name] = metadata
-                try:
-                    location = [
-                        float(metadata.pop("lat.")),
-                        float(metadata.pop("long.")),
-                    ]
-                except:
-                    pass
-                locations[name] = location
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
         vcf.close()
@@ -971,96 +959,9 @@ class ReichConverter(VcfConverter):
             self.samples.add_individual(
                 time=metadata["age"],
                 metadata=metadata,
-                location=locations[name],
                 ploidy=2,
                 population=populations[name],
             )
-
-
-class UkbbConverter(Converter):
-    def process_metadata(self, metadata_file, show_progress=False):
-        # TODO Should make this an explicit requirement rather than hardcoding.
-        withdrawn_ids = set()
-        with open("ukbb_withdrawn.csv") as f:
-            for line in f:
-                withdrawn_ids.add(int(line))
-
-        # The sample IDs aren't in the BGEN file so we have to match by the Order
-        # field, which gives the order that each sample is at in the BGEN (0 based).
-        metadata_df = pd.read_csv(metadata_file)
-        metadata_df.sort_values(by="Order", inplace=True)
-        metadata_df = metadata_df.set_index("Order")
-
-        bgen = bgen_reader.read_bgen(self.data_file, verbose=False)
-        sample_df = bgen["samples"]
-        keep_samples = []
-        row_iter = tqdm.tqdm(
-            metadata_df.iterrows(), total=len(metadata_df), disable=not show_progress
-        )
-        for index, row in row_iter:
-            if not pd.isnull(index):
-                order = int(index)
-                if int(row.SampleID) not in withdrawn_ids:
-                    keep_samples.extend([2 * order, 2 * order + 1])
-                    metadata = {}
-                    for k, v in row.items():
-                        metadata[k] = None if pd.isnull(v) else str(v)
-                    self.samples.add_individual(ploidy=2, metadata=metadata)
-        self.num_samples = len(keep_samples)
-        self.keep_index = np.array(keep_samples, dtype=int)
-
-    def process_sites(self, show_progress=False, max_sites=None):
-
-        bgen = bgen_reader.read_bgen(self.data_file, verbose=False)
-        num_alleles = np.array(bgen["variants"]["nalleles"])
-        position = np.array(bgen["variants"]["pos"])
-        rsid = np.array(bgen["variants"]["rsid"])
-        allele_id = np.array(bgen["variants"]["allele_ids"])
-        del bgen
-
-        bg = simplebgen.BgenReader(self.data_file)
-        N = 2 * bg.num_samples
-        for j in tqdm.tqdm(range(bg.num_variants)):
-            ancestral_state = self.get_ancestral_state(position[j])
-            if ancestral_state is not None:
-                alleles = allele_id[j].split(",")
-                if num_alleles[j] != 2 or ancestral_state not in alleles:
-                    self.num_non_biallelic += 1
-                elif any(len(allele) != 1 for allele in alleles):
-                    self.num_indels += 1
-                else:
-                    P = bg.get_probabilities(j).astype(np.int8).reshape((N, 2))
-                    # The probabilities for each site is a (num_diploids, 4) array,
-                    # in the form (n0_a0, n0_a1, n1_a0, n1_a1). These are always zero
-                    # or one for the different alleles. We first flatten this array so
-                    # that it's (N, 2) and then generate the genotypes based on that.
-                    genotypes = np.zeros(N, dtype=np.int8)
-                    if ancestral_state == alleles[0]:
-                        genotypes[P[:, 1] == 1] = 1
-                        ref = alleles[0]
-                    else:
-                        genotypes[P[:, 0] == 1] = 1
-                        ref = alleles[0]
-                        alleles = alleles[::-1]
-
-                    freq = np.sum(genotypes)
-                    if freq == self.num_samples or freq == 0:
-                        self.num_invariant += 1
-                    elif freq == 1:
-                        self.num_singletons += 1
-                    elif freq == self.num_samples - 1:
-                        self.num_nmo_tons += 1
-                    else:
-                        metadata = {"ID": rsid[j], "REF": ref}
-                        self.samples.add_site(
-                            position=float(position[j]),
-                            genotypes=genotypes[self.keep_index],
-                            alleles=alleles,
-                            metadata=metadata,
-                        )
-            if j == max_sites:
-                break
-        self.report()
 
 
 def main():
@@ -1069,7 +970,7 @@ def main():
     )
     parser.add_argument(
         "source",
-        choices=["1kg", "sgdp", "ukbb", "hgdp", "max-planck", "afanasievo", "1240k"],
+        choices=["1kg", "sgdp", "hgdp", "max-planck", "afanasievo", "1240k"],
         help="The source of the input data.",
     )
     parser.add_argument("data_file", help="The input data file pattern.")
