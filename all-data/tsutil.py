@@ -456,6 +456,27 @@ def remove_moderns_reich(args):
     copy.finalise()
 
 
+def remove_outliers(args):
+    tree_seq = tskit.load(args.ts) 
+    samples = tsinfer.load(args.samples)
+    # Find number of mutations per site
+    muts_per_site = np.unique(tree_seq.tables.mutations.site, return_counts=True)
+    mean_muts_per_site = np.mean(muts_per_site[1])
+    std_muts_per_site = np.std(muts_per_site[1])
+    print("Mean number of muts per site: ", mean_muts_per_site)
+    print("Std number of muts per site: ", std_muts_per_site)
+    # Find outliers: greater than 3 standard deviations from the mean number of mutations
+    # per site
+    outliers = muts_per_site[1] > mean_muts_per_site + 3 * std_muts_per_site
+    # Remove outlier sites from tree sequence and sampledata files
+    tree_seq = tree_seq.delete_sites(np.where(muts_per_site[0][outliers])[0])
+    tree_seq.dump(args.output_ts)
+    samples_subset = samples.subset(sites=np.where(muts_per_site[0][~outliers])[0])
+    samples_subset_copy = samples_subset.copy(args.output_samples)
+    samples_subset_copy.finalise()
+    print(" Number of muts removed: ", np.sum(outliers))
+
+
 def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
@@ -585,6 +606,21 @@ def main():
     subparser.add_argument("output", type=str, help="Output sampledata file name")
     subparser.set_defaults(func=remove_moderns_reich)
 
+    subparser = subparsers.add_parser("remove-outliers")
+    subparser.add_argument(
+        "--samples", type=str, help="Sampledata filename"
+    )
+    subparser.add_argument(
+        "--ts", type=str, help="Inferred Tree Sequence.",
+    )
+    subparser.add_argument(
+        "--output-samples", type=str, help="Output sampledata filename"
+    )
+    subparser.add_argument(
+        "--output-ts", type=str, help="Output tree sequence filename"
+    )
+    subparser.set_defaults(func=remove_outliers)
+
     subparser = subparsers.add_parser("combined-ts-dated-samples")
     subparser.add_argument(
         "--high-cov", type=str, help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
@@ -595,7 +631,7 @@ def main():
     subparser.add_argument(
         "--dated-ts", type=str, help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
-    subparser.add_argument("--output", type=str, help="Output sampledata file name")
+    subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)
 
     daiquiri.setup(level="INFO")

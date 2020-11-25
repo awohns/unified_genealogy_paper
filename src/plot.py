@@ -376,7 +376,7 @@ class Figure(object):
 
 class TsdateSimulatedAccuracyNeutral(Figure):
     """
-    For Figure 1: accuracy of tsdate on simulated data under a neutral model.
+    For Figure 1b: accuracy of tsdate on simulated data under a neutral model.
     Compares age of mutations: simulated time vs. tsdate estimation using
     simulated topology and tsdate using tsinfer inferred topologies.
     """
@@ -423,214 +423,9 @@ class TsdateSimulatedAccuracyNeutral(Figure):
         self.save(self.name)
 
 
-class IterateNoAncients(Figure):
-    """
-    Figure to show accuracy of iterative approach.
-    """
-
-    name = "iterative_accuracy_noancients"
-    data_path = "simulated-data"
-    filename = ["iterate_no_ancients_mutations"]
-
-    def plot(self):
-        df = self.data[0]
-        tsdate = df["tsdateTime"]
-        iteration_times = df["IterationTime"]
-        keep_times = df["tsinfer_keep_time"]
-        topo_times = df["SimulatedTopoTime"]
-
-        plt.errorbar(
-            [
-                "Modern Dated",
-                "With Iteration",
-                "with tsinfer real times",
-                "With real ages",
-            ],
-            [
-                np.mean(tsdate),
-                np.mean(iteration_times),
-                np.mean(keep_times),
-                np.mean(topo_times),
-            ],
-            yerr=[
-                np.std(tsdate),
-                np.std(iteration_times),
-                np.std(keep_times),
-                np.std(topo_times),
-            ],
-        )
-        plt.xticks(rotation=45)
-        plt.ylabel("Mean Squared Log Error")
-        self.save(self.filename[0])
-
-    def plot_full(self):
-        df = self.data[0][0:10000]
-
-        with sns.axes_style("white"):
-            fig, ax = plt.subplots(
-                nrows=2, ncols=2, figsize=(12, 6), sharex=True, sharey=True
-            )
-            true_vals = df["SimulatedTime"]
-            tsdate = df["SimulatedTopoTime"]
-            tsdate_inferred = df["tsdateTime"]
-            keep_times = df["tsinfer_keep_time"]
-            iteration_times = df["IterationTime"]
-
-            ax[0, 0].set_xscale("log")
-            ax[0, 0].set_yscale("log")
-            ax[0, 0].set_xlim(1, 2e5)
-            ax[0, 0].set_ylim(1, 2e5)
-
-            # tsdate on true tree
-            x = true_vals
-            y = tsdate
-            xy = np.vstack([x, y])
-            z = gaussian_kde(xy)(xy)
-            z = z / np.max(z)
-            ax[0, 0].scatter(x, y, c=z, s=5, cmap=plt.cm.plasma)
-            ax[0, 0].plot(ax[0, 0].get_xlim(), ax[0, 0].get_ylim(), ls="--", c=".3")
-            ax[0, 0].set_title("tsdate (using true topology)", fontsize=24)
-            ax[0, 0].text(
-                0.36,
-                0.16,
-                "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
-                fontsize=19,
-                transform=ax[0, 0].transAxes,
-            )
-            ax[0, 0].text(
-                0.36,
-                0.1,
-                "Spearman's "
-                + "$\\rho$: "
-                + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
-                fontsize=19,
-                transform=ax[0, 0].transAxes,
-            )
-            ax[0, 0].text(
-                0.36,
-                0.04,
-                "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]),
-                fontsize=19,
-                transform=ax[0, 0].transAxes,
-            )
-
-            # tsdate on inferred tree
-            y = tsdate_inferred
-            xy = np.vstack([x, y])
-            z = gaussian_kde(xy)(xy)
-            z = z / np.max(z)
-            scatter = ax[0, 1].scatter(x, y, c=z, s=5, cmap=plt.cm.plasma)
-            ax[0, 1].plot(ax[0, 1].get_xlim(), ax[0, 1].get_ylim(), ls="--", c=".3")
-            ax[0, 1].set_title("tsinfer + tsdate", fontsize=24)
-            ax[0, 1].text(
-                0.36,
-                0.16,
-                "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
-                fontsize=19,
-                transform=ax[0, 1].transAxes,
-            )
-            ax[0, 1].text(
-                0.36,
-                0.1,
-                "Spearman's "
-                + "$\\rho$: "
-                + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
-                fontsize=19,
-                transform=ax[0, 1].transAxes,
-            )
-            ax[0, 1].text(
-                0.36,
-                0.04,
-                "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]),
-                fontsize=19,
-                transform=ax[0, 1].transAxes,
-            )
-
-            # tsdate on inferred tree
-            y = keep_times
-            xy = np.vstack([x, y])
-            z = gaussian_kde(xy)(xy)
-            z = z / np.max(z)
-            scatter = ax[1, 0].scatter(x, y, c=z, s=5, cmap=plt.cm.plasma)
-            ax[1, 0].plot(ax[1, 0].get_xlim(), ax[1, 0].get_ylim(), ls="--", c=".3")
-            ax[1, 0].set_title("tsinfer + tsdate", fontsize=24)
-            ax[1, 0].text(
-                0.36,
-                0.16,
-                "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
-                fontsize=19,
-                transform=ax[1, 0].transAxes,
-            )
-            ax[1, 0].text(
-                0.36,
-                0.1,
-                "Spearman's "
-                + "$\\rho$: "
-                + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
-                fontsize=19,
-                transform=ax[1, 0].transAxes,
-            )
-            ax[1, 0].text(
-                0.36,
-                0.04,
-                "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]),
-                fontsize=19,
-                transform=ax[1, 0].transAxes,
-            )
-
-            # tsdate iterative
-            y = iteration_times
-            xy = np.vstack([x, y])
-            z = gaussian_kde(xy)(xy)
-            z = z / np.max(z)
-            scatter = ax[1, 1].scatter(x, y, c=z, s=5, cmap=plt.cm.plasma)
-            ax[1, 1].plot(ax[1, 1].get_xlim(), ax[1, 1].get_ylim(), ls="--", c=".3")
-            ax[1, 1].set_title("tsinfer + tsdate", fontsize=24)
-            ax[1, 1].text(
-                0.36,
-                0.16,
-                "RMSLE:" + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
-                fontsize=19,
-                transform=ax[1, 1].transAxes,
-            )
-            ax[1, 1].text(
-                0.36,
-                0.1,
-                "Spearman's "
-                + "$\\rho$: "
-                + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
-                fontsize=19,
-                transform=ax[1, 1].transAxes,
-            )
-            ax[1, 1].text(
-                0.36,
-                0.04,
-                "Pearson's r: " + "{0:.2f}".format(scipy.stats.pearsonr(x, y)[0]),
-                fontsize=19,
-                transform=ax[1, 1].transAxes,
-            )
-            fig.text(
-                0.5, 0.03, "True Mutation Ages (Generations)", size=23, ha="center"
-            )
-            fig.text(
-                0.03,
-                0.5,
-                "Estimated Mutation \n Ages (Generations)",
-                size=23,
-                va="center",
-                rotation="vertical",
-            )
-
-            cbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
-            cbar = fig.colorbar(scatter, cax=cbar_ax)
-            cbar.set_label("Density", fontsize=15, rotation=270, labelpad=20)
-
-            self.save("iterative_accuracy_noancients")
-
-
 class Figure2Ancients(Figure):
     """
-    Main text figure 2. Accuracy of increasing number of ancient samples.
+    Main text figure 1d. Accuracy of increasing number of ancient samples.
     """
 
     name = "iteration_ancients"
@@ -687,7 +482,7 @@ class Figure2Ancients(Figure):
         plt.setp(ax[0, 1].artists, edgecolor="k", facecolor="silver")
         plt.setp(ax[0, 0].lines, color="k")
         plt.setp(ax[0, 1].lines, color="k")
-        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
 
@@ -757,7 +552,7 @@ class Figure2Ancients(Figure):
         plt.setp(ax[1, 0].lines, color="k")
         plt.setp(ax[1, 1].lines, color="k")
 
-        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10]]
 
         df_melt = spearman.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -837,7 +632,7 @@ class Figure2Ancients(Figure):
 
 class Figure2(Figure):
     """
-    Main text figure 2. Accuracy of increasing number of ancient samples.
+    Main text Figure1d. Accuracy of increasing number of ancient samples.
     """
 
     name = "iteration_eval"
@@ -1114,38 +909,9 @@ class IterateAncientsVanillaKC(Figure):
         self.save(self.name)
 
 
-class IterateAncientsVanillaKC(IterateAncientsVanillaKC):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model.
-    """
-
-    name = "iterate_ancients_vanilla_kc_error"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_kc_distances.empiricalerror"]
-    plt_title = "KC Distances between Simulated and Inferred Tree Sequences"
-
-    def __init__(self):
-        super().__init__()
-
-
-class AverageAgeAncientMuts(Figure):
-    """
-    Figure 3 part b: average age of mutations carried by each ancient sample
-    """
-
-    name = "mutations_per_ancient"
-    data_path = "all-data"
-    filename = []
-
-    def plot(self):
-        samples = tsinfer.load("1kg_ancients_noreich_chr20")
-        min_site_times = samples.min_site_times(individuals_only=True)
-
-
 class AncientConstraints(Figure):
     """
-    Figure 3: Ancient Constraints on Age of Mutations from 1000 Genomes Project
+    Figure 2: Ancient Constraints on Age of Mutations from 1000 Genomes Project
     """
 
     name = "ancient_constraints_1000g"
@@ -1319,28 +1085,6 @@ class AncientConstraints(Figure):
         self.save(self.name)
 
 
-class TsdateTooYoung(Figure):
-    """
-    Examine the mutations that we estimate to be too young from TGP.
-    """
-
-    name = "too_young_mutations"
-    data_path = "all-data"
-    filename = ["tgp_muts_constraints"]
-    plt_title = "tsdate_too_young"
-
-
-class OldestAncientMutations(Figure):
-    """
-    Examine the mutations observed in the oldest ancient sample.
-    """
-
-    name = "oldest_ancient_mutations"
-    data_path = "all-data"
-    filename = ["tgp_muts_constraints"]
-    plt_title = "ancient_constraint_1kg"
-
-
 class ScalingFigure(Figure):
     """
     Figure showing CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
@@ -1351,7 +1095,7 @@ class ScalingFigure(Figure):
     data_path = "simulated-data"
     filename = ["cpu_scaling_samplesize", "cpu_scaling_length"]
     plt_title = "scaling_fig"
-    include_geva = True
+    include_geva = False
     col_1_name = "Length fixed at 1Mb"
     col_2_name = "Sample size fixed at 250"
 
@@ -1382,7 +1126,7 @@ class ScalingFigure(Figure):
         ax.plot(
             index,
             means_arr[0],
-            "-.",
+            ":",
             label="tsdate",
             color=constants.colors["tsdate"],
             marker="^",
@@ -1409,36 +1153,50 @@ class ScalingFigure(Figure):
             color=constants.colors["relate"],
             marker="h",
         )
+
         if self.include_geva:
             ax.plot(
                 index,
                 means_arr[3],
                 label="GEVA",
                 color=constants.colors["geva"],
-                marker="o",
+                marker="s",
             )
+        max_val = np.max(means_arr[2])
+        ax.set_ylim(0, max_val + (0.05 * max_val))
+        ax.xaxis.set_major_locator(plt.MaxNLocator(5))
 
-    def plot_inset_ax(self, index, ax, means_arr, time=False, memory=False):
-        axins1 = inset_axes(ax, width="40%", height="40%", loc=2, borderpad=1)
+
+    def plot_inset_ax(self, ax, index, means_arr, time=False, memory=False, left=True):
+        if left:
+            left_pos = 0.01
+        else:
+            left_pos = 0.55
+        axins1 = inset_axes(ax, width="40%", height="40%", loc=2, borderpad=2, bbox_to_anchor=(left_pos, 0.05, 1, 1), bbox_transform=ax.transAxes)
         if memory:
             means_arr = [1e-9 * means for means in means_arr]
         elif time:
             means_arr = [means * (1 / 3600) for means in means_arr]
         axins1.plot(
-            index, means_arr[0], label="tsdate", color=constants.colors["tsdate"]
+            index, means_arr[0], ":", label="tsdate", color=constants.colors["tsdate"], marker="^"
         )
         axins1.plot(
-            index, means_arr[1], label="tsinfer", color=constants.colors["tsinfer"]
+            index, means_arr[1], "--", label="tsinfer", color=constants.colors["tsdate"], marker="v"
         )
         axins1.plot(
             index,
             means_arr[0] + means_arr[1],
             label="tsinfer + tsdate",
-            color=constants.colors["tsinfer + tsdate"],
+            color=constants.colors["tsdate"], marker="D"
         )
         axins1.plot(
-            index, means_arr[2], label="relate", color=constants.colors["relate"]
+            index, means_arr[2], label="relate", color=constants.colors["relate"], marker="h"
         )
+        axins1.plot(
+            index, means_arr[3], label="GEVA", color=constants.colors["geva"], marker="s"
+        )
+        axins1.tick_params(axis="both", labelsize=7)
+        return axins1
 
     def plot(self):
         samples_scaling = self.data[0]
@@ -1449,7 +1207,7 @@ class ScalingFigure(Figure):
         self.length_index = length_means.index / 1000000
 
         fig, ax = plt.subplots(
-            nrows=2, ncols=2, figsize=(18, 6), sharex=False, sharey="row"
+            nrows=2, ncols=2, figsize=(20, 9), sharex=False, 
         )
         self.plot_subplot(
             ax[0, 0],
@@ -1463,6 +1221,17 @@ class ScalingFigure(Figure):
             time=True,
             samplesize=True,
             ylabel=True,
+        )
+        self.plot_inset_ax(
+            ax[0, 0],
+            self.samples_index,
+            [
+                samples_means["tsdate_infer_cpu"],
+                samples_means["tsinfer_cpu"],
+                samples_means["relate_cpu"],
+                samples_means["geva_cpu"]
+            ],
+            time=True,
         )
         self.plot_subplot(
             ax[1, 0],
@@ -1478,6 +1247,17 @@ class ScalingFigure(Figure):
             xlabel=True,
             ylabel=True,
         )
+        self.plot_inset_ax(
+            ax[1, 0],
+            self.samples_index,
+            [
+                samples_means["tsdate_infer_memory"],
+                samples_means["tsinfer_memory"],
+                samples_means["relate_memory"],
+                samples_means["geva_memory"]
+            ],  
+            memory=True
+        )
         self.plot_subplot(
             ax[0, 1],
             self.length_index,
@@ -1489,8 +1269,19 @@ class ScalingFigure(Figure):
             ],
             time=True,
             length=True,
+            ylabel=True
         )
-        ax[0, 1].get_xaxis().get_major_formatter().set_scientific(False)
+        self.plot_inset_ax(
+            ax[0, 1],
+            self.samples_index,
+            [
+                length_means["tsdate_infer_cpu"],
+                length_means["tsinfer_cpu"],
+                length_means["relate_cpu"],
+                length_means["geva_cpu"]
+            ],  
+            time=True,
+        )
         self.plot_subplot(
             ax[1, 1],
             self.length_index,
@@ -1503,31 +1294,27 @@ class ScalingFigure(Figure):
             memory=True,
             length=True,
             xlabel=True,
+            ylabel=True,
         )
+        axins = self.plot_inset_ax( 
+            ax[1, 1],
+            self.length_index,
+            [
+                length_means["tsdate_infer_memory"],
+                length_means["tsinfer_memory"],
+                length_means["relate_memory"],
+                length_means["geva_memory"]
+            ],
+            memory=True  
+        )
+        ax[0, 1].get_xaxis().get_major_formatter().set_scientific(False)
         ax[1, 1].get_xaxis().get_major_formatter().set_scientific(False)
         ax[0, 0].set_title(self.col_1_name)
         ax[0, 1].set_title(self.col_2_name)
-        if self.include_geva:
-            ax[0, 0].set_ylim(0, 2)
-            ax[1, 0].set_ylim(0, 10)
         handles, labels = ax[0, 0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc=7, fontsize=14, ncol=1)
+        insert_handles, insert_labels = axins.get_legend_handles_labels()
+        lgd = fig.legend(handles + [insert_handles[-1]], labels + [insert_labels[-1]], fontsize=14, ncol=1, loc=7)
         self.save(self.name)
-
-
-class ScalingFigureNoGeva(ScalingFigure):
-    """
-    Figure showing CPU and memory scaling of tsdate, tsinfer, and Relate.
-    With both samples and length of sequence.
-    """
-
-    name = "scaling_nogeva"
-    data_path = "simulated-data"
-    filename = ["cpu_scaling_samplesize_nogeva", "cpu_scaling_length_nogeva"]
-    plt_title = "scaling_fig_nogeva"
-    include_geva = False
-    col_1_name = "Length fixed at 5Mb"
-    col_2_name = "Sample size fixed at 1000"
 
 
 class TgpMutEstsFrequency(Figure):
@@ -2062,7 +1849,7 @@ class TsdateAccuracy(Figure):
 
 class NeutralSimulatedMutationAccuracy(Figure):
     """
-    Supplementary Figure 5: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
+    Supplementary Figure 4: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
     on a neutral coalescent simulation.
     """
 
@@ -2571,7 +2358,7 @@ class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
 
 class TmrcaClustermap(Figure):
     """
-    Plot the TMRCA clustermap (Figure 2)
+    Plot the TMRCA clustermap (Figure 3)
     """
 
     name = "tmrca_clustermap"

@@ -494,8 +494,7 @@ def find_ancestral_geographies(args):
     """
 
     tgp_hgdp_sgdp_ancients = tskit.load(
-        """all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.
-            historic.trees"""
+        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
     )
     # Remove 1000 Genomes populations
     hgdp_sgdp_ancients = tgp_hgdp_sgdp_ancients.simplify(
