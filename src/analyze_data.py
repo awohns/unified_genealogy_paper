@@ -251,7 +251,7 @@ def get_ancient_constraints_tgp(args):
     try:
         tgp_mut_ests = pd.read_csv("all-data/tgp_mutations.csv", index_col=0)
     except FileNotFoundError:
-        raise ValueError("tgp_mutations.csv does not exist. Must run tgp_dates first")
+        raise FileNotFoundError("tgp_mutations.csv does not exist. Must run tgp_dates first")
     tgp_muts_constraints = pd.merge(
         tgp_mut_ests,
         constraint_df,
@@ -525,8 +525,85 @@ def find_ancestral_geographies(args):
         pop_lats, pop_longs, show_progress=True
     )
     np.savetxt(
-        "all-data/hgdp_sgdp_ancients_ancestor_coordinates.csv", ancestor_coordinates
+        "data/hgdp_sgdp_ancients_ancestor_coordinates.csv", ancestor_coordinates
     )
+
+
+def average_population_ancestors_geography(args):
+    """
+    Find the average position of ancestors of each population at given time slices.
+    Used to plot Figure 4b
+    """
+    try:
+        tgp_hgdp_sgdp_ancestor_locations = np.loadtxt("data/hgdp_sgdp_ancients_ancestor_coordinates.csv")
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "Must run 'ancient_descendants' first to infer ancestral geography")
+    ts = tskit.load(
+            "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
+    ts = ts.simplify(np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54,80)))[0])
+
+    reference_sets = []
+    population_names = []
+    for pop in ts.populations():
+        reference_sets.append(np.where(ts.tables.nodes.population == pop.id)[0].astype(np.int32))
+        name = json.loads(pop.metadata.decode())["name"]
+        population_names.append(name)
+    descendants = ts.mean_descendants(reference_sets)
+
+    avg_lat_lists = list()
+    avg_long_lists = list()
+    centroid_weighted = tgp_hgdp_sgdp_ancestor_locations
+    time_windows_smaller = np.concatenate([np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)])
+    times = ts.tables.nodes.time[:]
+    time_slices_child = list()
+    time_slices_parent = list()
+    for i, time in enumerate(time_windows_smaller):
+        time_slices_child.append(ts.tables.edges.child[np.where(np.logical_and(times[
+            ts.tables.edges.child] <= time, times[ts.tables.edges.parent] > time))[0]])
+        time_slices_parent.append(ts.tables.edges.parent[np.where(np.logical_and(times[
+            ts.tables.edges.child] <= time, times[ts.tables.edges.parent] > time))[0]])
+    num_ancestral_lineages = list()
+    for population in tqdm(np.arange(0, 55)):
+        avg_lat = list()
+        avg_long = list()
+        cur_ancestral_lineages = list()
+        for i, time in enumerate(time_windows_smaller):
+            time_slice_child = time_slices_child[i]
+            time_slice_parent = time_slices_parent[i]
+            ancestral_lineages = np.logical_and(descendants[time_slice_child, population] != 0, descendants[time_slice_parent, population] != 0)
+
+            cur_ancestral_lineages.append(np.sum(ancestral_lineages))
+
+            time_slice_child = time_slice_child[ancestral_lineages]
+            time_slice_parent = time_slice_parent[ancestral_lineages]
+            if len(time_slice_child) != 0 and len(time_slice_parent) != 0:
+                time_slice_avgs = list()
+                for child, parent in zip(time_slice_child, time_slice_parent):
+                    edge_length = times[parent] - times[child]
+                    time_slice_avgs.append(utility.weighted_geographic_center([centroid_weighted[child][0],
+                                                                       centroid_weighted[parent][0]],
+                                               [centroid_weighted[child][1], centroid_weighted[parent][1]],
+                                               [1-((time - times[child])/edge_length),
+                                                1-((times[parent] - time)/edge_length)]))
+                avg_coord = utility.weighted_geographic_center(np.array(time_slice_avgs)[:,0],
+                                                        np.array(time_slice_avgs)[:,1],
+                                           np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))
+
+                avg_lat.append(avg_coord[0])
+                avg_long.append(avg_coord[1])
+
+        num_ancestral_lineages.append(cur_ancestral_lineages)
+
+        avg_lat_lists.append(avg_lat)
+        avg_long_lists.append(avg_long)
+
+    with open('data/avg_pop_ancestral_location_LATS.txt', 'w') as f:
+        for item in avg_lat_lists:
+            f.write("%s\n" % item)
+    with open('data/avg_pop_ancestral_location_LONGS.txt', 'w') as f:
+        for item in avg_long_lists:
+            f.write("%s\n" % item)
 
 
 # Simplified region labelling for ancient figures
@@ -963,6 +1040,7 @@ def main():
         "ancient_constraints": get_ancient_constraints_tgp,
         "min_site_times_ancients": min_site_times_ancients,
         "hgdp_sgdp_ancients_ancestral_geography": find_ancestral_geographies,
+        "average_pop_ancestors_geography": average_population_ancestors_geography,
         "archaic_relationships": find_archaic_relationships,
         "ancient_descendants": find_ancient_descendants,
         "ancient_descent_haplotypes": find_ancient_descent_haplotypes,

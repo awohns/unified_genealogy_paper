@@ -15,7 +15,10 @@ def get_mut_pos_df(ts, name, node_dates, mutation_age="geometric", exclude_root=
     positions = ts.tables.sites.position
     mut_dict = dict(zip(positions, sites_time))
     mut_df = pd.DataFrame.from_dict(mut_dict, orient="index", columns=[name])
+    # Remove duplicates
+    mut_df = mut_df.drop_duplicates(subset=name)
     mut_df.index = (np.round(mut_df.index)).astype(int)
+
     return mut_df
 
 def weighted_geographic_center(lat_list, long_list, weights):
@@ -45,3 +48,22 @@ def radians_center_weighted(x, y, z, weights):
             weighted_avg_x * weighted_avg_x + weighted_avg_y * weighted_avg_y)
     central_latitude = np.arctan2(weighted_avg_z, central_square_root)
     return central_latitude, central_longitude
+
+def vectorized_weighted_geographic_center(lat_arr, long_arr, weights):
+    lat_arr = np.radians(lat_arr)
+    long_arr = np.radians(long_arr)
+    x = np.cos(lat_arr) * np.cos(long_arr)
+    y = np.cos(lat_arr) * np.sin(long_arr)
+    z = np.sin(lat_arr)
+
+    if len(weights.shape) > 1:
+        total_weights = np.sum(weights, axis=1)
+    else:
+        total_weights = np.sum(weights)
+    weighted_avg_x = np.sum(weights * x, axis=1) / total_weights
+    weighted_avg_y = np.sum(weights * y, axis=1) / total_weights
+    weighted_avg_z = np.sum(weights * z, axis=1) / total_weights
+    central_longitude = np.arctan2(weighted_avg_y, weighted_avg_x)
+    central_sqrt = np.sqrt((weighted_avg_x**2) + (weighted_avg_y**2))
+    central_latitude = np.arctan2(weighted_avg_z, central_sqrt)
+    return np.degrees(central_latitude), np.degrees(central_longitude)
