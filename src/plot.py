@@ -9,12 +9,18 @@ import json
 import os
 import pickle
 from operator import attrgetter
+import math
 
 import scipy
 from scipy.stats import gaussian_kde
 from sklearn.metrics import mean_squared_log_error
 import pandas as pd
 import numpy as np
+import dask.distributed
+import dask.array as da
+import numba
+from Bio import SeqIO
+import tskit
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -2735,7 +2741,7 @@ class plot_sample_locations(Figure):
 
     def plot(self):
         tgp_hgdp_sgdp_ancestor_locations = self.data[0]
-       
+
         fig = plt.figure(figsize=(15, 6))
         ax = plt.axes(projection=ccrs.Robinson())
         ax.coastlines(linewidth=0.1)
@@ -2846,7 +2852,7 @@ class PopulationAncestors(Figure):
         Optionally specify colors in the array z
         Optionally specify a colormap, a norm function and a line width
         """
-        
+
         # Default colors equally spaced on [0,1]:
         if z is None:
             z = np.linspace(0.0, 1.0, len(x))
@@ -3134,6 +3140,162 @@ class VindiajDescent(AncientDescent):
         self.save(self.name)
 
 
+class SiteLinkageAndQuality(Figure):
+    """
+    Plot proportion of sites with low quality or linkage as a function of the number
+    of mutations at those sites.
+    """
+
+    name = "ld_quality_by_mutations"
+
+    def gen_log_space(self, limit, n):
+        result = [1]
+        ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
+        while len(result) < n:
+            next_value = result[-1] * ratio
+            if next_value - result[-1] >= 1:
+                # desired state - next_value will be a different integer
+                result.append(next_value)
+            else:
+                # problem! same integer. we need to find next_value by artificially incrementing previous value
+                result.append(result[-1] + 1)
+                # recalculate the ratio so that the remaining values will scale correctly
+                ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
+        # round, re-adjust to 0 indexing
+        return np.array(list(map(lambda x: round(x) - 1, result)), dtype=np.uint64)
+
+    def plot(self):
+
+        client = dask.distributed.Client(
+            dashboard_address="localhost:22222",
+            processes=False,
+        )
+
+        ts = tskit.load(
+            "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees"
+        )
+        haploid = ts.genotype_matrix()
+        haploid = da.from_array(haploid, chunks=(10000, haploid.shape[1]))
+        #Convert to bi-allelic
+        haploid[haploid > 1] = 1
+
+        #Calculate AF
+        alt_count = (haploid == 1).sum(axis=1)
+        af = (alt_count / haploid.shape[1]).astype(np.float32)
+        af = af.compute()
+
+        #Filter sites by AF
+        sites_to_keep = np.logical_and(af >= 0.01, af <= 0.99)
+        f_haploid_gt = haploid[sites_to_keep]
+
+        @numba.jit(nopython=True, nogil=True, fastmath=True)
+        def ld(site_a, site_b):
+            rr, ra, ar, aa = (0, 0, 0, 0)
+            for j in range(len(site_a)):
+                f = site_a[j]
+                c = site_b[j]
+                if f == 0:
+                    if c == 0:
+                        rr += 1
+                    elif c == 1:
+                        ra += 1
+                elif f == 1:
+                    if c == 0:
+                        ar += 1
+                    elif c == 1:
+                        aa += 1
+            s = rr + ra + ar + aa
+            if s > 0:
+                rr = rr / s
+                ra = ra / s
+                ar = ar / s
+                aa = aa / s
+                D = (rr * aa) - (ra * ar)
+                # D_max = min((r0 * a1), (r1 * a0))
+                # D_prime = D / D_max
+                m = (rr + ra) * (rr + ar) * (aa + ar) * (aa + ra)
+                if m > 0:
+                    r_squared = (D / math.sqrt(m)) ** 2
+                    return r_squared
+            return np.nan
+
+        # For a given region sum the LD for each site in a 100-site window around that site
+        @numba.guvectorize(
+            ["void(int8[:,:], float32[:])"], "(variants,samples)->(variants)",
+            nopython=True
+        )
+        def ld_window_sum(region, ld_out):
+            for i in range(len(region)):
+                ld_out[i] = 0
+            for i in range(len(region) - 50):
+                for j in range(50):
+                    ld_ij = ld(region[i], region[i + j])
+                    ld_out[i] = ld_out[i] + ld_ij
+                    ld_out[i + j] = ld_out[i + j] + ld_ij
+
+        window_ld = da.overlap.map_overlap(
+            ld_window_sum,
+            f_haploid_gt.rechunk((9995, f_haploid_gt.chunks[1])),
+            depth=50,
+            boundary=np.nan,
+            drop_axis=1,
+            dtype=np.float32,
+        ).compute()
+
+        ld  = np.full((len(haploid),), np.nan)
+        ld[sites_to_keep] = window_ld
+
+        # From https://www.internationalgenome.org/announcements/genome-accessibility-masks/
+        mask_chr20 = SeqIO.index("data/20160622.chr20.mask.fasta", "fasta")["chr20"].seq
+        mask = []
+        for site in ts.tables.sites:
+            mask.append(mask_chr20[int(site.position) - 1])
+        mask = np.asarray(mask, dtype="U1")
+
+        muts_per_site = np.unique(ts.tables.mutations.site, return_counts=True)[1]
+
+        masked = (mask != "P")
+        low_ld = ld < 10
+        no_ld = np.isnan(ld)
+
+        total_hist, bin_edges = np.histogram(
+            muts_per_site,
+            bins=self.gen_log_space(1000, 50)[1:],
+        )
+        masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
+        prop_masked_hist = masked_hist / total_hist
+        ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
+        prop_ld_hist = ld_hist / total_hist
+        neither_hist, bins = np.histogram(
+            muts_per_site[np.logical_and(~masked, ~low_ld)],
+            bins=bin_edges,
+        )
+        prop_neither_hist = neither_hist / total_hist
+
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor("white")
+        ax.plot(
+            bin_edges[:-1],
+            prop_masked_hist,
+            drawstyle="steps",
+            label="Low quality",
+            color="red",
+        )
+        ax.plot(
+            bin_edges[:-1], prop_ld_hist, drawstyle="steps", label="Low linkage",
+            color="orange"
+        )
+        ax.plot(
+            bin_edges[:-1], prop_neither_hist, drawstyle="steps", label="Neither",
+            color="green"
+        )
+        ax.legend(prop={"size": 10})
+        ax.set_ylabel("Proportion of sites")
+        ax.set_xlabel("Number of mutations at site")
+        ax.set_xlim(0, 500)
+        fig.savefig("figures/ld_quality_by_mutations.eps")
+
+
 class AncestryVideo(Figure):
     """
     Geography of all ancestors
@@ -3274,7 +3436,7 @@ class Timeline(Figure):
     """
     Timeline for Ancestry Map
     """
-    
+
     name = "timeline"
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
