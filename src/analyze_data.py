@@ -3,6 +3,7 @@ Analyses real data in all-data directory. Outputs csvs for
 plotting in plot.py
 """
 import argparse
+import csv
 import os.path
 import json
 import itertools
@@ -494,7 +495,7 @@ def find_ancestral_geographies(args):
     """
 
     tgp_hgdp_sgdp_ancients = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
+        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees"
     )
     # Remove 1000 Genomes populations
     hgdp_sgdp_ancients = tgp_hgdp_sgdp_ancients.simplify(
@@ -553,7 +554,7 @@ def average_population_ancestors_geography(args):
 
     avg_lat_lists = list()
     avg_long_lists = list()
-    centroid_weighted = tgp_hgdp_sgdp_ancestor_locations
+    locations = tgp_hgdp_sgdp_ancestor_locations
     time_windows_smaller = np.concatenate([np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)])
     times = ts.tables.nodes.time[:]
     time_slices_child = list()
@@ -577,19 +578,27 @@ def average_population_ancestors_geography(args):
 
             time_slice_child = time_slice_child[ancestral_lineages]
             time_slice_parent = time_slice_parent[ancestral_lineages]
+            edge_lengths = times[time_slice_parent] - times[time_slice_child]
+            weight_parent = 1- ((times[time_slice_parent] - time) / edge_lengths)
+            weight_child = 1- ((time - times[time_slice_parent]) / edge_lengths)
             if len(time_slice_child) != 0 and len(time_slice_parent) != 0:
                 time_slice_avgs = list()
-                for child, parent in zip(time_slice_child, time_slice_parent):
-                    edge_length = times[parent] - times[child]
-                    time_slice_avgs.append(utility.weighted_geographic_center([centroid_weighted[child][0],
-                                                                       centroid_weighted[parent][0]],
-                                               [centroid_weighted[child][1], centroid_weighted[parent][1]],
-                                               [1-((time - times[child])/edge_length),
-                                                1-((times[parent] - time)/edge_length)]))
-                avg_coord = utility.weighted_geographic_center(np.array(time_slice_avgs)[:,0],
-                                                        np.array(time_slice_avgs)[:,1],
-                                           np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))
-
+                lat_arr = np.vstack([locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]).T
+                long_arr = np.vstack([locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]).T
+                weights = np.vstack([weight_parent, weight_child]).T
+                lats, longs = utility.vectorized_weighted_geographic_center(lat_arr, long_arr, weights)
+                
+#                for child, parent in zip(time_slice_child, time_slice_parent):
+#                    edge_length = times[parent] - times[child]
+#                    time_slice_avgs.append(utility.weighted_geographic_center([centroid_weighted[child][0],
+#                                                                       centroid_weighted[parent][0]],
+#                                               [centroid_weighted[child][1], centroid_weighted[parent][1]],
+#                                               [1-((time - times[child])/edge_length),
+#                                                1-((times[parent] - time)/edge_length)]))
+#                avg_coord = utility.weighted_geographic_center(np.array(time_slice_avgs)[:,0],
+#                                                        np.array(time_slice_avgs)[:,1],
+#                                           np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))
+                avg_coord = utility.weighted_geographic_center(lats, longs, np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))                
                 avg_lat.append(avg_coord[0])
                 avg_long.append(avg_coord[1])
 
@@ -598,12 +607,19 @@ def average_population_ancestors_geography(args):
         avg_lat_lists.append(avg_lat)
         avg_long_lists.append(avg_long)
 
-    with open('data/avg_pop_ancestral_location_LATS.txt', 'w') as f:
-        for item in avg_lat_lists:
-            f.write("%s\n" % item)
-    with open('data/avg_pop_ancestral_location_LONGS.txt', 'w') as f:
-        for item in avg_long_lists:
-            f.write("%s\n" % item)
+    with open('data/avg_pop_ancestral_location_LATS.csv', 'w', newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(avg_lat_lists)
+#        for item in avg_lat_lists:
+            #f.write("%s\n" % item)
+    with open('data/avg_pop_ancestral_location_LONGS.csv', 'w', newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(avg_long_lists)
+       #for item in avg_long_lists:
+       #     f.write("%s\n" % item)
+    with open('data/num_ancestral_lineages.csv', 'w', newline="") as f:
+        writer = csv.writer(f)
+        writer.writerows(num_ancestral_lineages)
 
 
 # Simplified region labelling for ancient figures

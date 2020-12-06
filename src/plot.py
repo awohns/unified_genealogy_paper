@@ -2818,20 +2818,19 @@ class plot_sample_locations(Figure):
 
         self.save(self.name)
 
+
 class PopulationAncestors(Figure):
     """
-    Plot average position of ancestors of each population
+    Figure 4b: Plot average position of ancestors of each population
     """
     name = "population_ancestors"
     data_path = "data"
-    filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
-    delimiter = " "
+    filename = ["avg_pop_ancestral_location_LATS",
+            "avg_pop_ancestral_location_LONGS", "num_ancestral_lineages"]
+    delimiter = ","
     header = None
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    # Remove samples in 1kg
-    hgdp_sgdp_ancients = ts.simplify(
-        np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54,80)))[0])
 
     def colorline(
             self, x, y, z=None, transform=ccrs.PlateCarree(),
@@ -2857,9 +2856,9 @@ class PopulationAncestors(Figure):
 
         z = np.asarray(z)
 
-        segments = make_segments(x, y)
+        segments = self.make_segments(x, y)
 
-        lc = mcoll.LineCollection(segments, array=z, cmap=cmap, norm=norm,
+        lc = matplotlib.collections.LineCollection(segments, array=z, cmap=cmap, norm=norm,
                       linewidth=linewidth, alpha=alpha, transform=transform)
 
         ax.add_collection(lc)
@@ -2867,7 +2866,7 @@ class PopulationAncestors(Figure):
         return lc
 
 
-    def make_segments(self):
+    def make_segments(self, x, y):
         """
         This function is from:
             https://nbviewer.jupyter.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
@@ -2885,6 +2884,15 @@ class PopulationAncestors(Figure):
 
 
     def plot(self):
+        lat_list = self.data[0].to_numpy()
+        long_list = self.data[1].to_numpy()
+        num_ancestral_lineages = self.data[2].to_numpy()
+        print(num_ancestral_lineages)
+        # Remove samples in 1kg
+        hgdp_sgdp_ancients = self.ts.simplify(
+                np.where(~np.isin(
+                    self.ts.tables.nodes.population[self.ts.samples()],
+                    np.arange(54, 80)))[0])
         fig=plt.figure(figsize=(16, 10))
         ax = plt.axes(projection=ccrs.Robinson())
         ax.coastlines(linewidth=0.1)
@@ -2892,76 +2900,86 @@ class PopulationAncestors(Figure):
         ax.set_global()
         ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
         m = ["o", "v", "s", "p", "h", "*"]
-        c = [cm.viridis(color) for color in [0, 1/6, 2/6, 3/6, 4/6, 5/6, 1]]
-        for population, pop_name in enumerate(population_names):
-            ax.plot(avg_long_lists[population], avg_lat_lists[population],
-                    label=pop_name, transform=ccrs.PlateCarree(),c="black")
+        cmap = matplotlib.cm.get_cmap('viridis')
+        c = [cmap(color) for color in [0, 1/6, 2/6, 3/6, 4/6, 5/6, 1]]
+#        for population in hgdp_sgdp_ancients.num_populations:
+#            ax.plot(avg_long_lists[population], avg_lat_lists[population],
+#                    label=pop_name, transform=ccrs.PlateCarree(),c="black")
+#
+#            N = 10
+#            np.random.seed(101)
+#            x = np.random.rand(N)
+#            y = np.random.rand(N)
+#            z = np.linspace(0, 1, len(avg_long_lists[0]))
+        time_windows_smaller = np.concatenate([np.array([0]), np.logspace(3.5,11, num=40, base=2.718)])
+        for population in np.arange(0, 55):
+            pop_size = np.sum(hgdp_sgdp_ancients.tables.nodes.population == population)
+            result_colorline = self.colorline(
+                    long_list[population],
+                    lat_list[population], np.linspace(0, 1, len(long_list)),
+                    cmap=plt.get_cmap('plasma_r'),
+                    linewidth=0.002 *
+                    (num_ancestral_lineages[population] / pop_size),
+                    transform=ccrs.Geodetic(), ax=ax)
+            #     plt.scatter(avg_long_lists[population], avg_lat_lists[population],transform=ccrs.PlateCarree())
+            cax = fig.add_axes([ax.get_position().x0,ax.get_position().y0-0.1,0.78,0.05])
+            cbar = fig.colorbar(result_colorline,cax=cax, orientation="horizontal")
 
-            N = 10
-            np.random.seed(101)
-            x = np.random.rand(N)
-            y = np.random.rand(N)
-
-            z = np.linspace(0, 1, len(avg_long_lists[0]))
-
-            for population, pop_name in enumerate(population_names[0:55]):
-                result_colorline = colorline(avg_long_lists[population], avg_lat_lists[population], z, cmap=plt.get_cmap('plasma_r'),
-                                           linewidth=0.002*(num_ancestral_lineages[population]/np.array(reference_set_lens)[population]),
-                                                        transform=ccrs.Geodetic(), ax=ax)
-                #     plt.scatter(avg_long_lists[population], avg_lat_lists[population],transform=ccrs.PlateCarree())
-                cax = fig.add_axes([ax.get_position().x0,ax.get_position().y0-0.1,0.78,0.05])
-                cbar = fig.colorbar(result_colorline,cax=cax, orientation="horizontal")
-
-                cbar.set_label(label="Time in Years", size=20)
-                cbar.ax.set_xticklabels(25 * np.round(time_windows_smaller[[0, 4, 8, 12, 16, 20]]))
-                # plt.show()
+            cbar.set_label(label="Time in Years", size=20)
+            cbar.ax.set_xticklabels(25 * np.round(time_windows_smaller[[0, 4, 8, 12, 16, 20]]))
         self.save(self.name)
 
 
-class plot_world_density(Figure):
+class WorldDensity(Figure):
+    """
+    Figure 4c, world map with all ancestors plotted at six timepoints
+    """
+    name = "world_density"
+    data_path = "data"
+    filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
+    delimiter = " "
+    header = None
+
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    # Remove samples in 1kg
-    hgdp_sgdp_ancients = ts.simplify(
-        np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54,80)))[0])
-
+    
     def plot(self):
+        locations = self.data[0].to_numpy()
+        # Remove samples in 1kg
+        ts = self.ts.simplify(
+            np.where(~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54,80)))[0])
         times = ts.tables.nodes.time[:]
-    #     slice_here=ts.tables.edges.child[
-    #         np.where(np.logical_and(times[ts.tables.edges.child] < time, times[ts.tables.edges.parent] > time))[0]]
-        fig=plt.figure(figsize=(15, 6))
-        ax = plt.axes(projection=ccrs.Robinson())
-        ax.set_global()
-    #     ax.coastlines(resolution='110m')
-        ax.add_feature(cartopy.feature.LAND)
-        ax.coastlines()
-        ax.add_feature(cartopy.feature.LAND)
-        edges = np.logical_and(times[ts.tables.edges.child] <= time, times[ts.tables.edges.parent] > time)
-        time_slice_child = ts.tables.edges.child[edges]
-        time_slice_parent = ts.tables.edges.parent[edges]
-
-        time_slice_avgs = list()
-        for child, parent in tqdm(zip(time_slice_child, time_slice_parent),total=len(time_slice_child)):
-            edge_length = times[parent] - times[child]
-            time_slice_avgs.append(weighted_geographic_center([centroid_weighted[child][0], centroid_weighted[parent][0]],
-                                       [centroid_weighted[child][1], centroid_weighted[parent][1]],
-                                       [1-((time - times[child])/edge_length),
-                                        1-((times[parent] - time)/edge_length)]))
-        xynps = ax.projection.transform_points(ccrs.Geodetic(), np.array(time_slice_avgs)[:,1],
-                                               np.array(time_slice_avgs)[:,0])
-
-        # make a 2D histogram
-    #     h = ax.hist2d(xynps[:,0], xynps[:,1], bins=100, zorder=10, alpha=0.5,cmin=1)
-    #     h = plt.scatter(xynps[:,0], xynps[:,1], s=0.5, alpha=0.5)
-
-        h = ax.hist2d(xynps[:,0], xynps[:,1], bins=100, zorder=10, alpha=0.5, cmin=10)
-    #     h = ax.hexbin(xynps[:,0], xynps[:,1], gridsize=200, bins="log", zorder=10, alpha=0.5, mincnt=10, extent=ax.get_extent())
-        cbar = plt.colorbar(h[3], ax=ax, shrink=0.7, format='%.1f', pad=0.02)
-        ax.set_global()
-        plt.title(str(xynps.shape[0]) +  " Ancestral Lineages", fontsize=20)
-        # ax.scatter((np.array(time_slice_avgs)[:,1]),
-        #           (np.array(time_slice_avgs)[:,0]), alpha=0.2, transform=ccrs.PlateCarree(),c="black",
-        #                      s=np.sum(normalised_descendants[slice_here],axis=1)/normalisation_factor)
+        for time in [100, 1000, 2240, 5600, 11200, 33600]:
+            fig=plt.figure(figsize=(15, 6))
+            ax = plt.axes(projection=ccrs.Robinson())
+            ax.set_global()
+            ax.coastlines()
+            ax.add_feature(cartopy.feature.LAND)
+            edges = np.logical_and(times[ts.tables.edges.child] <= time,
+                                               times[ts.tables.edges.parent] > time)
+            time_slice_child = ts.tables.edges.child[edges]
+            time_slice_parent = ts.tables.edges.parent[edges]
+            edge_lengths = times[time_slice_parent] - times[time_slice_child]
+            weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
+            weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
+            lat_arr = np.vstack(
+                    [locations[time_slice_parent][:, 0],
+                        locations[time_slice_child][:, 0]]).T
+            long_arr = np.vstack(
+                    [locations[time_slice_parent][:, 1],
+                        locations[time_slice_child][:, 1]]).T
+            weights = np.vstack([weight_parent, weight_child]).T
+            lats, longs = utility.vectorized_weighted_geographic_center(
+                    lat_arr, long_arr, weights)
+            avg_locations = np.array([lats, longs]).T
+            xynps = ax.projection.transform_points(ccrs.Geodetic(), avg_locations[:, 1],
+                                                   avg_locations[:, 0])
+            h = ax.hist2d(
+                    xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.5, cmin=10)
+            cbar = plt.colorbar(h[3], ax=ax, shrink=0.7, format='%.1f', pad=0.02)
+            ax.set_global()
+            plt.title(str(xynps.shape[0]) +  " Ancestral Lineages", fontsize=20)
+            self.save(self.name + "_" + str(time))
 
 class AncientDescent(Figure):
     """
@@ -3148,9 +3166,9 @@ class AncestryVideo(Figure):
 
     def mix_colors(self, color1_arr, color2_arr):
         new_color = np.zeros((color1_arr.shape[0], 3))
-        new_color[:,0] = (color1_arr[:,0] + color2_arr[:,0]) / 2
-        new_color[:,1] = (color1_arr[:,1] + color2_arr[:,1]) / 2
-        new_color[:,2] = (color1_arr[:,2] + color2_arr[:,2]) / 2
+        new_color[:, 0] = (color1_arr[:, 0] + color2_arr[:, 0]) / 2
+        new_color[:, 1] = (color1_arr[:, 1] + color2_arr[:, 1]) / 2
+        new_color[:, 2] = (color1_arr[:, 2] + color2_arr[:, 2]) / 2
         return new_color
 
     def plot(self):
@@ -3164,7 +3182,8 @@ class AncestryVideo(Figure):
         pop_region_map = []
         regions = []
         for pop in ts.populations():
-            reference_sets.append(np.where(tables.nodes.population == pop.id)[0].astype(np.int32))
+            reference_sets.append(
+                    np.where(tables.nodes.population == pop.id)[0].astype(np.int32))
             name = json.loads(pop.metadata.decode())["name"]
             population_names.append(name)
             if name in sgdp_region_map:
@@ -3197,14 +3216,16 @@ class AncestryVideo(Figure):
                     region_unique[region] = region_unique[region][~np.isin(region_unique[region], ancestors)]
 
 
-        ancestor_colors = np.full((ts.num_nodes, 3), matplotlib.colors.to_rgb(matplotlib.colors.get_named_colors_mapping()["black"]))
+        ancestor_colors = np.full((
+            ts.num_nodes, 3),
+            matplotlib.colors.to_rgb(
+                matplotlib.colors.get_named_colors_mapping()["black"]))
         colors = get_tgp_hgdp_sgdp_region_colours()
         for region, ancestors in region_unique.items():
             if region == "Archaics":
                 colors[region] = colors["Ancients"]
                 region = "Ancients"
             ancestor_colors[ancestors] = colors[region]
-
 
         region_unique = collections.defaultdict(list)
         ancestor_by_region = np.zeros((ts.num_nodes, len(regions)))
@@ -3215,16 +3236,18 @@ class AncestryVideo(Figure):
             for cur_region, cur_ancestors in region_ancestors.items():
                 if cur_region != region:
                     overlap = ancestors[np.isin(ancestors, cur_ancestors)]
-                    ancestor_colors[overlap] = self.mix_colors(ancestor_colors[overlap], np.tile(colors[cur_region],len(overlap)).reshape(len(overlap),3))
+                    ancestor_colors[overlap] = self.mix_colors(
+                            ancestor_colors[overlap],
+                            np.tile(colors[cur_region],
+                                    len(overlap)).reshape(len(overlap), 3))
                     ancestor_by_region[ancestors, i] = 1
-        ancestor_colors[np.where(ancestor_colors>1)] = 0
+        ancestor_colors[np.where(ancestor_colors > 1)] = 0
 
         time_locations = []
         logtime = np.exp(np.geomspace(np.log(100), np.log(np.max(times)), 384))
         lintime = np.linspace(0, logtime[0], 64)[:-1]
 
-        time_intervals_log = np.concatenate([lintime,logtime])
-        ancestor_parents = []
+        time_intervals_log = np.concatenate([lintime, logtime])
         ancestor_children = []
         for time in time_intervals_log:
             edges = np.logical_and(times[ts.tables.edges.child] <= time,
@@ -3233,16 +3256,18 @@ class AncestryVideo(Figure):
             time_slice_parent = ts.tables.edges.parent[edges]
             ancestor_children.append(time_slice_child)
             edge_lengths = times[time_slice_parent] - times[time_slice_child]
-            weight_parent = 1-((times[time_slice_parent] - time)/edge_lengths)
-            weight_child = 1-((time - times[time_slice_child])/edge_lengths)
-            lat_arr = np.vstack([locations[time_slice_parent][:,0], locations[time_slice_child][:,0]]).T
-            long_arr = np.vstack([locations[time_slice_parent][:,1], locations[time_slice_child][:,1]]).T
+            weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
+            weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
+            lat_arr = np.vstack([locations[time_slice_parent][:, 0],
+                                locations[time_slice_child][:, 0]]).T
+            long_arr = np.vstack([locations[time_slice_parent][:, 1],
+                                 locations[time_slice_child][:, 1]]).T
             weights = np.vstack([weight_parent, weight_child]).T
             lats, longs = utility.vectorized_weighted_geographic_center(lat_arr, long_arr, weights)
             avg_locations = np.array([lats, longs]).T
             time_locations.append(avg_locations)
 
-        fig=plt.figure(figsize=(10, 6))
+        fig = plt.figure(figsize=(10, 6))
         ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
 
         ax.set_global()
@@ -3251,30 +3276,32 @@ class AncestryVideo(Figure):
 
         xynps = ax.projection.transform_points(
                 ccrs.Geodetic(),
-                time_locations[0][:,1],
-                time_locations[0][:,0])
-        scat = ax.scatter(xynps[:,0], xynps[:,1], s=0.05, alpha=.1,c=ancestor_colors[ancestor_children[0]][:])
+                time_locations[0][:, 1],
+                time_locations[0][:, 0])
+        scat = ax.scatter(xynps[:, 0], xynps[:, 1], s=0.05, alpha=.1,
+                          c=ancestor_colors[ancestor_children[0]][:])
 
         def animate(i):
             #############
             # Code to plot individual ancestors
             xynps = ax.projection.transform_points(
                 ccrs.Geodetic(),
-                time_locations[i][:,1],
-                time_locations[i][:,0])
-            scat.set_offsets(np.c_[xynps[:,0], xynps[:,1]])
+                time_locations[i][:, 1],
+                time_locations[i][:, 0])
+            scat.set_offsets(np.c_[xynps[:, 0], xynps[:, 1]])
             scat.set_color(c=ancestor_colors[ancestor_children[i]][:])
             #############
             plt.title(str(int(np.round(time_intervals_log[i]*25, -2))) + " Years Ago")
         # prevlayers = [h]
-        anim = FuncAnimation(fig, animate, interval = 90, frames=len(time_intervals_log), repeat=True)
+        anim = FuncAnimation(fig, animate, interval=90,
+                             frames=len(time_intervals_log), repeat=True)
         self.save(self.name, animation=anim)
+
 
 class Timeline(Figure):
     """
     Timeline for Ancestry Map
     """
-    
     name = "timeline"
     ts = tskit.load(
         "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
@@ -3283,31 +3310,37 @@ class Timeline(Figure):
     filename = None
 
     def plot(self):
-        fig, ax=plt.subplots(2, 1, figsize=(10, 1), )
-        fig = plt.figure(figsize=(10,1))
+        fig, ax = plt.subplots(2, 1, figsize=(10, 1))
+        fig = plt.figure(figsize=(10, 1))
         spec = fig.add_gridspec(ncols=1, nrows=2, height_ratios=[1, 0.1])
         ax = fig.add_subplot(spec[0])
         dummy = fig.add_subplot(spec[1])
         dummy.axis("off")
-        #ax.set_xlabel("Time")
         ax.set_yticks([])
         logtime = np.exp(np.geomspace(np.log(100), np.log(np.max(self.times)), 384))
         lintime = np.linspace(0, logtime[0], 64)[:-1]
-        time_intervals_log = np.concatenate([lintime,logtime])
+        time_intervals_log = np.concatenate([lintime, logtime])
         vline = ax.axvline(time_intervals_log[0], linewidth=11, color="grey")
         text = ax.text(time_intervals_log[0] + (time_intervals_log[0] * 0.5), 0.5,
-                str(int(np.round(time_intervals_log[0] * 25, -1))) + " Years \n" + "(" + str(int(np.round(time_intervals_log[0],-1))) + " Generations)")
+                       str(int(np.round(time_intervals_log[0] * 25, -1))) +
+                       " Years \n" +
+                       "(" + str(int(np.round(time_intervals_log[0], -1))) +
+                       " Generations)")
         ax.set_xscale("log")
         ax.set_xlim(time_intervals_log[1], time_intervals_log[-1])
         ax.tick_params(labelsize=10)
 
         def animate(i):
             vline.set_xdata(time_intervals_log[i])
-            text.set_text(str(int(np.round(time_intervals_log[i] * 25, -2))) + " Years \n" + "(" + str(int(np.round(time_intervals_log[i], -2))) + " Generations)")
-            text.set_position((time_intervals_log[i] + (time_intervals_log[i] * 0.5), 0.5))
-        anim = FuncAnimation(fig, animate, interval=90, frames=len(time_intervals_log), repeat=True)
+            text.set_text(
+                    str(int(np.round(time_intervals_log[i] * 25, -2))) +
+                    " Years \n" + "(" + str(int(np.round(time_intervals_log[i], -2))) +
+                    " Generations)")
+            text.set_position(
+                    time_intervals_log[i] + (time_intervals_log[i] * 0.5), 0.5)
+        anim = FuncAnimation(
+                fig, animate, interval=90, frames=len(time_intervals_log), repeat=True)
         self.save(self.name, animation=anim)
-
 
 
 ######################################
