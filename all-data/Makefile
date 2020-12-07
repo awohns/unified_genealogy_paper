@@ -9,10 +9,10 @@ help:
 all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 
 %.bcf.csi: %.bcf
-    bcftools index $(patsubst %.bcf.csi,%.bcf,$@)
+	bcftools index $(patsubst %.bcf.csi,%.bcf,$@)
 
 %.vcf.gz.csi: %.vcf.gz
-    bcftools index $(patsubst %.vcf.gz.csi,%.vcf.gz,$@)
+	bcftools index $(patsubst %.vcf.gz.csi,%.vcf.gz,$@)
 
 # Save all intermediate files
 .SECONDARY:
@@ -23,10 +23,10 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 ####################################################
 
 %.missing_binned.samples: %.samples
-    python3 bin_missing.py $^ $@
+	python3 bin_missing.py $^ $@
 
 1kg_chr20.trees: 1kg_chr20.samples
-    python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 0.1 -S 0.1
+	python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 0.1 -S 0.1
 
 %.trees: %.samples recomb-hg38/
 	python3 ../src/run_inference.py $< -t ${NUM_THREADS} -A 1 -S 1 -m recomb-hg38/genetic_map_GRCh38_
@@ -38,13 +38,13 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 	python3 -m tsdate date $*.noout.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS} --ignore-oldest
 
 %.dated.samples: %.samples %.dated.trees
-    python3 tsutil.py dated_samples $^
+	python3 tsutil.py dated_samples $^
 
 %.binned.samples: %.dated.samples
-    python3 bin_dates.py $^ $@
+	python3 bin_dates.py $^ $@
 
 %.dated.samples: %.samples %.modern.dated.trees %.modern.dates.p
-    python3 get_dated_sampledata.py $^
+	python3 get_dated_sampledata.py $^
 
 
 #############################################
@@ -69,8 +69,8 @@ hg38.fa:
 	curl https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/latest/hg38.fa.gz -o hg38.fa.gz
 	gunzip -c hg38.fa.gz > hg38.fa
 	java -jar ../tools/picard.jar CreateSequenceDictionary \ 
-	      R=hg38.fa \ 
-	      O=hg38.dict
+				R=hg38.fa \ 
+				O=hg38.dict
 
 
 #############################################
@@ -96,18 +96,18 @@ ANCESTRAL_STATES_TARBALL=${ANCESTRAL_STATES_PREFIX}.tar.gz
 ANCESTRAL_STATES_URL=ftp://ftp.ensembl.org/pub/release-100/fasta/ancestral_alleles/${ANCESTRAL_STATES_TARBALL}
 
 ${ANCESTRAL_STATES_TARBALL}:
-    curl ${ANCESTRAL_STATES_URL} -o ${ANCESTRAL_STATES_TARBALL}
+		curl ${ANCESTRAL_STATES_URL} -o ${ANCESTRAL_STATES_TARBALL}
 
 ${ANCESTRAL_STATES_PREFIX}/README: ${ANCESTRAL_STATES_TARBALL}
-    rm -fR ${ANCESTRAL_STATES_PREFIX}
-    tar -xvzf ${ANCESTRAL_STATES_TARBALL}
-    # Update access times or we'll keep rebuilding this rule. Have to make sure 
-    # that the README we touch is older than the actual fa files.
-    touch $@
-    touch ${ANCESTRAL_STATES_PREFIX}/*.fa
+		rm -fR ${ANCESTRAL_STATES_PREFIX}
+		tar -xvzf ${ANCESTRAL_STATES_TARBALL}
+		# Update access times or we'll keep rebuilding this rule. Have to make sure 
+		# that the README we touch is older than the actual fa files.
+		touch $@
+		touch ${ANCESTRAL_STATES_PREFIX}/*.fa
 
 chr%_ancestral_states.fa: ${ANCESTRAL_STATES_PREFIX}/README
-    ln -sf ${ANCESTRAL_STATES_PREFIX}/homo_sapiens_ancestor_$*.fa $@
+		ln -sf ${ANCESTRAL_STATES_PREFIX}/homo_sapiens_ancestor_$*.fa $@
 
 chr%_ancestral_states.fa.fai: chr%_ancestral_states.fa
 	samtools faidx $^
@@ -123,18 +123,18 @@ ANCESTRAL_STATES_TARBALL_37=${ANCESTRAL_STATES_PREFIX_37}.tar.bz2
 ANCESTRAL_STATES_URL_37=ftp://ftp.ensembl.org/pub/release-75/fasta/ancestral_alleles/${ANCESTRAL_STATES_TARBALL_37}
 
 ${ANCESTRAL_STATES_TARBALL_37}:
-    curl ${ANCESTRAL_STATES_URL_37} -o ${ANCESTRAL_STATES_TARBALL_37}
+		curl ${ANCESTRAL_STATES_URL_37} -o ${ANCESTRAL_STATES_TARBALL_37}
 
 ${ANCESTRAL_STATES_PREFIX_37}/README: ${ANCESTRAL_STATES_TARBALL_37}
-    rm -fR ${ANCESTRAL_STATES_PREFIX_37}
-    tar -jxvf ${ANCESTRAL_STATES_TARBALL_37}
-    # Update access times or we'll keep rebuilding this rule. Have to make sure 
-    # that the README we touch is older than the actual fa files.
-    touch $@
-    touch ${ANCESTRAL_STATES_PREFIX_37}/*.fa
+		rm -fR ${ANCESTRAL_STATES_PREFIX_37}
+		tar -jxvf ${ANCESTRAL_STATES_TARBALL_37}
+		# Update access times or we'll keep rebuilding this rule. Have to make sure 
+		# that the README we touch is older than the actual fa files.
+		touch $@
+		touch ${ANCESTRAL_STATES_PREFIX_37}/*.fa
 
 chr%_ancestral_states_37.fa: ${ANCESTRAL_STATES_PREFIX_37}/README
-    ln -sf ${ANCESTRAL_STATES_PREFIX_37}/homo_sapiens_ancestor_$*.fa $@
+		ln -sf ${ANCESTRAL_STATES_PREFIX_37}/homo_sapiens_ancestor_$*.fa $@
 
 ###########################
 # GRCh38 Recombination Maps
@@ -167,12 +167,12 @@ GENOTYPES_VCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
 GENOTYPES_BCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/bcf_files
 
 1kg_samples.ped:
-    curl http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/working/20130606_sample_info/20130606_g1k.ped \
-        -o $@
+		curl http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/working/20130606_sample_info/20130606_g1k.ped \
+				-o $@
 
 1kg_%_genotypes.vcf.gz:
-    curl ${GENOTYPES_VCF_BASE}/ALL.$*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz -o $@
-    tabix -p vcf -f $@
+		curl ${GENOTYPES_VCF_BASE}/ALL.$*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz -o $@
+		tabix -p vcf -f $@
 
 1kg_%.samples: 1kg_%_genotypes.vcf.gz %_ancestral_states_37.fai 1kg_samples.ped
 	python3 convert.py 1kg -p \
@@ -206,7 +206,7 @@ GENOTYPES_BASE_GRCH38=ftp://ftp.sra.ebi.ac.uk/vol1/ERZ822/ERZ822766/
 		--ancestral-states-url=${ANCESTRAL_STATES_URL} \
 		--reference-name=${REFERENCE_NAME} \
 		--num-threads ${NUM_THREADS} \
-		$@  > $@.report
+		$@	> $@.report
 
 
 #############################################
@@ -216,17 +216,17 @@ GENOTYPES_BASE_GRCH38=ftp://ftp.sra.ebi.ac.uk/vol1/ERZ822/ERZ822766/
 SGDP_GENOTYPES_BASE=https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/phased_data/PS2_multisample_public
 
 sgdp_samples.txt:
-    curl https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/SGDP_metadata.279public.21signedLetter.samples.txt -o $@
+		curl https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/SGDP_metadata.279public.21signedLetter.samples.txt -o $@
 
 sgdp_%_genotypes.vcf.gz:
-    curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz -o $@
-    curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz.csi -o $@.csi
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz -o $@
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz.csi -o $@.csi
 
 sgdp_%_genotypes.bcf: sgdp_%_genotypes.vcf.gz
-    # Remove the S_Naxi-2 individual because (a) it doesn't have any metadata in the 
-    # file we're using and (b) it has a massively elevated sample edge count if we 
-    # leave it in.
-    bcftools view -s '^S_Naxi-2' $^ -O b -o $@
+		# Remove the S_Naxi-2 individual because (a) it doesn't have any metadata in the 
+		# file we're using and (b) it has a massively elevated sample edge count if we 
+		# leave it in.
+		bcftools view -s '^S_Naxi-2' $^ -O b -o $@
 
 sgdp_%_genotypes_GRCh38.vcf.gz: sgdp_%_genotypes.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 	gunzip -c sgdp_$*_genotypes.vcf.gz > sgdp_$*.vcf
@@ -254,7 +254,7 @@ sgdp_%.samples: sgdp_%_genotypes.bcf.csi %_ancestral_states_37.fai sgdp_samples.
 		--ancestral-states-url=${ANCESTRAL_STATES_URL_37} \
 		--reference-name=${REFERENCE_NAME_37} \
 		--num-threads=1 \
-		$@  > $@.report
+		$@	> $@.report
 
 sgdp_GRCh38_%.samples: sgdp_%_genotypes_GRCh38.bcf.csi %_ancestral_states.fa.fai sgdp_samples.txt
 	python3 convert.py sgdp -p \
@@ -264,7 +264,7 @@ sgdp_GRCh38_%.samples: sgdp_%_genotypes_GRCh38.bcf.csi %_ancestral_states.fa.fai
 		--ancestral-states-url=${ANCESTRAL_STATES_URL} \
 		--reference-name=${REFERENCE_NAME} \
 		--num-threads=1 \
-		$@  > $@.report
+		$@	> $@.report
 
 
 #############################################
@@ -606,6 +606,9 @@ hgdp_1kg_sgdp_high_cov_ancients_%.samples: hgdp_1kg_sgdp_%.missing_binned.noout.
 hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples reich_ancients_GRCh38_%.samples
 	python3 tsutil.py make-sampledata-compatible --input-sampledata $^
 	python3 tsutil.py merge-sampledata-files --input-sampledata $< reich_ancients_GRCh38_$*.subset.samples --output $@
+
+all_ancients_chr20.samples: reich_ancients_chr20.samples afanasievo_chr20.samples denisovan_chr20.samples vindija_chr20.samples chagyrskaya_chr20.samples altai_chr20.samples ust_ishim_chr20.samples loshbour_chr20.samples lbk_chr20.samples
+	python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
 
 hgdp_1kg_sgdp_high_cov_ancients_dated_%.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples hgdp_1kg_sgdp_all_ancients_%.samples
 	python3 tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples --all-samples hgdp_1kg_sgdp_all_ancients_$*.samples --dated-ts hgdp_1kg_sgdp_$*.missing_binned.dated.trees --output $@ > hgdp_1kg_sgdp_high_cov_ancients_dated_$*_constrained_variants.txt
