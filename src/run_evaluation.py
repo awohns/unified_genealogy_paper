@@ -302,11 +302,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 ):
                     self.data.loc[index] = row
                     self.summarize()
-<<<<<<< HEAD
-                    for index, (name, df) in enumerate(dfs.items()):
-=======
                     for index, (_, df) in enumerate(dfs.items()):
->>>>>>> 25a1f97fbbaacb5f3b2942df72bbbb6d3689843b
                         master_dfs[index] = pd.concat(
                             [master_dfs[index], df], sort=False
                         )
@@ -1234,13 +1230,7 @@ class SimulateVanillaAncient(DataGeneration):
         else:
             logging.info("Setting up using a single process")
             for seed in tqdm(
-<<<<<<< HEAD
-                enumerate(seeds),
-                desc="Running Simulations",
-                total=len(seeds),
-=======
                 enumerate(seeds), desc="Running Simulations", total=len(seeds),
->>>>>>> 25a1f97fbbaacb5f3b2942df72bbbb6d3689843b
             ):
                 row_data = self.setup_fn(seed)
                 logging.info("Done with sim {}".format(seed[0]))
