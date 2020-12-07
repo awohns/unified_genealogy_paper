@@ -1,4 +1,4 @@
-all: | relate geva htslib bcftools samtools picard
+all: | relate geva htslib bcftools samtools picard.jar eigensoft
 
 geva: 
 	git clone https://github.com/pkalbers/geva.git 
@@ -27,6 +27,9 @@ samtools:
 	mv samtools-1.11 samtools 
 	cd samtools && ./configure prefix=$(PWD) && make && make install
 
-picard:
+picard.jar:
 	wget https://github.com/broadinstitute/picard/releases/download/2.23.8/picard.jar
 	
+eigensoft:
+	git clone https://github.com/argriffing/eigensoft.git
+	cd eigensoft/src && make eigenstrat && make convertf
