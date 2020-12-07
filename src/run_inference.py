@@ -36,7 +36,7 @@ def run(params):
             params.sample_data,
             num_threads=params.num_threads,
             path=prefix + ".ancestors",
-            progress_monitor=tsinfer.cli.ProgressMonitor(1, 1, 0, 0, 0),
+            progress_monitor=True
         )
         print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
     else:
@@ -80,9 +80,9 @@ def run(params):
             recombination_rate=rec_rate,
             mismatch_rate=base_rec_prob * params.ma_mut_rate,
             path_compression=path_compression,
-            progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 1, 0, 0),
+            progress_monitor=True
         )
-        inferred_anc_ts.dump(path=prefix + ".atrees")
+        inferred_anc_ts.dump(prefix + ".atrees")
         print(f"MA done (ma_mut:{params.ma_mut_rate} ms_mut{params.ms_mut_rate})")
     else:
         inferred_anc_ts = tskit.load(prefix + ".atrees")
@@ -97,7 +97,7 @@ def run(params):
             precision=precision,
             recombination_rate=rec_rate,
             mismatch_rate=base_rec_prob * params.ms_mut_rate,
-            progress_monitor=tsinfer.cli.ProgressMonitor(1, 0, 0, 0, 1),
+            progress_monitor=True,
             force_sample_times=True,
             simplify=False
         )
@@ -105,7 +105,7 @@ def run(params):
         process_time = time.process_time() - start_time
         ms_process_time = time.process_time() - ms_start_time
         ts_path = prefix + ".nosimplify.trees"
-        inferred_ts.dump(path=ts_path)
+        inferred_ts.dump(ts_path)
     else:
         raise ValueError("Inferred tree sequence already present")
 

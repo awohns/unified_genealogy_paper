@@ -204,7 +204,7 @@ def run_neutral_ancients(
 
 def remove_ancient_only_muts(ts, modern_samples=None):
     """
-    Remove mutations which only appear in ancients, and mutations which are fixed when 
+    Remove mutations which only appear in ancients, and mutations which are fixed when
     ancients are removed.
     """
     if modern_samples is None:
@@ -358,7 +358,9 @@ def compare_mutations(
     # Load tree sequences: simulated, dated (topo), dated(inferred)
     ts = ts_list[0]
     print("Number of mutations", ts.num_mutations)
-    run_results = utility.get_mut_pos_df(ts, "simulated_ts", ts.tables.nodes.time)
+    run_results = utility.get_mut_pos_df(
+        ts, "simulated_ts", ts.tables.nodes.time
+    )  # , mutation_age="arithmetic")
     print("Number of mutations with true dates", run_results.shape[0])
 
     for cur_ts, method in zip(ts_list[1:], method_names[1:]):
@@ -783,8 +785,8 @@ def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
 def compare_mutations_tslist(ts_list, dates_list, method_names):
     """
     Given a list of tree sequences and a list of names of how they were generated,
-    return a pandas dataframe with the age estimates for each mutation via each 
-    method (tsdate, tsinfer + tsdate, tsdate iterations) 
+    return a pandas dataframe with the age estimates for each mutation via each
+    method (tsdate, tsinfer + tsdate, tsdate iterations)
     """
 
     # Load tree sequences: simulated, dated (topo), dated(inferred)

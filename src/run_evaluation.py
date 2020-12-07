@@ -1293,7 +1293,8 @@ class SimulateVanillaAncient(DataGeneration):
         # Create sampledata file, with and without keeping times
         # Need to add the time of ancient samples from nodes
         sample_data = tsinfer.formats.SampleData.from_tree_sequence(
-            sim, use_sites_time=False,
+            sim,
+            use_sites_time=False,
         )
         sample_data_indiv_times = sample_data.copy(
             path=os.path.join(self.data_dir, filename + ".samples")
@@ -1687,14 +1688,14 @@ class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
             raise ValueError("must specify ancient times if simulating ancients")
 
         row_data["Ne"] = 10000
-        row_data["length"] = 10e6
+        row_data["length"] = 1e6
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
         def simulate_func(params):
             seed = params[1]
             species = stdpopsim.get_species("HomSap")
-            contig = species.get_contig("chr20", length_multiplier=0.1)
+            contig = species.get_contig("chr20", length_multiplier=0.05)
             model = species.get_demographic_model("OutOfAfrica_3G09")
             yri_samples = [
                 msprime.Sample(population=0, time=0)
@@ -1928,7 +1929,7 @@ class Chr20AncientIterationAMH(Chr20AncientIteration):
 
 class EvaluatePrior(DataGeneration):
     """
-    Data for Supplemental Figure 2: evaluation of tsdate prior
+    Data for Supplemental Figure 1: evaluation of tsdate prior
     """
 
     name = "evaluateprior"

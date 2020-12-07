@@ -715,18 +715,25 @@ class Figure2(Figure):
                 sns.boxplot(x=df["inferred"], orient="v", ax=ax[row, 0])
             if row == 1:
                 sns.boxplot(
-                    x=df["iter_dated_inferred"], orient="v", ax=ax[row, 1],
+                    x=df["iter_dated_inferred"],
+                    orient="v",
+                    ax=ax[row, 1],
                 )
             else:
                 sns.boxplot(
-                    x=df["reinferred"], orient="v", ax=ax[row, 1],
+                    x=df["reinferred"],
+                    orient="v",
+                    ax=ax[row, 1],
                 )
 
             cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
             df_melt = df.melt(value_vars=cols)
             df_melt["variable"] = df_melt["variable"].str.split().str[-1]
             sns.lineplot(
-                x="variable", y="value", data=df_melt, ax=ax[row, 2],
+                x="variable",
+                y="value",
+                data=df_melt,
+                ax=ax[row, 2],
             )
         plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
@@ -953,7 +960,7 @@ class AncientConstraints(Figure):
     """
 
     name = "ancient_constraints_1000g"
-    data_path = "all-data"
+    data_path = "data"
     filename = ["tgp_muts_constraints"]
     plt_title = "ancient_constraint_1kg"
 
@@ -1005,12 +1012,18 @@ class AncientConstraints(Figure):
         ax_scale = fig.add_subplot(spec5[3])
         ax_scale.set_yscale("linear")
 
+        df["Ancient Bound"] = df["Ancient Bound"] * constants.GENERATION_TIME
+        df = df[df["tsdate_frequency"] > 0]
+
+        # df_old contains mutations seen in ancients, df_new is only contemporary
         df_old = df[df["Ancient Bound"] > 0].set_index("Ancient Bound").sort_index()
         df_new = df[np.logical_not(df["Ancient Bound"] > 0)]
+        print(np.min(df_new["tsdate_frequency"]))
         df_old["Ancient Bound Bins"] = pd.cut(df_old.index, 30)
         smoothed_mean = df_old.groupby("Ancient Bound Bins").mean()
         smoothed_mean["bin_right"] = smoothed_mean.index.map(attrgetter("right"))
         smoothed_mean = smoothed_mean.dropna()
+        print(df_new.shape, df_old.shape)
 
         scatter_size = 0.2
         scatter_alpha = 0.2
@@ -1020,7 +1033,7 @@ class AncientConstraints(Figure):
                 # Hack the titles with extra spaces to centre properly, as it's too
                 # tricky to centre over a pair or subplots
                 ("tsdate      ", ["tsdate_upper_bound", "tsdate_age"]),
-                ("Relate      ", ["relate_upper_bound", "relate_age"]),
+                ("Relate      ", ["relate_upper_age_avg", "relate_avg_age"]),
                 ("GEVA      ", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"]),
             ]
         ):
@@ -1390,13 +1403,13 @@ class TgpMutEstsFrequency(Figure):
     """
 
     name = "tgp_muts_frequency"
-    data_path = "all-data"
+    data_path = "data"
     filename = ["tgp_mutations"]
     plt_title = "TGP Mutation Age vs Frequency"
 
     def plot(self):
         comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_age", "AgeMean_Jnt", "tsdate_frequency"]
+            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt", "tsdate_frequency"]
         ]
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
@@ -1416,7 +1429,7 @@ class TgpMutEstsFrequency(Figure):
         )
         ax[1].hexbin(
             frequency,
-            comparable_mutations["relate_age"],
+            comparable_mutations["relate_avg_age"],
             xscale="log",
             yscale="log",
             bins="log",
@@ -1434,9 +1447,9 @@ class TgpMutEstsFrequency(Figure):
         )
         plt.xlim(3e-3, 1.05)
         plt.ylim(10, 2.4e5)
-        ax[0].set_title("Frequency vs. GEVA Estimated Variant Age")
-        ax[1].set_title("Frequency vs. Relate Estimated Variant Age")
-        ax[2].set_title("Frequency vs. GEVA Estimated Variant Age")
+        ax[0].set_title("Frequency vs. GEVA Estimated Allele Age")
+        ax[1].set_title("Frequency vs. Relate Estimated Allele Age")
+        ax[2].set_title("Frequency vs. GEVA Estimated Allele Age")
         ax[0].set_xlabel("TGP Frequency")
         ax[1].set_xlabel("TGP Frequency")
         ax[2].set_xlabel("TGP Frequency")
@@ -1457,13 +1470,14 @@ class TgpMutationAgeComparisons(Figure):
     """
 
     name = "tgp_dates_comparison"
-    data_path = "all-data"
-    filename = ["tgp_mutations_unconstrained"]
+    data_path = "data"
+    # filename = ["tgp_mutations_unconstrained"]
+    filename = ["tgp_mutations"]
     plt_title = "Compare Mutation Age Estimates"
 
     def plot(self):
         comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_age", "AgeMean_Jnt", "tsdate_frequency"]
+            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt", "tsdate_frequency"]
         ]
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
@@ -1482,7 +1496,7 @@ class TgpMutationAgeComparisons(Figure):
 
         ax[1].hexbin(
             comparable_mutations["tsdate_age"],
-            comparable_mutations["relate_age"],
+            comparable_mutations["relate_avg_age"],
             xscale="log",
             yscale="log",
             bins="log",
@@ -1490,7 +1504,7 @@ class TgpMutationAgeComparisons(Figure):
         )
 
         ax[2].hexbin(
-            comparable_mutations["relate_age"],
+            comparable_mutations["relate_avg_age"],
             comparable_mutations["AgeMean_Jnt"],
             xscale="log",
             yscale="log",
@@ -1500,9 +1514,9 @@ class TgpMutationAgeComparisons(Figure):
 
         plt.xlim(1, 2e5)
         plt.ylim(1, 2e5)
-        ax[0].set_title("tsdate vs. GEVA Estimated Variant Age")
-        ax[1].set_title("tsdate vs. Relate Estimated Variant Age")
-        ax[2].set_title("Relate vs. GEVA Estimated Variant Age")
+        ax[0].set_title("tsdate vs. GEVA Estimated Allele Age")
+        ax[1].set_title("tsdate vs. Relate Estimated Allele Age")
+        ax[2].set_title("Relate vs. GEVA Estimated Allele Age")
         ax[0].set_xlabel("Estimated Age by tsdate (generations)")
         ax[0].set_ylabel("Estimated Age by GEVA (generations)")
         ax[1].set_xlabel("Estimated Age by tsdate (generations)")
@@ -1523,12 +1537,14 @@ class TgpMutationAverageAge(Figure):
     """
 
     name = "mutation_average_age"
-    data_path = "all-data"
+    data_path = "data"
     filename = ["tgp_mutations"]
     plt_title = "Average TGP Mutation Age"
 
     def plot(self):
-        comparable_mutations = self.data[0][["tsdate_age", "relate_age", "AgeMean_Jnt"]]
+        comparable_mutations = self.data[0][
+            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt"]
+        ]
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
         ]
@@ -1536,7 +1552,7 @@ class TgpMutationAverageAge(Figure):
             data=comparable_mutations.rename(
                 columns={
                     "tsdate_age": "tsdate",
-                    "relate_age": "relate",
+                    "relate_avg_age": "relate",
                     "AgeMean_Jnt": "GEVA",
                 }
             ),
@@ -1545,9 +1561,9 @@ class TgpMutationAverageAge(Figure):
         ax.artists[0].set_facecolor("blue")
         ax.artists[1].set_facecolor("green")
         ax.artists[2].set_facecolor("red")
-        plt.ylabel("Estimated Mutation Age (generations)")
+        plt.ylabel("Estimated Allele Age (generations)")
         plt.title(
-            "Average Estimated Mutation Age from TGP \n {} Mutations on Chr 20".format(
+            "Estimated TGP Allele Ages \n {} Variant Sites on Chr 20".format(
                 comparable_mutations.shape[0]
             )
         )
@@ -1953,6 +1969,8 @@ class NeutralSimulatedMutationAccuracy(Figure):
         # df = df.dropna()
         df = df[df["simulated_ts"] > 0]
         df = df[df["relate"] > 0]
+        df = df[df["tsdate"] > 0]
+        df = df[df["tsdate_inferred"] > 0]
 
         # tsdate on true tree
         self.mutation_accuracy(
@@ -2311,8 +2329,7 @@ class TsdateIterationAccuracy(NeutralSimulatedMutationAccuracy):
 
 
 class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
-    """
-    """
+    """"""
 
     name = "ooa_chr20_simulated_mutation_accuracy"
     data_path = "simulated-data"
