@@ -29,7 +29,7 @@ def run_get_dated_samples(args):
     samples = tsinfer.load(args.samples)
     ts = tskit.load(args.ts)
     assert args.samples.endswith(".samples")
-    prefix = args.samples[0: -len(".samples")]
+    prefix = args.samples[0 : -len(".samples")]
     copy = samples.copy(prefix + ".dated.samples")
     copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
@@ -81,7 +81,7 @@ def run_sequential_augment(args):
     while n < num_samples // 4:
         augmented_file = base + ".augmented_{}.ancestors.trees".format(n)
         final_file = base + ".augmented_{}.nosimplify.trees".format(n)
-        subset = samples[j: j + n]
+        subset = samples[j : j + n]
         subset.sort()
         ancestors_ts = run_augment(sample_data, ancestors_ts, subset, args.num_threads)
         ancestors_ts.dump(augmented_file)
@@ -153,8 +153,8 @@ def get_augmented_samples(tables):
     ids = np.where(nodes.flags == tsinfer.NODE_IS_SAMPLE_ANCESTOR)[0]
     sample_ids = np.zeros(len(ids), dtype=int)
     for j, node_id in enumerate(tqdm.tqdm(ids)):
-        offset = nodes.metadata_offset[node_id: node_id + 2]
-        buff = bytearray(nodes.metadata[offset[0]: offset[1]])
+        offset = nodes.metadata_offset[node_id : node_id + 2]
+        buff = bytearray(nodes.metadata[offset[0] : offset[1]])
         md = json.loads(buff.decode())
         sample_ids[j] = md["sample"]
     return sample_ids
@@ -456,40 +456,95 @@ def remove_moderns_reich(args):
     copy.finalise()
 
 
-def remove_outliers(args):
-    tree_seq = tskit.load(args.ts) 
-    samples = tsinfer.load(args.samples)
-    # Find number of mutations per site
-    muts_per_site = np.unique(tree_seq.tables.mutations.site, return_counts=True)
-    mean_muts_per_site = np.mean(muts_per_site[1])
-    std_muts_per_site = np.std(muts_per_site[1])
-    print("Mean number of muts per site: ", mean_muts_per_site)
-    print("Std number of muts per site: ", std_muts_per_site)
-    # Find outliers: greater than 3 standard deviations from the mean number of mutations
-    # per site
-    outliers = muts_per_site[1] > mean_muts_per_site + 3 * std_muts_per_site
-    # Remove outlier sites from tree sequence and sampledata files
-    tree_seq = tree_seq.delete_sites(np.where(muts_per_site[0][outliers])[0])
-    tree_seq.dump(args.output_ts)
-    samples_subset = samples.subset(sites=np.where(muts_per_site[0][~outliers])[0])
-    samples_subset_copy = samples_subset.copy(args.output_samples)
-    samples_subset_copy.finalise()
-    print(" Number of muts removed: ", np.sum(outliers))
+def keep_with_offset(keep, data, offset):
+    """
+    Used when filtering _offset columns in tables
+    """
+    # We need the astype here for 32 bit machines
+    lens = np.diff(offset).astype(np.int32)
+    return (
+        data[np.repeat(keep, lens)],
+        np.concatenate(
+            [
+                np.array([0], dtype=offset.dtype),
+                np.cumsum(lens[keep], dtype=offset.dtype),
+            ]
+        ),
+    )
+
+
+def get_provenance_dict(parameters=None):
+    """
+    Returns a dictionary encoding an execution of tskit conforming to the
+    provenance schema.
+    """
+    document = {
+        "schema_version": "1.0.0",
+        "software": {"name": "tskit", "version": tskit.__version__},
+        "parameters": parameters,
+    }
+    return document
+
+
+def delete_site_mutations(tables, site_ids, record_provenance=True):
+    """
+    Remove the mutations at the specified sites entirely from the mutations table in
+    this collection.
+    :param list[int] site_ids: A list of site IDs specifying the sites whose
+        mutations will be removed.
+    :param bool record_provenance: If ``True``, add details of this operation
+        to the provenance table in this TableCollection. (Default: ``True``).
+    """
+    keep_sites = np.ones(len(tables.sites), dtype=bool)
+    site_ids = site_ids.astype(np.int32)
+    if np.any(site_ids < 0) or np.any(site_ids >= len(tables.sites)):
+        raise ValueError("Site ID out of bounds")
+    keep_sites[site_ids] = 0
+    keep_mutations = keep_sites[tables.mutations.site]
+    new_ds, new_ds_offset = keep_with_offset(
+        keep_mutations,
+        tables.mutations.derived_state,
+        tables.mutations.derived_state_offset,
+    )
+    new_md, new_md_offset = keep_with_offset(
+        keep_mutations, tables.mutations.metadata, tables.mutations.metadata_offset
+    )
+    # Mutation numbers will change, so the parent references need altering
+    mutation_map = np.cumsum(keep_mutations, dtype=tables.mutations.parent.dtype) - 1
+    # Map parent == -1 to -1, and check this has worked (assumes tskit.NULL == -1)
+    mutation_map = np.append(mutation_map, -1).astype(tables.mutations.parent.dtype)
+    assert mutation_map[tskit.NULL] == tskit.NULL
+    tables.mutations.set_columns(
+        site=tables.mutations.site[keep_mutations],
+        node=tables.mutations.node[keep_mutations],
+        time=tables.mutations.time[keep_mutations],
+        derived_state=new_ds,
+        derived_state_offset=new_ds_offset,
+        parent=mutation_map[tables.mutations.parent[keep_mutations]],
+        metadata=new_md,
+        metadata_offset=new_md_offset,
+    )
+    if record_provenance:
+        # TODO replace with a version of https://github.com/tskit-dev/tskit/pull/243
+        parameters = {"command": "delete_site_mutations", "TODO": "add parameters"}
+        tables.provenances.add_row(record=json.dumps(get_provenance_dict(parameters)))
+    return tables
 
 
 def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
     sites_time = tsdate.sites_time_from_ts(dated_hgdp_1kg_sgdp_ts)
-    dated_samples = tsdate.add_sampledata_times(
-                  high_cov_samples, sites_time)
+    dated_samples = tsdate.add_sampledata_times(high_cov_samples, sites_time)
     # Record number of constrained sites
     print("Total number of sites: ", sites_time.shape[0])
     print(
         "Number of ancient lower bounds: ",
-        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0))
-    print("Number of corrected times: ",
-          np.sum(dated_samples.sites_time[:] != sites_time))
+        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0),
+    )
+    print(
+        "Number of corrected times: ", np.sum(dated_samples.sites_time[:] != sites_time)
+    )
     high_cov_samples_copy = dated_samples.copy(args.output)
     high_cov_samples_copy.finalise()
 
@@ -579,10 +634,14 @@ def main():
 
     subparser = subparsers.add_parser("output-indiv-times")
     subparser.add_argument(
-        "input", type=str, help="Add individuals times to sampledata file.",
+        "input",
+        type=str,
+        help="Add individuals times to sampledata file.",
     )
     subparser.add_argument(
-        "output", type=str, help="Add individuals times to sampledata file.",
+        "output",
+        type=str,
+        help="Add individuals times to sampledata file.",
     )
     subparser.set_defaults(func=add_indiv_times)
 
@@ -607,11 +666,11 @@ def main():
     subparser.set_defaults(func=remove_moderns_reich)
 
     subparser = subparsers.add_parser("remove-outliers")
+    subparser.add_argument("--samples", type=str, help="Sampledata filename")
     subparser.add_argument(
-        "--samples", type=str, help="Sampledata filename"
-    )
-    subparser.add_argument(
-        "--ts", type=str, help="Inferred Tree Sequence.",
+        "--ts",
+        type=str,
+        help="Inferred Tree Sequence.",
     )
     subparser.add_argument(
         "--output-samples", type=str, help="Output sampledata filename"
@@ -623,13 +682,19 @@ def main():
 
     subparser = subparsers.add_parser("combined-ts-dated-samples")
     subparser.add_argument(
-        "--high-cov", type=str, help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
+        "--high-cov",
+        type=str,
+        help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
     )
     subparser.add_argument(
-        "--all-samples", type=str, help="HGDP + 1kg + SGDP + All Ancients.",
+        "--all-samples",
+        type=str,
+        help="HGDP + 1kg + SGDP + All Ancients.",
     )
     subparser.add_argument(
-        "--dated-ts", type=str, help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+        "--dated-ts",
+        type=str,
+        help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)

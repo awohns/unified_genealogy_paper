@@ -3,6 +3,7 @@ Analyses real data in all-data directory. Outputs csvs for
 plotting in plot.py
 """
 import argparse
+import os
 import os.path
 import json
 import itertools
@@ -11,6 +12,7 @@ import pickle
 
 import numpy as np
 import pandas as pd
+import pyreadr
 
 import tskit
 import tsinfer
@@ -25,48 +27,59 @@ data_prefix = "all-data"
 
 
 def get_relate_tgp_age_df():
-    #    if path.exists("all-data/1kg_chr20_relate_mutation_ages_geometric.csv"):
-    #        relate_ages = pd.read_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv", index_col=0)
-    #    else:
-    relate_ts = tskit.load("/home/jk/large_files/relate/relate_chr20_metdata.trees")
-    relate_mut_ages, relate_mut_upper_bound, mut_ids = get_mut_ages(
-        relate_ts, unconstrained=False, geometric=False
-    )
-    relate_frequencies = get_site_frequencies(relate_ts)
-    relate_ages = pd.DataFrame(
-        {
-            "position": relate_ts.tables.sites.position[
-                relate_ts.tables.mutations.site
-            ][mut_ids],
-            "relate_age": relate_mut_ages,
-            "relate_upper_bound": relate_mut_upper_bound,
-            "relate_ancestral_allele": np.array(
-                tskit.unpack_strings(
-                    relate_ts.tables.sites.ancestral_state,
-                    relate_ts.tables.sites.ancestral_state_offset,
-                )
-            )[relate_ts.tables.mutations.site][mut_ids],
-            "relate_derived_allele": np.array(
-                tskit.unpack_strings(
-                    relate_ts.tables.mutations.derived_state,
-                    relate_ts.tables.mutations.derived_state_offset,
-                )
-            )[mut_ids],
-            "relate_frequency": relate_frequencies,
-        }
-    )
-    relate_ages.to_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv")
+    if os.path.exists("data/1kg_chr20_relate_mutation_ages.csv"):
+        relate_ages = pd.read_csv(
+            "data/1kg_chr20_relate_mutation_ages.csv", index_col=0
+        )
+    else:
+        relate_ages = None
+        for region in tqdm(["AFR", "AMR", "EAS", "EUR", "SAS"], desc="Region"):
+            path = "data/allele_ages_" + region
+            for f in tqdm(os.listdir(path), desc="Population"):
+                pop = f[-10:-6]
+                keep_columns = [
+                    "CHR",
+                    "BP",
+                    "ID",
+                    "ancestral/derived",
+                    "DAF",
+                    "est" + pop,
+                    "upper_age" + pop,
+                ]
+                df = pyreadr.read_r(os.path.join(path, f))["allele_ages"]
+                df = df[df["CHR"] == 20]
+                df["est" + pop] = (df["lower_age"] + df["upper_age"]) * 0.5
+                df.rename(columns={"upper_age": "upper_age" + pop}, inplace=True)
+                df = df[keep_columns]
+                if relate_ages is None:
+                    relate_ages = df
+                else:
+                    relate_ages = relate_ages.merge(
+                        df,
+                        how="outer",
+                        on=["CHR", "BP", "ID", "ancestral/derived"],
+                        suffixes=["", "_" + f[-9:-6]],
+                    )
+                print(relate_ages)
+        # age_cols = [c for c in relate_ages.columns if "mean_est" in c]
+        # relate_ages["relate_avg_age"] = relate_ages[age_cols].mean(axis=1)
+        # upper_age_cols = [c for c in relate_ages.columns if "upper_age" in c]
+        # relate_ages["relate_upper_age_avg"] = relate_ages[upper_age_cols].mean(axis=1)
+        daf_cols = [c for c in relate_ages.columns if "DAF" in c]
+        relate_ages["relate_daf_sum"] = relate_ages[daf_cols].sum(axis=1)
+        relate_ages["relate_ancestral_allele"] = relate_ages["ancestral/derived"].str[0]
+        relate_ages["relate_derived_allele"] = relate_ages["ancestral/derived"].str[2]
+        # relate_ages = relate_ages[["CHR", "BP", "ID", "relate_daf_sum", "relate_avg_age", "relate_upper_age_avg", "relate_ancestral_allele", "relate_derived_allele"]]
+        relate_ages.to_csv("data/1kg_chr20_relate_mutation_ages_all_pops.csv")
     return relate_ages
 
 
 def get_geva_tgp_age_df():
-    if os.path.exists("all-data/1kg_chr20_geva_mutation_ages.csv"):
-        geva_ages = pd.read_csv(
-            "all-data/1kg_chr20_geva_mutation_ages.csv", index_col=0
-        )
+    if os.path.exists("data/1kg_chr20_geva_mutation_ages.csv"):
+        geva_ages = pd.read_csv("data/1kg_chr20_geva_mutation_ages.csv", index_col=0)
     else:
         geva = pd.read_csv(
-            "/home/wilderwohns/tsinfer_geva/atlas.chr20.csv.gz",
+            "data/geva_ages.csv.gz",
             delimiter=",",
             skipinitialspace=True,
             skiprows=3,
@@ -76,35 +89,27 @@ def get_geva_tgp_age_df():
         geva_ages = geva_tgp_consistent[
             ["Position", "AgeMean_Jnt", "AgeCI95Upper_Jnt", "AlleleRef", "AlleleAlt"]
         ]
-        geva_ages.to_csv("all-data/1kg_chr20_geva_mutation_ages.csv")
+        geva_ages.to_csv("data/1kg_chr20_geva_mutation_ages.csv")
     return geva_ages
 
 
 def get_tsdate_tgp_age_df():
-    if os.path.exists(
-        """all-data/tsdate_ages_1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.
-            simplified.dated.insideoutside.trees"""
-    ):
+    if os.path.exists("data/1kg_chr20_tsdate_mutation_ages.csv"):
         tsdate_ages = pd.read_csv(
-            """all-data/tsdate_ages_1kg_chr20.iter.dated.
-                binned_ma0.1_ms0.1_NNone_p16.simplified.dated.insideoutside.trees""",
-            index_col=0,
+            "data/1kg_chr20_tsdate_mutation_ages.csv", index_col=0
         )
-
     else:
-
-        tgp_chr20 = tskit.load(
-            """all-data/1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.simplified.
-            dated.insideoutside.trees"""
-        )
-
+        # tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.50slices.trees")
+        tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.trees")
+        # posterior_mut_ages = tsdate.sites_time_from_ts(tgp_chr20, mutation_age="child")
+        # posterior_upper_bound = tsdate.sites_time_from_ts(tgp_chr20, mutation_age="parent")
         posterior_mut_ages, posterior_upper_bound, oldest_mut_nodes = get_mut_ages(
             tgp_chr20, unconstrained=False
         )
         site_frequencies = get_site_frequencies(tgp_chr20)
         tsdate_ages = pd.DataFrame(
             {
-                "position": tgp_chr20.tables.sites.position,
+                "Position": tgp_chr20.tables.sites.position,
                 "tsdate_age": posterior_mut_ages,
                 "tsdate_upper_bound": posterior_upper_bound,
                 "tsdate_frequency": site_frequencies,
@@ -122,10 +127,7 @@ def get_tsdate_tgp_age_df():
                 )[oldest_mut_nodes],
             }
         )
-        tsdate_ages.to_csv(
-            """all-data/tsdate_ages_1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.
-            simplified.dated.insideoutside.trees"""
-        )
+        tsdate_ages.to_csv("data/1kg_chr20_tsdate_mutation_ages.csv")
     return tsdate_ages
 
 
@@ -138,7 +140,7 @@ def tgp_date_estimates(args):
     merged = pd.merge(
         tsdate_ages,
         geva,
-        left_on=["position", "tsdate_ancestral_allele", "tsdate_derived_allele"],
+        left_on=["Position", "tsdate_ancestral_allele", "tsdate_derived_allele"],
         right_on=["Position", "AlleleRef", "AlleleAlt"],
     )
     relate_ages = get_relate_tgp_age_df()
@@ -146,13 +148,15 @@ def tgp_date_estimates(args):
         merged,
         relate_ages,
         left_on=["Position", "tsdate_ancestral_allele", "tsdate_derived_allele"],
-        right_on=["position", "relate_ancestral_allele", "relate_derived_allele"],
+        right_on=["BP", "relate_ancestral_allele", "relate_derived_allele"],
     )
+    # In Relate, quoted number of haplotypes in 1000G is 4956.
+    # We check that the frequency of the variants in tsdate and Relate are both < 0.5
     merged = merged[
-        np.abs(merged["tsdate_frequency"] - merged["relate_frequency"]) < 0.5
+        np.abs(merged["tsdate_frequency"] - (merged["relate_daf_sum"] / 4956)) < 0.5
     ]
-    merged = merged.drop(columns=["position_x", "position_y"])
-    merged.to_csv("all-data/tgp_mutations.csv")
+    # merged = merged.drop(columns=["Position_x", "Position_y"])
+    merged.to_csv("data/tgp_mutations.csv")
 
 
 def get_site_frequencies(ts):
@@ -203,28 +207,28 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
 
 def get_ancient_constraints_tgp(args):
     if os.path.exists("all-data/1kg_ancients_only_chr20.samples"):
-        ancient_samples = tsinfer.load("all-data/1kg_ancients_only_chr20.samples")
-    else:
-        ancient_samples = tsinfer.load("all-data/1kg_ancients_chr20.samples")
-        print("Subsetting SampleData file to only keep ancient samples")
-        ancient_indiv_ids = np.where(ancient_samples.individuals_time[:] != 0)[0]
-        ancient_sample_ids = np.where(
-            ancient_samples.individuals_time[:][ancient_samples.samples_individual] != 0
-        )[0]
-        ancient_genos = ancient_samples.sites_genotypes[:]
-        ancient_sites = np.where(
-            np.any(ancient_genos[:, ancient_sample_ids] == 1, axis=1)
-        )[0]
-        ancient_samples = ancient_samples.subset(
-            individuals=ancient_indiv_ids, sites=ancient_sites
-        )
-        copy = ancient_samples.copy("all-data/1kg_ancients_only_chr20.samples")
-        copy.finalise()
-        print(
-            "Subsetted to {} samples and {} sites".format(
-                ancient_samples.num_samples, ancient_samples.num_sites
-            )
-        )
+        ancient_samples = tsinfer.load("all-data/all_ancients_chr20.samples")
+    #    else:
+    #        ancient_samples = tsinfer.load("all-data/1kg_ancients_chr20.samples")
+    #        print("Subsetting SampleData file to only keep ancient samples")
+    #        ancient_indiv_ids = np.where(ancient_samples.individuals_time[:] != 0)[0]
+    #        ancient_sample_ids = np.where(
+    #            ancient_samples.individuals_time[:][ancient_samples.samples_individual] != 0
+    #        )[0]
+    #        ancient_genos = ancient_samples.sites_genotypes[:]
+    #        ancient_sites = np.where(
+    #            np.any(ancient_genos[:, ancient_sample_ids] == 1, axis=1)
+    #        )[0]
+    #        ancient_samples = ancient_samples.subset(
+    #            individuals=ancient_indiv_ids, sites=ancient_sites
+    #        )
+    #        copy = ancient_samples.copy("all-data/1kg_ancients_only_chr20.samples")
+    #        copy.finalise()
+    #        print(
+    #            "Subsetted to {} samples and {} sites".format(
+    #                ancient_samples.num_samples, ancient_samples.num_sites
+    #            )
+    #        )
     genotypes = ancient_samples.sites_genotypes[:]
     positions = ancient_samples.sites_position[:]
     alleles = ancient_samples.sites_alleles[:]
@@ -247,9 +251,9 @@ def get_ancient_constraints_tgp(args):
         {"Position": "int64", "Ancient Bound": "float64", "Number of Ancients": "int32"}
     )
     constraint_df = constraint_df[constraint_df["Ancient Bound"] != 0]
-    constraint_df.to_csv("all-data/ancient_constraints.csv")
+    constraint_df.to_csv("data/ancient_constraints.csv")
     try:
-        tgp_mut_ests = pd.read_csv("all-data/tgp_mutations.csv", index_col=0)
+        tgp_mut_ests = pd.read_csv("data/tgp_mutations.csv", index_col=0)
     except FileNotFoundError:
         raise ValueError("tgp_mutations.csv does not exist. Must run tgp_dates first")
     tgp_muts_constraints = pd.merge(
@@ -259,7 +263,7 @@ def get_ancient_constraints_tgp(args):
         left_on=["Position", "tsdate_ancestral_allele", "tsdate_derived_allele"],
         right_on=["Position", "Reference Allele", "Alternative Allele"],
     )
-    tgp_muts_constraints.to_csv("all-data/tgp_muts_constraints.csv")
+    tgp_muts_constraints.to_csv("data/tgp_muts_constraints.csv")
 
 
 def get_recurrent_mutations(ts):
@@ -601,17 +605,17 @@ def find_ancient_descendants(args):
     # find the proportion of the chromosome which descends from each ancestral node
     # of interest
 
-#    def ancestral_anywhere(nodes, descendants):
-#        ancestral_lengths = np.ones(ts.num_nodes)
-#        for tree in ts.trees():
-#            for node in nodes:
-#                if len(list(tree.leaves(node))) > 1:
-#                    ancestral_lengths[node] += tree.span
-#        ancestral_lengths = ancestral_lengths / ts.get_sequence_length()
-#        descendants = descendants * ancestral_lengths[:, np.newaxis]
-#        return descendants
-#
-#    # Altai proxy nodes
+    #    def ancestral_anywhere(nodes, descendants):
+    #        ancestral_lengths = np.ones(ts.num_nodes)
+    #        for tree in ts.trees():
+    #            for node in nodes:
+    #                if len(list(tree.leaves(node))) > 1:
+    #                    ancestral_lengths[node] += tree.span
+    #        ancestral_lengths = ancestral_lengths / ts.get_sequence_length()
+    #        descendants = descendants * ancestral_lengths[:, np.newaxis]
+    #        return descendants
+    #
+    #    # Altai proxy nodes
     altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
     chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
     denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
@@ -626,11 +630,9 @@ def find_ancient_descendants(args):
             afanasievo_proxy,
         ]
     )
-#    descendants = ancestral_anywhere(nodes, descendants)
+    #    descendants = ancestral_anywhere(nodes, descendants)
     reference_set_lens = np.array([len(ref_set) for ref_set in reference_sets])
-    normalised_descendants = (
-        descendants / np.array(reference_set_lens)[np.newaxis, :]
-    )
+    normalised_descendants = descendants / np.array(reference_set_lens)[np.newaxis, :]
     np.savetxt(
         "data/combined_ts_ancient_descendants.csv",
         normalised_descendants[nodes],
@@ -945,13 +947,15 @@ def find_archaic_relationships(args):
         file.write(json.dumps(d_descent))
         file.write(json.dumps(v_descent))
 
+
 def get_tmrcas(args):
     ts_fn = os.path.join(
         data_prefix,
         "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
     )
     tmrcas.save_tmrcas(
-        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True)
+        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True
+    )
 
 
 def main():
@@ -976,8 +980,11 @@ def main():
         "name", type=str, help="figure name", choices=list(name_map.keys())
     )
     parser.add_argument(
-        '--num_processes', '-p', type=int, default=1, 
-        help='The number of CPUs to use in for some of the more intensive calculations',
+        "--num_processes",
+        "-p",
+        type=int,
+        default=1,
+        help="The number of CPUs to use in for some of the more intensive calculations",
     )
 
     args = parser.parse_args()
