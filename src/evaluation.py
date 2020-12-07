@@ -367,7 +367,7 @@ def compare_mutations(
         # Load age of mutations for each tree sequence
         mut_dated_ages = utility.get_mut_pos_df(
             cur_ts, method, cur_ts.tables.nodes.time
-        )  # , mutation_age="arithmetic")
+        )
         print("Number of mutations dated by " + method + ": ", mut_dated_ages.shape[0])
         run_results = pd.merge(
             run_results, mut_dated_ages, how="left", left_index=True, right_index=True
@@ -668,11 +668,7 @@ def run_tsdate_posterior_ts(ts, Ne, mut_rate, method="inside_outside", priors=No
     Simple wrapper to get dated tree sequence and posterior NodeGridValues
     """
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts,
-        Ne=Ne,
-        mutation_rate=mut_rate,
-        method=method,
-        priors=priors,
+        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()
@@ -701,11 +697,7 @@ def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
     """
     priors.grid_data = posterior.grid_data
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts,
-        Ne=Ne,
-        mutation_rate=mut_rate,
-        method=method,
-        priors=priors,
+        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()

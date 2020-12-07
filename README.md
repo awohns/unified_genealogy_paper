@@ -6,12 +6,13 @@ This includes:
 [tsdate](https://tsdate.readthedocs.io/en/latest/)
 * pipelines to generate a unified, dated tree sequence from multiple datasets
 * empirical validation of the tree sequence using ancient genomes
-* code to produce all non-schematic figures, interactive figures, supplementary videos in the paper
+* code to produce all non-schematic figures in the paper, as well as the interactive figure and supplementary video
 
 These analyses are placed in subdirectories as follows:
-* `all-data` contains all code for downloading and preparing data
-* `src` contains scripts to run analyses and validation
-* `data` contains reference data needed for some analyses
+* `all-data` contains all code for downloading and preparing real data, as well as pipeline for creating tree sequences
+* `src` contains scripts to run analyses and validation on both real and simulated data
+* `data` contains reference data needed for some analyses and is where the results of analyses performed on the real inferred tree sequences are stored
+* `simulated-data` contains the results of all simulation-based analyses
 * `tools` contains methods used to compare the accuracy of tsinfer and tsdate as well as tools to process variant data files
 
 #### Required Software
@@ -22,7 +23,7 @@ The Python packages required are listed in the ``requirements.txt`` file. These 
 installed with
 
 ```
-$ python3 -m pip install -r requirements.txt
+$ python -m pip install -r requirements.txt
 ```
 
 if you are using pip. Conda may also be used to install these dependencies.
@@ -46,18 +47,16 @@ the 1000 Genomes Project, Human Genome Diversity Project, Simons Genome Diversit
 datasets for use with `tsinfer` and `tsdate`.
 
 ```
-$ make bcftools
-$ make htslib
-$ make samtools
-# make convertf
+$ cd tools
+$ make all
 ```
 
 `bcftools`, `htslib`, and `samtools` need to be added to your path to allow code in `all-data` to run seamlessly.
 
 #### Running Simulations
 
-To run simulations run code as follows: generate data, run analyses, and plot the resulting analysis 
-is as follows (this code will generate Figure 1c):
+To generate data required for simulation-based figures and to plot the figures themselves, follow this general process: generate data, run analyses, and plot the results. 
+The following is an example this code will generate Figure 1c:
 
 `python src/run_evaluation.py tsdate_neutral_simulated_mutation_accuracy --setup`
 `python src/run_evaluation.py tsdate_neutral_simulated_mutation_accuracy --inference`
@@ -72,7 +71,7 @@ csv files in the `simulated-data` directory. The third command plots the csv fil
 
 ### Running all evaluations
 
-To produce all the data in our paper, run the following, in order
+To produce all the simulation data in our paper, run the following, in order
 
 ```
 python src/run_evaluation.py --setup all 
@@ -98,7 +97,18 @@ python src/plot.py all
 You will need the `cyvcf2` Python module to read VCF files. Once the requirements above have been installed you should simply be able to do:
 
 ```
-$ python3 -m pip install cyvcf2 # only for human data analysis: needs to be installed *after* numpy
+$ python -m pip install cyvcf2 # only for human data analysis: needs to be installed *after* numpy
 ```
 
 Please see the [README](all-data/README.md) in the ``all-data`` directory for further details. 
+
+### Analyzing inferred tree sequences
+
+Once you have inferred tree sequences and the results are in the ``all-data`` directory, run functions in ``src/analyze_data.py`` to generate data for non-simulation based figures. The figures themselves are plotted using ``src/plot.py``
+
+For example, the following code will generate Figure 2 (this can take a long time to run, even when multithreaded!). 
+```
+$ python src/analyze_data.py all_mrcas
+$ python src/plot.py tmrca_clustermap
+$ python src/plot.py inset_tmrca_histograms
+```

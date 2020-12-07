@@ -668,9 +668,7 @@ def main():
     subparser = subparsers.add_parser("remove-outliers")
     subparser.add_argument("--samples", type=str, help="Sampledata filename")
     subparser.add_argument(
-        "--ts",
-        type=str,
-        help="Inferred Tree Sequence.",
+        "--ts", type=str, help="Inferred Tree Sequence.",
     )
     subparser.add_argument(
         "--output-samples", type=str, help="Output sampledata filename"

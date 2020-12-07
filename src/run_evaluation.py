@@ -30,7 +30,6 @@ import evaluation
 import constants
 import iteration
 import utility
-import run_inference
 import error_generation
 
 
@@ -107,8 +106,7 @@ class DataGeneration:
 
                 # Create sampledata file
                 samples = tsinfer.formats.SampleData.from_tree_sequence(
-                    sim,
-                    use_sites_time=False,
+                    sim, use_sites_time=False,
                 )
                 sample_data_indiv_times = samples.copy(
                     path=os.path.join(self.data_dir, filename + ".samples")
@@ -304,7 +302,11 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 ):
                     self.data.loc[index] = row
                     self.summarize()
+<<<<<<< HEAD
                     for index, (name, df) in enumerate(dfs.items()):
+=======
+                    for index, (_, df) in enumerate(dfs.items()):
+>>>>>>> 25a1f97fbbaacb5f3b2942df72bbbb6d3689843b
                         master_dfs[index] = pd.concat(
                             [master_dfs[index], df], sort=False
                         )
@@ -319,7 +321,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 logging.info("Running inference")
                 self.data.loc[index] = row
                 self.summarize()
-                for index, (name, df) in enumerate(dfs.items()):
+                for index, (_, df) in enumerate(dfs.items()):
                     master_dfs[index] = pd.concat([master_dfs[index], df], sort=False)
 
         for master_df, output_name in zip(master_dfs, output_names):
@@ -1232,9 +1234,13 @@ class SimulateVanillaAncient(DataGeneration):
         else:
             logging.info("Setting up using a single process")
             for seed in tqdm(
+<<<<<<< HEAD
                 enumerate(seeds),
                 desc="Running Simulations",
                 total=len(seeds),
+=======
+                enumerate(seeds), desc="Running Simulations", total=len(seeds),
+>>>>>>> 25a1f97fbbaacb5f3b2942df72bbbb6d3689843b
             ):
                 row_data = self.setup_fn(seed)
                 logging.info("Done with sim {}".format(seed[0]))
@@ -2043,9 +2049,9 @@ class EvaluatePrior(DataGeneration):
                 all_results[prior]["in_range"].append(
                     np.sum(
                         np.logical_and(
-                            ts.tables.nodes.time[ts.num_samples :]
+                            ts.tables.nodes.time[ts.num_samples:]
                             < confidence_intervals[:, 3],
-                            ts.tables.nodes.time[ts.num_samples :]
+                            ts.tables.nodes.time[ts.num_samples:]
                             > confidence_intervals[:, 2],
                         )
                     )
@@ -2092,10 +2098,8 @@ class TsdateAccuracy(DataGeneration):
 
         random_seeds = range(1, 11)
 
-        for index, param in tqdm(
-            enumerate(parameters_arr),
-            desc="Testing tsdate accuracy",
-            total=len(parameters_arr),
+        for param in tqdm(
+            parameters_arr, desc="Testing tsdate accuracy", total=len(parameters_arr)
         ):
             simulated_mut_ages = pd.DataFrame(columns=["Simulated Age", "Node"])
             io_mut_ages = pd.DataFrame(columns=["IO Age", "Node"])
@@ -2501,7 +2505,6 @@ def main():
     else:
         fig = name_map[args.name]()
         if args.setup:
-            # fig.setup(args.processes)
             fig.setup()
         if args.inference:
             fig.run_multiprocessing(fig.inference, args.processes)
