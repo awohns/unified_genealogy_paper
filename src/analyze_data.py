@@ -25,11 +25,26 @@ import tmrcas
 data_prefix = "all-data"
 
 
+def get_ancient_proxy_nodes(ts):
+    altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
+    chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
+    denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
+    vindija_proxy = np.where(ts.tables.nodes.time == 2000.01)[0]
+    afanasievo_proxy = np.where(ts.tables.nodes.time == 164.01)[0]
+    return (
+        altai_proxy,
+        chagyrskaya_proxy,
+        denisovan_proxy,
+        vindija_proxy,
+        afanasievo_proxy,
+    )
+
+
 def get_relate_tgp_age_df():
     #    if path.exists("all-data/1kg_chr20_relate_mutation_ages_geometric.csv"):
     #        relate_ages = pd.read_csv("all-data/1kg_chr20_relate_mutation_ages_geometric.csv", index_col=0)
     #    else:
-    relate_ts = tskit.load("/home/jk/large_files/relate/relate_chr20_metdata.trees")
+    #    relate_ts = tskit.load("/home/jk/large_files/relate/relate_chr20_metdata.trees")
     relate_mut_ages, relate_mut_upper_bound, mut_ids = get_mut_ages(
         relate_ts, unconstrained=False, geometric=False
     )
@@ -252,7 +267,9 @@ def get_ancient_constraints_tgp(args):
     try:
         tgp_mut_ests = pd.read_csv("all-data/tgp_mutations.csv", index_col=0)
     except FileNotFoundError:
-        raise FileNotFoundError("tgp_mutations.csv does not exist. Must run tgp_dates first")
+        raise FileNotFoundError(
+            "tgp_mutations.csv does not exist. Must run tgp_dates first"
+        )
     tgp_muts_constraints = pd.merge(
         tgp_mut_ests,
         constraint_df,
@@ -277,7 +294,6 @@ def get_recurrent_mutations(ts):
     sites_by_muts_nosamples = np.unique(muts_per_site, return_counts=True)[1]
     # Exclude mutations above two samples
     muts_non_sample_edge = np.where(~np.isin(ts.tables.mutations.node, ts.samples()))[0]
-    muts_non_sample_edge_set = set(muts_non_sample_edge)
     mut_sites_nodouble = list()
     for tree in ts.trees():
         for site in tree.sites():
@@ -312,20 +328,12 @@ def get_recurrent_mutations(ts):
     )
 
 
-def get_mutations_by_sample():
+def get_unified_recurrent_mutations(args):
     """
-    See number of mutations above each sample
+    Get recurrent mutations from the unified tree sequence
     """
+    ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
 
-
-def get_tgp_recurrent_mutations(args):
-    filename = os.path.join(
-        data_prefix,
-        """1kg_chr20.iter.dated.binned_ma0.1_ms0.1_NNone_p16.simplified.dated.
-            insideoutside.trees""",
-    )
-
-    ts = tskit.load(filename)
     (
         recurrent_counts,
         recurrent_counts_nosamples,
@@ -333,76 +341,16 @@ def get_tgp_recurrent_mutations(args):
         recurrent_counts_two_muts,
     ) = get_recurrent_mutations(ts)
     df = pd.DataFrame(recurrent_counts, columns=["recurrent_counts"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts.csv")
+    df.to_csv("data/unified_chr20.recurrent_counts.csv")
     df = pd.DataFrame(
         recurrent_counts_nosamples, columns=["recurrent_counts_nosamples"]
     )
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples.csv")
+    df.to_csv("data/unified_chr20.recurrent_counts_nosamples.csv")
     df = pd.DataFrame(sites_by_muts_nodouble, columns=["recurrent_counts_nodouble"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nodouble.csv")
+    df.to_csv("data/unified_chr20.recurrent_counts_nodouble.csv")
 
     df = pd.DataFrame(recurrent_counts_two_muts, columns=["recurrent_counts_two_muts"])
-    df.to_csv("data/1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples_two_muts.csv")
-
-
-def get_hgdp_recurrent_mutations(args):
-    filename = os.path.join(
-        data_prefix, "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.trees"
-    )
-
-    ts = tskit.load(filename)
-    (
-        recurrent_counts,
-        recurrent_counts_nosamples,
-        sites_by_muts_nodouble,
-        recurrent_counts_two_muts,
-    ) = get_recurrent_mutations(ts)
-    df = pd.DataFrame(recurrent_counts, columns=["recurrent_counts"])
-    df.to_csv(
-        """data/hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.
-            recurrent_counts.csv"""
-    )
-    df = pd.DataFrame(
-        recurrent_counts_nosamples, columns=["recurrent_counts_nosamples"]
-    )
-    df.to_csv(
-        """data/hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.
-            recurrent_counts_nosamples.csv"""
-    )
-    df = pd.DataFrame(sites_by_muts_nodouble, columns=["recurrent_counts_nodouble"])
-    df.to_csv(
-        """data/hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.
-            recurrent_counts_nodouble.csv"""
-    )
-
-    df = pd.DataFrame(recurrent_counts_two_muts, columns=["recurrent_counts_two_muts"])
-    df.to_csv(
-        """data/hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.
-            recurrent_counts_nosamples_two_muts.csv"""
-    )
-
-
-def get_sgdp_recurrent_mutations(args):
-    filename = os.path.join(data_prefix, "sgdp_chr20.tsinferred.trees")
-
-    ts = tskit.load(filename)
-    (
-        recurrent_counts,
-        recurrent_counts_nosamples,
-        sites_by_muts_nodouble,
-        recurrent_counts_two_muts,
-    ) = get_recurrent_mutations(ts)
-    df = pd.DataFrame(recurrent_counts, columns=["recurrent_counts"])
-    df.to_csv("data/sgdp_chr20.tsinferred.recurrent_counts.csv")
-    df = pd.DataFrame(
-        recurrent_counts_nosamples, columns=["recurrent_counts_nosamples"]
-    )
-    df.to_csv("data/sgdp_chr20.tsinferred.recurrent_counts_nosamples.csv")
-    df = pd.DataFrame(sites_by_muts_nodouble, columns=["recurrent_counts_nodouble"])
-    df.to_csv("data/sgdp_chr20.tsinferred.recurrent_counts_nodouble.csv")
-
-    df = pd.DataFrame(recurrent_counts_two_muts, columns=["recurrent_counts_two_muts"])
-    df.to_csv("data/sgdp_chr20.tsinferred.recurrent_counts_nosamples_two_muts.csv")
+    df.to_csv("data/unified_chr20.recurrent_counts_nosamples_two_muts.csv")
 
 
 def min_site_times_ancients(args):
@@ -525,9 +473,7 @@ def find_ancestral_geographies(args):
     ancestor_coordinates = hgdp_sgdp_ancients_geo.get_ancestral_geography(
         pop_lats, pop_longs, show_progress=True
     )
-    np.savetxt(
-        "data/hgdp_sgdp_ancients_ancestor_coordinates.csv", ancestor_coordinates
-    )
+    np.savetxt("data/hgdp_sgdp_ancients_ancestor_coordinates.csv", ancestor_coordinates)
 
 
 def average_population_ancestors_geography(args):
@@ -536,18 +482,29 @@ def average_population_ancestors_geography(args):
     Used to plot Figure 4b
     """
     try:
-        tgp_hgdp_sgdp_ancestor_locations = np.loadtxt("data/hgdp_sgdp_ancients_ancestor_coordinates.csv")
+        tgp_hgdp_sgdp_ancestor_locations = np.loadtxt(
+            "data/hgdp_sgdp_ancients_ancestor_coordinates.csv"
+        )
     except FileNotFoundError:
         raise FileNotFoundError(
-            "Must run 'ancient_descendants' first to infer ancestral geography")
+            "Must run 'ancient_descendants' first to infer ancestral geography"
+        )
     ts = tskit.load(
-            "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    ts = ts.simplify(np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54,80)))[0])
+        """all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.
+            binned.historic.trees"""
+    )
+    ts = ts.simplify(
+        np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80)))[
+            0
+        ]
+    )
 
     reference_sets = []
     population_names = []
     for pop in ts.populations():
-        reference_sets.append(np.where(ts.tables.nodes.population == pop.id)[0].astype(np.int32))
+        reference_sets.append(
+            np.where(ts.tables.nodes.population == pop.id)[0].astype(np.int32)
+        )
         name = json.loads(pop.metadata.decode())["name"]
         population_names.append(name)
     descendants = ts.mean_descendants(reference_sets)
@@ -555,15 +512,33 @@ def average_population_ancestors_geography(args):
     avg_lat_lists = list()
     avg_long_lists = list()
     locations = tgp_hgdp_sgdp_ancestor_locations
-    time_windows_smaller = np.concatenate([np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)])
+    time_windows_smaller = np.concatenate(
+        [np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)]
+    )
     times = ts.tables.nodes.time[:]
     time_slices_child = list()
     time_slices_parent = list()
-    for i, time in enumerate(time_windows_smaller):
-        time_slices_child.append(ts.tables.edges.child[np.where(np.logical_and(times[
-            ts.tables.edges.child] <= time, times[ts.tables.edges.parent] > time))[0]])
-        time_slices_parent.append(ts.tables.edges.parent[np.where(np.logical_and(times[
-            ts.tables.edges.child] <= time, times[ts.tables.edges.parent] > time))[0]])
+    for time in time_windows_smaller:
+        time_slices_child.append(
+            ts.tables.edges.child[
+                np.where(
+                    np.logical_and(
+                        times[ts.tables.edges.child] <= time,
+                        times[ts.tables.edges.parent] > time,
+                    )
+                )[0]
+            ]
+        )
+        time_slices_parent.append(
+            ts.tables.edges.parent[
+                np.where(
+                    np.logical_and(
+                        times[ts.tables.edges.child] <= time,
+                        times[ts.tables.edges.parent] > time,
+                    )
+                )[0]
+            ]
+        )
     num_ancestral_lineages = list()
     for population in tqdm(np.arange(0, 55)):
         avg_lat = list()
@@ -572,33 +547,46 @@ def average_population_ancestors_geography(args):
         for i, time in enumerate(time_windows_smaller):
             time_slice_child = time_slices_child[i]
             time_slice_parent = time_slices_parent[i]
-            ancestral_lineages = np.logical_and(descendants[time_slice_child, population] != 0, descendants[time_slice_parent, population] != 0)
+            ancestral_lineages = np.logical_and(
+                descendants[time_slice_child, population] != 0,
+                descendants[time_slice_parent, population] != 0,
+            )
 
             cur_ancestral_lineages.append(np.sum(ancestral_lineages))
 
             time_slice_child = time_slice_child[ancestral_lineages]
             time_slice_parent = time_slice_parent[ancestral_lineages]
             edge_lengths = times[time_slice_parent] - times[time_slice_child]
-            weight_parent = 1- ((times[time_slice_parent] - time) / edge_lengths)
-            weight_child = 1- ((time - times[time_slice_parent]) / edge_lengths)
+            weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
+            weight_child = 1 - ((time - times[time_slice_parent]) / edge_lengths)
             if len(time_slice_child) != 0 and len(time_slice_parent) != 0:
-                time_slice_avgs = list()
-                lat_arr = np.vstack([locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]).T
-                long_arr = np.vstack([locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]).T
+                lat_arr = np.vstack(
+                    [
+                        locations[time_slice_parent][:, 0],
+                        locations[time_slice_child][:, 0],
+                    ]
+                ).T
+                long_arr = np.vstack(
+                    [
+                        locations[time_slice_parent][:, 1],
+                        locations[time_slice_child][:, 1],
+                    ]
+                ).T
                 weights = np.vstack([weight_parent, weight_child]).T
-                lats, longs = utility.vectorized_weighted_geographic_center(lat_arr, long_arr, weights)
-                
-#                for child, parent in zip(time_slice_child, time_slice_parent):
-#                    edge_length = times[parent] - times[child]
-#                    time_slice_avgs.append(utility.weighted_geographic_center([centroid_weighted[child][0],
-#                                                                       centroid_weighted[parent][0]],
-#                                               [centroid_weighted[child][1], centroid_weighted[parent][1]],
-#                                               [1-((time - times[child])/edge_length),
-#                                                1-((times[parent] - time)/edge_length)]))
-#                avg_coord = utility.weighted_geographic_center(np.array(time_slice_avgs)[:,0],
-#                                                        np.array(time_slice_avgs)[:,1],
-#                                           np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))
-                avg_coord = utility.weighted_geographic_center(lats, longs, np.mean([descendants[time_slice_child, population],descendants[time_slice_parent, population]],axis=0))                
+                lats, longs = utility.vectorized_weighted_geographic_center(
+                    lat_arr, long_arr, weights
+                )
+                avg_coord = utility.weighted_geographic_center(
+                    lats,
+                    longs,
+                    np.mean(
+                        [
+                            descendants[time_slice_child, population],
+                            descendants[time_slice_parent, population],
+                        ],
+                        axis=0,
+                    ),
+                )
                 avg_lat.append(avg_coord[0])
                 avg_long.append(avg_coord[1])
 
@@ -607,17 +595,13 @@ def average_population_ancestors_geography(args):
         avg_lat_lists.append(avg_lat)
         avg_long_lists.append(avg_long)
 
-    with open('data/avg_pop_ancestral_location_LATS.csv', 'w', newline="") as f:
+    with open("data/avg_pop_ancestral_location_LATS.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(avg_lat_lists)
-#        for item in avg_lat_lists:
-            #f.write("%s\n" % item)
-    with open('data/avg_pop_ancestral_location_LONGS.csv', 'w', newline="") as f:
+    with open("data/avg_pop_ancestral_location_LONGS.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(avg_long_lists)
-       #for item in avg_long_lists:
-       #     f.write("%s\n" % item)
-    with open('data/num_ancestral_lineages.csv', 'w', newline="") as f:
+    with open("data/num_ancestral_lineages.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(num_ancestral_lineages)
 
@@ -633,7 +617,7 @@ region_remapping = {
     "OCEANIA": "Oceania",
     "Oceania": "Oceania",
     "MIDDLE_EAST": "West Eurasia",
-    "CentralAsiaSiberia": "Central Asia-Siberia",
+    "CentralAsiaSiberia": "Central Asia/Siberia",
     "CENTRAL_SOUTH_ASIA": "South Asia",
     "SouthAsia": "South Asia",
     "WestEurasia": "West Eurasia",
@@ -649,10 +633,12 @@ region_remapping = {
 }
 
 
-def find_ancient_descendants(args):
-    ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
-    )
+def get_unified_reference_sets(args):
+    """
+    Returns the reference sets, regions, population names, and reference set maps for
+    the unified genealogy
+    """
+    ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
     pop_names = []
     reference_sets = list()
     regions = list()
@@ -688,28 +674,34 @@ def find_ancient_descendants(args):
         for node in ref_set:
             ref_set_map[node] = index
     np.savetxt("data/combined_ts_reference_set_map.csv", ref_set_map, delimiter=",")
-    descendants = ts.mean_descendants(reference_sets)
-    # mean_descendants is "averaged over the portions of the genome for which the node
-    # is ancestral to any sample", and we remove this normalisation in order to
-    # find the proportion of the chromosome which descends from each ancestral node
-    # of interest
 
-#    def ancestral_anywhere(nodes, descendants):
-#        ancestral_lengths = np.ones(ts.num_nodes)
-#        for tree in ts.trees():
-#            for node in nodes:
-#                if len(list(tree.leaves(node))) > 1:
-#                    ancestral_lengths[node] += tree.span
-#        ancestral_lengths = ancestral_lengths / ts.get_sequence_length()
-#        descendants = descendants * ancestral_lengths[:, np.newaxis]
-#        return descendants
-#
-#    # Altai proxy nodes
-    altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
-    chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
-    denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
-    vindija_proxy = np.where(ts.tables.nodes.time == 2000.01)[0]
-    afanasievo_proxy = np.where(ts.tables.nodes.time == 164.01)[0]
+
+def find_ancient_descendants(args):
+    """
+    Calculate genomic descent statistic for proxy nodes in the unified genealogy
+    """
+    # ts = tskit.load(
+    #    "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
+    ts = tskit.load(
+        """all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.binned.nosimplify.trees"""
+    )
+
+    reference_sets = list()
+    for pop in ts.populations():
+        pop_nodes = np.where(ts.tables.nodes.population == pop.id)[0].astype(np.int32)
+        if np.sum(pop_nodes) > 0:
+            reference_sets.append(pop_nodes)
+
+    descendants = ts.mean_descendants(reference_sets)
+    reference_set_lens = np.array([len(ref_set) for ref_set in reference_sets])
+    normalised_descendants = descendants / np.array(reference_set_lens)[np.newaxis, :]
+    (
+        altai_proxy,
+        chagyrskaya_proxy,
+        denisovan_proxy,
+        vindija_proxy,
+        afanasievo_proxy,
+    ) = get_ancient_proxy_nodes(ts)
     nodes = np.concatenate(
         [
             altai_proxy,
@@ -719,16 +711,24 @@ def find_ancient_descendants(args):
             afanasievo_proxy,
         ]
     )
-#    descendants = ancestral_anywhere(nodes, descendants)
-    reference_set_lens = np.array([len(ref_set) for ref_set in reference_sets])
-    normalised_descendants = (
-        descendants / np.array(reference_set_lens)[np.newaxis, :]
-    )
-    np.savetxt(
-        "data/combined_ts_ancient_descendants.csv",
+    descendants = pd.DataFrame(
         normalised_descendants[nodes],
-        delimiter=",",
+        index=[
+            "Altai",
+            "Altai",
+            "Chagyrskaya",
+            "Chagyrskaya",
+            "Denisovan",
+            "Denisovan",
+            "Vindija",
+            "Vindija",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+        ],
     )
+    descendants.to_csv("data/combined_ts_ancient_descendants.csv")
 
 
 def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_names):
@@ -739,6 +739,7 @@ def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_
     only one.
     """
 
+    # Array indicating where indivdual descends from ancient sample
     descendants_arr = np.zeros(
         (ts.num_samples, int(ts.get_sequence_length() / 1000)), dtype=int
     )
@@ -756,75 +757,87 @@ def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_
                     ] = 1
                 for child in tree.children(cur_node):
                     stack.append(child)
+    # Sum descent from ancient per sample
+    sample_desc_sum = np.sum(descendants_arr, axis=1)
+
+    # Note samples which descend from the ancient sample for a span > than the cutoff
     high_descendants = ts.samples()[
         np.where(np.sum(descendants_arr[ts.samples()], axis=1) > descent_cutoff)[0]
     ]
     high_descendants = high_descendants[
         pop_names[ref_set_map[high_descendants]] != exclude_pop
     ]
+    descendants_arr = descendants_arr[high_descendants]
+    # Construct a dataframe of correlation coefficients between descendants
     corrcoef_df = pd.DataFrame(
-        np.corrcoef(descendants_arr[high_descendants]),
-        index=pop_names[ref_set_map[high_descendants]],
+        np.corrcoef(descendants_arr), index=pop_names[ref_set_map[high_descendants]],
     )
-    return descendants_arr[ts.samples()], corrcoef_df, high_descendants
+    return descendants_arr.astype(int), corrcoef_df, high_descendants, sample_desc_sum
 
 
 def find_ancient_descent_haplotypes(args):
     """
-    Finds patterns of descent from the eight ancient individuals in the combined tree
+    Finds haplotypes descending from the eight ancient individuals in the combined tree
     sequence
     """
+
+    def save_descent_files(name, proxy, cutoff, exclude_pop, ref_set_map, pop_names):
+        (descent_arr, corrcoef_df, descendants, sample_desc_sum) = find_descent(
+            ts, proxy, cutoff, exclude_pop, ref_set_map, pop_names
+        )
+        np.savetxt(
+            "data/combined_ts_" + name + "_descent_arr.csv",
+            descent_arr,
+            fmt="%i",
+            delimiter=",",
+        )
+        np.savetxt("data/combined_ts_" + name + "_descendants.csv", descendants)
+        corrcoef_df.to_csv("data/combined_ts_" + name + "_corrcoef_df.csv")
+        np.savetxt(
+            "data/combined_ts_" + name + "_sample_desc_sum.csv",
+            sample_desc_sum,
+            fmt="%i",
+            delimiter=",",
+        )
+
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr20.binned.dated.historic.nosimplify.trees"
+        """all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.binned.
+            nosimplify.trees"""
     )
     ts = tsdate.preprocess_ts(ts, **{"keep_unary": True})
-    altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
-    chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
-    denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
-    vindija_proxy = np.where(ts.tables.nodes.time == 2000.01)[0]
-    afanasievo_proxy = np.where(ts.tables.nodes.time == 164.01)[0]
+    (
+        altai_proxy,
+        chagyrskaya_proxy,
+        denisovan_proxy,
+        vindija_proxy,
+        afanasievo_proxy,
+    ) = get_ancient_proxy_nodes(ts)
     ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
     pop_names = np.genfromtxt("data/combined_ts_pop_names.csv", dtype="str")
-    (
-        afanasievo_descent_arr,
-        afanasievo_corrcoef_df,
-        afanasievo_descendants,
-    ) = find_descent(ts, afanasievo_proxy, 100, "Afanasievo", ref_set_map, pop_names)
-    np.savetxt("data/combined_ts_afanasievo_descent_arr.csv", afanasievo_descent_arr)
-    np.savetxt("data/combined_ts_afanasievo_descendants.csv", afanasievo_descendants)
-    afanasievo_corrcoef_df.to_csv("data/combined_ts_afanasievo_corrcoef_df.csv")
-    vindija_descent_arr, vindija_corrcoef_df, vindija_descendants = find_descent(
-        ts, vindija_proxy, 100, "vindija", ref_set_map, pop_names
+    save_descent_files(
+        "afanasievo", afanasievo_proxy, 100, "Afanasievo", ref_set_map, pop_names
     )
-    np.savetxt("data/combined_ts_vindija_descent_arr.csv", vindija_descent_arr)
-    np.savetxt("data/combined_ts_vindija_descendants.csv", vindija_descendants)
-    vindija_corrcoef_df.to_csv("data/combined_ts_vindija_corrcoef_df.csv")
-    denisovan_descent_arr, denisovan_corrcoef_df, denisovan_descendants = find_descent(
-        ts, denisovan_proxy, 100, "denisovan", ref_set_map, pop_names
+    save_descent_files("vindija", vindija_proxy, 100, "Vindija", ref_set_map, pop_names)
+    save_descent_files(
+        "denisovan", denisovan_proxy, 100, "Denisovan", ref_set_map, pop_names
     )
-    np.savetxt("data/combined_ts_denisovan_descent_arr.csv", denisovan_descent_arr)
-    np.savetxt("data/combined_ts_denisovan_descendants.csv", denisovan_descendants)
-    denisovan_corrcoef_df.to_csv("data/combined_ts_denisovan_corrcoef_df.csv")
-    (
-        chagyrskaya_descent_arr,
-        chagyrskaya_corrcoef_df,
-        chagyrskaya_descendants,
-    ) = find_descent(ts, chagyrskaya_proxy, 100, "chagyrskaya", ref_set_map, pop_names)
-    np.savetxt("data/combined_ts_chagyrskaya_descent_arr.csv", chagyrskaya_descent_arr)
-    np.savetxt("data/combined_ts_chagyrskaya_descendants.csv", chagyrskaya_descendants)
-    chagyrskaya_corrcoef_df.to_csv("data/combined_ts_chagyrskaya_corrcoef_df.csv")
-
-    altai_descent_arr, altai_corrcoef_df, altai_descendants = find_descent(
-        ts, altai_proxy, 500, "altai", ref_set_map, pop_names
+    save_descent_files(
+        "chagyrskaya", chagyrskaya_proxy, 100, "Chagyrskaya", ref_set_map, pop_names
     )
-    np.savetxt("data/combined_ts_altai_descent_arr.csv", altai_descent_arr)
-    np.savetxt("data/combined_ts_altai_descendants.csv", altai_descendants)
-    altai_corrcoef_df.to_csv("data/combined_ts_altai_corrcoef_df.csv")
+    save_descent_files("altai", altai_proxy, 100, "Altai", ref_set_map, pop_names)
 
 
 def find_archaic_relationships(args):
+    """
+    Determine relationships between archaic individuals and younger samples
+    NOTE: these relationships are different than genomic descent (normalised
+    mean_descendants). Genomic descent shows how much of a reference set
+    descends from an ancestor. These relationships indicate the proportion of ancestors
+    genome inherited by younger samples.
+    """
     ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
+        """all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.
+        binned.historic.snipped.trees"""
     )
     tables = ts.tables
     altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
@@ -1038,25 +1051,26 @@ def find_archaic_relationships(args):
         file.write(json.dumps(d_descent))
         file.write(json.dumps(v_descent))
 
+
 def get_tmrcas(args):
     ts_fn = os.path.join(
         data_prefix,
         "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
     )
     tmrcas.save_tmrcas(
-        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True)
+        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True
+    )
 
 
 def main():
     name_map = {
-        "recurrent_mutations_tgp": get_tgp_recurrent_mutations,
-        "recurrent_mutations_hgdp": get_hgdp_recurrent_mutations,
-        "recurrent_mutations_sgdp": get_sgdp_recurrent_mutations,
+        "recurrent_mutations": get_unified_recurrent_mutations,
         "tgp_dates": tgp_date_estimates,
         "ancient_constraints": get_ancient_constraints_tgp,
         "min_site_times_ancients": min_site_times_ancients,
         "hgdp_sgdp_ancients_ancestral_geography": find_ancestral_geographies,
         "average_pop_ancestors_geography": average_population_ancestors_geography,
+        "get_reference_sets": get_unified_reference_sets,
         "archaic_relationships": find_archaic_relationships,
         "ancient_descendants": find_ancient_descendants,
         "ancient_descent_haplotypes": find_ancient_descent_haplotypes,
@@ -1070,8 +1084,11 @@ def main():
         "name", type=str, help="figure name", choices=list(name_map.keys())
     )
     parser.add_argument(
-        '--num_processes', '-p', type=int, default=1, 
-        help='The number of CPUs to use in for some of the more intensive calculations',
+        "--num_processes",
+        "-p",
+        type=int,
+        default=1,
+        help="The number of CPUs to use in for some of the more intensive calculations",
     )
 
     args = parser.parse_args()

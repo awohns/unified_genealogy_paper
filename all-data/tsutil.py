@@ -29,7 +29,7 @@ def run_get_dated_samples(args):
     samples = tsinfer.load(args.samples)
     ts = tskit.load(args.ts)
     assert args.samples.endswith(".samples")
-    prefix = args.samples[0: -len(".samples")]
+    prefix = args.samples[0 : -len(".samples")]
     copy = samples.copy(prefix + ".dated.samples")
     copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
@@ -81,7 +81,7 @@ def run_sequential_augment(args):
     while n < num_samples // 4:
         augmented_file = base + ".augmented_{}.ancestors.trees".format(n)
         final_file = base + ".augmented_{}.nosimplify.trees".format(n)
-        subset = samples[j: j + n]
+        subset = samples[j : j + n]
         subset.sort()
         ancestors_ts = run_augment(sample_data, ancestors_ts, subset, args.num_threads)
         ancestors_ts.dump(augmented_file)
@@ -153,8 +153,8 @@ def get_augmented_samples(tables):
     ids = np.where(nodes.flags == tsinfer.NODE_IS_SAMPLE_ANCESTOR)[0]
     sample_ids = np.zeros(len(ids), dtype=int)
     for j, node_id in enumerate(tqdm.tqdm(ids)):
-        offset = nodes.metadata_offset[node_id: node_id + 2]
-        buff = bytearray(nodes.metadata[offset[0]: offset[1]])
+        offset = nodes.metadata_offset[node_id : node_id + 2]
+        buff = bytearray(nodes.metadata[offset[0] : offset[1]])
         md = json.loads(buff.decode())
         sample_ids[j] = md["sample"]
     return sample_ids
@@ -457,7 +457,7 @@ def remove_moderns_reich(args):
 
 
 def remove_outliers(args):
-    tree_seq = tskit.load(args.ts) 
+    tree_seq = tskit.load(args.ts)
     samples = tsinfer.load(args.samples)
     # Find number of mutations per site
     muts_per_site = np.unique(tree_seq.tables.mutations.site, return_counts=True)
@@ -481,15 +481,16 @@ def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
     sites_time = tsdate.sites_time_from_ts(dated_hgdp_1kg_sgdp_ts)
-    dated_samples = tsdate.add_sampledata_times(
-                  high_cov_samples, sites_time)
+    dated_samples = tsdate.add_sampledata_times(high_cov_samples, sites_time)
     # Record number of constrained sites
     print("Total number of sites: ", sites_time.shape[0])
     print(
         "Number of ancient lower bounds: ",
-        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0))
-    print("Number of corrected times: ",
-          np.sum(dated_samples.sites_time[:] != sites_time))
+        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0),
+    )
+    print(
+        "Number of corrected times: ", np.sum(dated_samples.sites_time[:] != sites_time)
+    )
     high_cov_samples_copy = dated_samples.copy(args.output)
     high_cov_samples_copy.finalise()
 
@@ -607,9 +608,7 @@ def main():
     subparser.set_defaults(func=remove_moderns_reich)
 
     subparser = subparsers.add_parser("remove-outliers")
-    subparser.add_argument(
-        "--samples", type=str, help="Sampledata filename"
-    )
+    subparser.add_argument("--samples", type=str, help="Sampledata filename")
     subparser.add_argument(
         "--ts", type=str, help="Inferred Tree Sequence.",
     )

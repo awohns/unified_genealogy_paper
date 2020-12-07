@@ -34,7 +34,11 @@ relatefileformat_executable = os.path.join(
     "tools", "relate", "bin", "RelateFileFormats"
 )
 relate_popsize_executable = os.path.join(
-    "tools", "relate_v1.1.2_x86_64_dynamic", "scripts", "EstimatePopulationSize", "EstimatePopulationSize.sh"
+    "tools",
+    "relate_v1.1.2_x86_64_dynamic",
+    "scripts",
+    "EstimatePopulationSize",
+    "EstimatePopulationSize.sh",
 )
 geva_executable = os.path.join("tools", "geva", "geva_v1beta")
 geva_hmm_initial_probs = os.path.join("tools", "geva", "hmm", "hmm_initial_probs.txt")
@@ -105,29 +109,54 @@ def get_genetic_map_chr20_snippet(rowdata, filename):
     return genetic_map_output
 
 
-def infer_with_mismatch(sample_data, chromosome, ma_mismatch=0.1, ms_mismatch=0.1,
-        precision=None, modern_samples_match=False, ancient_ancestors=False, num_threads=1):
+def infer_with_mismatch(
+    sample_data,
+    chromosome,
+    ma_mismatch=0.1,
+    ms_mismatch=0.1,
+    precision=None,
+    modern_samples_match=False,
+    ancient_ancestors=False,
+    num_threads=1,
+):
     ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads)
     genetic_map = run_inference.get_genetic_map(chromosome)
-    rho, ma_mis, ms_mis, precision = run_inference.get_rho(sample_data, ancestors,
-            genetic_map, ma_mismatch, ms_mismatch, precision=None,
-            num_threads=num_threads)
+    rho, ma_mis, ms_mis, precision = run_inference.get_rho(
+        sample_data,
+        ancestors,
+        genetic_map,
+        ma_mismatch,
+        ms_mismatch,
+        precision=None,
+        num_threads=num_threads,
+    )
     rho[:-1][rho[:-1] == 0] = np.min(rho[:-1][rho[:-1] != 0]) / 100
-    ancestors_ts = run_inference.match_ancestors(sample_data, ancestors, rho, ma_mis,
-                                                 precision=13, ancient_ancestors=ancient_ancestors,
-                                                 num_threads=num_threads)
-    return run_inference.match_samples(sample_data, ancestors_ts, rho, ms_mis, 
-                                       13, modern_samples_match=modern_samples_match, 
-                                       ancient_ancestors=ancient_ancestors, num_threads=num_threads)
+    ancestors_ts = run_inference.match_ancestors(
+        sample_data,
+        ancestors,
+        rho,
+        ma_mis,
+        precision=13,
+        ancient_ancestors=ancient_ancestors,
+        num_threads=num_threads,
+    )
+    return run_inference.match_samples(
+        sample_data,
+        ancestors_ts,
+        rho,
+        ms_mis,
+        13,
+        modern_samples_match=modern_samples_match,
+        ancient_ancestors=ancient_ancestors,
+        num_threads=num_threads,
+    )
 
 
 def sample_times(ancient_sample_size, generation_time):
     """
     Pick random sample times from the Reich dataset
     """
-    sample_times = np.genfromtxt(
-        "data/reich_ancient_samples_age.txt", skip_header=1
-    )
+    sample_times = np.genfromtxt("data/reich_ancient_samples_age.txt", skip_header=1)
     age_hist = np.histogram(sample_times, bins=100)
     age_distribution = age_hist[0] / sample_times.shape[0]
     sampled_ages = np.random.choice(
@@ -172,6 +201,7 @@ def run_neutral_ancients(
         random_seed=seed,
     )
 
+
 def remove_ancient_only_muts(ts, modern_samples=None):
     """
     Remove mutations which only appear in ancients, and mutations which are fixed when 
@@ -181,7 +211,11 @@ def remove_ancient_only_muts(ts, modern_samples=None):
         modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
     modern_ts = ts.simplify(samples=modern_samples, keep_unary=True)
 
-    del_sites = list(np.where(~np.isin(ts.tables.sites.position[:], modern_ts.tables.sites.position[:]))[0])
+    del_sites = list(
+        np.where(
+            ~np.isin(ts.tables.sites.position[:], modern_ts.tables.sites.position[:])
+        )[0]
+    )
     for tree in modern_ts.trees():
         for site in tree.sites():
             assert len(site.mutations) == 1  # Only supports infinite sites muts.
@@ -193,7 +227,8 @@ def remove_ancient_only_muts(ts, modern_samples=None):
     tables.delete_sites(del_sites)
     deleted_ts = tables.tree_sequence()
 
-    return deleted_ts 
+    return deleted_ts
+
 
 def remove_ancients(ts, modern_samples=None):
     """
@@ -300,9 +335,14 @@ def sampledata_to_vcf(sample_data, filename):
     return df
 
 
-def compare_mutations(ts_list, method_names=["tsdate", "tsdate_inferred"],
-                      relate_ages=None, relate_reinfer=None, geva_ages=None,
-                      geva_positions=None):
+def compare_mutations(
+    ts_list,
+    method_names=["tsdate", "tsdate_inferred"],
+    relate_ages=None,
+    relate_reinfer=None,
+    geva_ages=None,
+    geva_positions=None,
+):
     """
     Given a list of tree sequences, return a pandas dataframe with the age
     estimates for each mutation via each method (tsdate, tsinfer + tsdate,
@@ -323,8 +363,9 @@ def compare_mutations(ts_list, method_names=["tsdate", "tsdate_inferred"],
 
     for cur_ts, method in zip(ts_list[1:], method_names[1:]):
         # Load age of mutations for each tree sequence
-        mut_dated_ages = utility.get_mut_pos_df(cur_ts, method,
-                                                cur_ts.tables.nodes.time)
+        mut_dated_ages = utility.get_mut_pos_df(
+            cur_ts, method, cur_ts.tables.nodes.time
+        )
         print("Number of mutations dated by " + method + ": ", mut_dated_ages.shape[0])
         run_results = pd.merge(
             run_results, mut_dated_ages, how="left", left_index=True, right_index=True
@@ -336,7 +377,9 @@ def compare_mutations(ts_list, method_names=["tsdate", "tsdate_inferred"],
         # remove mutations that relate can't date or flipped
         relate_ages = relate_ages[relate_ages["is_flipped"] == 0]
         relate_ages = relate_ages[relate_ages["is_not_mapping"] == 0]
-        relate_ages[col_name] = np.sqrt(relate_ages["age_begin"] * relate_ages["age_end"]) 
+        relate_ages[col_name] = np.sqrt(
+            relate_ages["age_begin"] * relate_ages["age_end"]
+        )
         relate = relate_ages[["pos_of_snp", col_name]].copy()
         relate = relate.rename(columns={"pos_of_snp": "position"}).set_index("position")
         print("Number of mutations dated by " + col_name + ": ", relate.shape[0])
@@ -384,15 +427,33 @@ def compare_mutation_msle_noancients(
     error_inferred_ts,
     error_dated_ts,
     error_iter_infer,
-    error_dated_ts_iter
+    error_dated_ts_iter,
 ):
     """
     Compare mutation accuracy in iterative approach
     """
-    for compare_ts in [inferred, dated_ts, iter_infer, dated_ts_iter, tsinfer_keep_times, tsdate_keep_times, tsdate_true_topo ]:
-        assert np.array_equal(ts.tables.sites.position[:], compare_ts.tables.sites.position[:])
-    for compare_ts in [error_inferred_ts, error_dated_ts, error_iter_infer, error_dated_ts_iter]:
-        assert np.array_equal(sim_error_compatible.tables.sites.position[:], compare_ts.tables.sites.position[:])
+    for compare_ts in [
+        inferred,
+        dated_ts,
+        iter_infer,
+        dated_ts_iter,
+        tsinfer_keep_times,
+        tsdate_keep_times,
+        tsdate_true_topo,
+    ]:
+        assert np.array_equal(
+            ts.tables.sites.position[:], compare_ts.tables.sites.position[:]
+        )
+    for compare_ts in [
+        error_inferred_ts,
+        error_dated_ts,
+        error_iter_infer,
+        error_dated_ts_iter,
+    ]:
+        assert np.array_equal(
+            sim_error_compatible.tables.sites.position[:],
+            compare_ts.tables.sites.position[:],
+        )
 
     real_time = tsdate.sites_time_from_ts(ts, unconstrained=False)
     inferred_site_times = tsdate.sites_time_from_ts(inferred, unconstrained=False)
@@ -400,11 +461,15 @@ def compare_mutation_msle_noancients(
     iteration_time = tsdate.sites_time_from_ts(dated_ts_iter)
     keep_site_times = tsdate.sites_time_from_ts(tsdate_keep_times)
     simulated_topo_time = tsdate.sites_time_from_ts(tsdate_true_topo)
-    real_time_error = tsdate.sites_time_from_ts(sim_error_compatible, unconstrained=False)
-    error_inferred_time = tsdate.sites_time_from_ts(error_inferred_ts, unconstrained=False)
+    real_time_error = tsdate.sites_time_from_ts(
+        sim_error_compatible, unconstrained=False
+    )
+    error_inferred_time = tsdate.sites_time_from_ts(
+        error_inferred_ts, unconstrained=False
+    )
     error_tsdate_time = tsdate.sites_time_from_ts(error_dated_ts)
     error_iteration_time = tsdate.sites_time_from_ts(error_dated_ts_iter)
-    
+
     run_results = pd.DataFrame(
         [
             mean_squared_log_error(real_time, tsdate_time),
@@ -439,15 +504,39 @@ def compare_mutation_msle_noancients(
             sim_error_compatible.kc_distance(error_iter_infer, lambda_=0),
             sim_error_compatible.kc_distance(error_dated_ts_iter, lambda_=1),
         ],
-        index=["tsdate_MSLE", "iteration_MSLE", "keeptime_MSLE", "topo_MSLE",
-            "tsdate_Pearson", "iteration_Pearson", "keeptime_Pearson", "topo_Pearson",
-            "frequency_Spearman", "tsdate_Spearman", "iteration_Spearman",
-            "keeptime_Spearman", "topo_Spearman",
-            "inferred_KC_0", "dated_KC_1", "iter_KC_0", "iter_KC_1", "keep_times_KC_0",
-            "keep_times_KC_1", "topo_KC_1", "tsdate_error_MSLE", "iteration_error_MSLE",
-            "tsdate_error_Pearson", "iteration_error_Pearson", "inferred_error_Spearman",
-            "tsdate_error_Spearman", "iteration_error_Spearman", "inferred_error_KC_0",
-            "dated_error_KC_1", "iter_error_KC_0", "iter_error_KC_1"],
+        index=[
+            "tsdate_MSLE",
+            "iteration_MSLE",
+            "keeptime_MSLE",
+            "topo_MSLE",
+            "tsdate_Pearson",
+            "iteration_Pearson",
+            "keeptime_Pearson",
+            "topo_Pearson",
+            "frequency_Spearman",
+            "tsdate_Spearman",
+            "iteration_Spearman",
+            "keeptime_Spearman",
+            "topo_Spearman",
+            "inferred_KC_0",
+            "dated_KC_1",
+            "iter_KC_0",
+            "iter_KC_1",
+            "keep_times_KC_0",
+            "keep_times_KC_1",
+            "topo_KC_1",
+            "tsdate_error_MSLE",
+            "iteration_error_MSLE",
+            "tsdate_error_Pearson",
+            "iteration_error_Pearson",
+            "inferred_error_Spearman",
+            "tsdate_error_Spearman",
+            "iteration_error_Spearman",
+            "inferred_error_KC_0",
+            "dated_error_KC_1",
+            "iter_error_KC_0",
+            "iter_error_KC_1",
+        ],
     ).T
     return run_results
 
@@ -506,25 +595,33 @@ def compare_mutations_iterative(
         ),
         dfs,
     )
-    msle_results_list = [ancient_sample_size] 
-    pearsonr_results_list = [ancient_sample_size] 
-    spearmanr_results_list = [ancient_sample_size] 
-    for results in [run_results["tsdateTime"], run_results["ConstrainedTime"], run_results["IterationTime"], run_results["keeptimeTime"], run_results["simulatedTopoTime"]]:
-       msle_results_list.append(mean_squared_log_error(run_results["TrueTime"], results)) 
-       pearsonr_results_list.append(pearsonr(run_results["TrueTime"], results)[0]) 
-       spearmanr_results_list.append(spearmanr(run_results["TrueTime"], results)[0]) 
-    index=[
-            "ancient_sample_size",
-            "tsdateTime",
-            "ConstrainedTime",
-            "IterationTime",
-            "tsinfer_keep_time",
-            "SimulatedTopoTime",
-        ]
+    msle_results_list = [ancient_sample_size]
+    pearsonr_results_list = [ancient_sample_size]
+    spearmanr_results_list = [ancient_sample_size]
+    for results in [
+        run_results["tsdateTime"],
+        run_results["ConstrainedTime"],
+        run_results["IterationTime"],
+        run_results["keeptimeTime"],
+        run_results["simulatedTopoTime"],
+    ]:
+        msle_results_list.append(
+            mean_squared_log_error(run_results["TrueTime"], results)
+        )
+        pearsonr_results_list.append(pearsonr(run_results["TrueTime"], results)[0])
+        spearmanr_results_list.append(spearmanr(run_results["TrueTime"], results)[0])
+    index = [
+        "ancient_sample_size",
+        "tsdateTime",
+        "ConstrainedTime",
+        "IterationTime",
+        "tsinfer_keep_time",
+        "SimulatedTopoTime",
+    ]
 
-    msle_run_results = pd.DataFrame(msle_results_list,index=index).T
-    pearsonr_run_results = pd.DataFrame(pearsonr_results_list,index=index).T
-    spearmanr_run_results= pd.DataFrame(spearmanr_results_list,index=index).T
+    msle_run_results = pd.DataFrame(msle_results_list, index=index).T
+    pearsonr_run_results = pd.DataFrame(pearsonr_results_list, index=index).T
+    spearmanr_run_results = pd.DataFrame(spearmanr_results_list, index=index).T
 
     return msle_run_results, pearsonr_run_results, spearmanr_run_results
 
@@ -548,26 +645,28 @@ def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
 
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
-        cmd = [sys.executable, tsdate_executable, input_fn, ts_out.name, str(Ne), "--mutation-rate", str(mut_rate)]
-        #cmd = ["tsdate", "date", input_fn, ts_out.name, str(Ne)]
+        cmd = [
+            sys.executable,
+            tsdate_executable,
+            input_fn,
+            ts_out.name,
+            str(Ne),
+            "--mutation-rate",
+            str(mut_rate),
+        ]
+        # cmd = ["tsdate", "date", input_fn, ts_out.name, str(Ne)]
         # cmd += ["--mutation-rate", str(mut_rate), "--timepoints", str(timepoints), "--method", str(method)]
         cpu_time, memory_use = time_cmd(cmd)
         dated_ts = tskit.load(ts_out.name)
     return dated_ts, cpu_time, memory_use
 
 
-def run_tsdate_posterior_ts(
-    ts, Ne, mut_rate, method="inside_outside", priors=None
-):
+def run_tsdate_posterior_ts(ts, Ne, mut_rate, method="inside_outside", priors=None):
     """
     Simple wrapper to get dated tree sequence and posterior NodeGridValues
     """
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts,
-        Ne=Ne,
-        mutation_rate=mut_rate,
-        method=method,
-        priors=priors,
+        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()
@@ -577,9 +676,7 @@ def run_tsdate_posterior_ts(
     return dated_ts, dates * 2 * Ne, posterior
 
 
-def get_dated_ts(
-    ts, dates, Ne, eps
-):
+def get_dated_ts(ts, dates, Ne, eps):
     """
     Simple wrapper to get dated tree sequence from unconstrained dates
     NOTE: dates are assumed to be in generations
@@ -598,11 +695,7 @@ def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
     """
     priors.grid_data = posterior.grid_data
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts,
-        Ne=Ne,
-        mutation_rate=mut_rate,
-        method=method,
-        priors=priors,
+        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()
@@ -612,7 +705,7 @@ def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
     return iter_dated, dates * 2 * Ne, posterior
 
 
-#def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=None):
+# def compare_mutations(ts_list, relate_ages=None, geva_ages=None, geva_positions=None):
 #    """
 #    Given a list of tree sequences, return a pandas dataframe with the age
 #    estimates for each mutation via each method (tsdate, tsinfer + tsdate,
@@ -696,9 +789,7 @@ def compare_mutations_tslist(ts_list, dates_list, method_names):
 
     # Load tree sequences: simulated, dated (topo), dated(inferred)
     first_ts = ts_list[0]
-    results = utility.get_mut_pos_df(
-        first_ts, method_names[0], dates_list[0]
-    )
+    results = utility.get_mut_pos_df(first_ts, method_names[0], dates_list[0])
     for ts, dates, method_name in zip(ts_list[1:], dates_list[1:], method_names[1:]):
         # Load age of mutations for each tree sequence
         mut_ages = utility.get_mut_pos_df(ts, method_name, dates)
@@ -755,14 +846,8 @@ def run_tsinfer(
     error_probability=None,
 ):
     with tempfile.NamedTemporaryFile("w+") as ts_out:
-        cmd = [
-            "tsinfer",
-            "infer",
-            sample_fn,
-            "-O",
-            ts_out.name
-        ]
-        #cmd += ["--threads", str(num_threads), ts_out.name]
+        cmd = ["tsinfer", "infer", sample_fn, "-O", ts_out.name]
+        # cmd += ["--threads", str(num_threads), ts_out.name]
         if inject_real_ancestors_from_ts_fn:
             logging.debug(
                 "Injecting real ancestors constructed from {}".format(
@@ -821,7 +906,7 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, out
                 "--map",
                 os.path.join(cur_dir, genetic_map_path),
                 "--memory",
-                "32"
+                "32",
             ]
         )
         subprocess.check_output(
@@ -850,21 +935,27 @@ def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, out
     os.chdir(cur_dir)
     return relate_ts_fixed, relate_ages, cpu_time, memory_use
 
+
 def create_poplabels(ts, output):
     population_names = []
     for population in ts.populations():
         population_names.append(
-                (json.loads(population.metadata)["id"], 
-                np.sum(ts.tables.nodes.population[ts.samples()] == population.id) / 2))
+            (
+                json.loads(population.metadata)["id"],
+                np.sum(ts.tables.nodes.population[ts.samples()] == population.id) / 2,
+            )
+        )
     with open(output + ".poplabels", "w") as myfile:
         wr = csv.writer(myfile)
         wr.writerow(["Sample population group sex"])
         sample_id = 0
         for population in population_names:
             for indiv in range(int(population[1])):
-                wr.writerow([str(sample_id) + " " + population[0] + " " + 
-                    population[0] + " NA"])
+                wr.writerow(
+                    [str(sample_id) + " " + population[0] + " " + population[0] + " NA"]
+                )
                 sample_id += 1
+
 
 def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
     """
@@ -907,7 +998,6 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
     new_relate_ts = tskit.load(output + ".trees")
     os.chdir(cur_dir)
     return new_ages, new_relate_ts
-
 
 
 def run_geva(file_name, Ne, mut_rate, rec_rate):

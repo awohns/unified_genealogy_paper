@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generates all the actual figures. Run like
+Generates all the actual figures. Should be called with following format:
  python3 src/plot.py PLOT_NAME
 """
 import argparse
@@ -12,7 +12,6 @@ from operator import attrgetter
 import math
 
 import scipy
-from scipy.stats import gaussian_kde
 from sklearn.metrics import mean_squared_log_error
 import pandas as pd
 import numpy as np
@@ -31,19 +30,16 @@ from mpl_toolkits.axes_grid1.inset_locator import (
     zoomed_inset_axes,
 )
 import matplotlib.colors as mplc
-import colorcet as cc
 import cartopy
 import cartopy.crs as ccrs
 
-import matplotlib.animation as animation
 from matplotlib.animation import FuncAnimation
-
-import tskit
 
 import constants
 import utility
 
-
+# Unified TS used in multiple plots
+ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
 
 sgdp_region_map = {
     "Abkhasian": "West Eurasia",
@@ -278,7 +274,7 @@ tgp_region_map = {
 }
 
 
-def get_tgp_hgdp_sgdp_region_colours():
+def get_tgp_hgdp_sgdp_region_colors():
     return {
         "East Asia": sns.color_palette("Greens", 2)[1],
         "West Eurasia": sns.color_palette("Blues", 1)[0],
@@ -287,11 +283,22 @@ def get_tgp_hgdp_sgdp_region_colours():
         "Americas": sns.color_palette("Reds", 2)[1],
         "South Asia": sns.color_palette("Purples", 2)[1],
         "Central/South Asia": sns.color_palette("Purples", 2)[1],
-        "Middle East": matplotlib.colors.to_rgb(matplotlib.colors.get_named_colors_mapping()["teal"]),
-        "Oceania": matplotlib.colors.to_rgb(matplotlib.colors.get_named_colors_mapping()["saddlebrown"]),
-        "Central Asia/Siberia": matplotlib.colors.to_rgb(matplotlib.colors.get_named_colors_mapping()["pink"]),
-        "Ancients": matplotlib.colors.to_rgb(matplotlib.colors.get_named_colors_mapping()["orange"])
+        "Middle East": matplotlib.colors.to_rgb(
+            matplotlib.colors.get_named_colors_mapping()["teal"]
+        ),
+        "Oceania": matplotlib.colors.to_rgb(
+            matplotlib.colors.get_named_colors_mapping()["saddlebrown"]
+        ),
+        "Central Asia/Siberia": matplotlib.colors.to_rgb(
+            matplotlib.colors.get_named_colors_mapping()["pink"]
+        ),
+        "Ancients": matplotlib.colors.to_rgb(
+            matplotlib.colors.get_named_colors_mapping()["orange"]
+        ),
     }
+
+
+region_colors = get_tgp_hgdp_sgdp_region_colors()
 
 
 class Figure(object):
@@ -303,15 +310,18 @@ class Figure(object):
     data_path = None
     filename = None
     delimiter = None
-    header = 'infer'
+    header = "infer"
 
     def __init__(self):
         self.data = list()
         if self.filename is not None:
             for fn in self.filename:
                 datafile_name = os.path.join(self.data_path, fn + ".csv")
-                self.data.append(pd.read_csv(
-                    datafile_name, delimiter=self.delimiter, header=self.header))
+                self.data.append(
+                    pd.read_csv(
+                        datafile_name, delimiter=self.delimiter, header=self.header
+                    )
+                )
 
     def save(self, figure_name=None, animation=None, bbox_inches="tight"):
         if figure_name is None:
@@ -320,8 +330,12 @@ class Figure(object):
         if animation is not None:
             animation.save("figures/{}.mp4".format(figure_name), dpi=300)
         else:
-            plt.savefig("figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400)
-            plt.savefig("figures/{}.png".format(figure_name), bbox_inches="tight", dpi=400)
+            plt.savefig(
+                "figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400
+            )
+            plt.savefig(
+                "figures/{}.png".format(figure_name), bbox_inches="tight", dpi=400
+            )
             plt.close()
 
     def error_label(self, error, label_for_no_error="No genotyping error"):
@@ -1003,8 +1017,8 @@ class AncientConstraints(Figure):
         shading_alpha = 0.2
         for i, method in enumerate(
             [
-                # Hack the titles with extra spaces to centre properly, as it's too tricky
-                # to centre over a pair or subplots
+                # Hack the titles with extra spaces to centre properly, as it's too
+                # tricky to centre over a pair or subplots
                 ("tsdate      ", ["tsdate_upper_bound", "tsdate_age"]),
                 ("Relate      ", ["relate_upper_bound", "relate_age"]),
                 ("GEVA      ", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"]),
@@ -1030,7 +1044,6 @@ class AncientConstraints(Figure):
                 transform=ax.transAxes,
             )
             diag = [ax.get_xlim(), ax.get_xlim()]
-            upper_lim = ax.get_ylim()
             ax.plot(diag[0], diag[1], "--", c="black")
             ax.fill_between(
                 diag[0],
@@ -1190,34 +1203,60 @@ class ScalingFigure(Figure):
         ax.set_ylim(0, max_val + (0.05 * max_val))
         ax.xaxis.set_major_locator(plt.MaxNLocator(5))
 
-
     def plot_inset_ax(self, ax, index, means_arr, time=False, memory=False, left=True):
         if left:
             left_pos = 0.01
         else:
             left_pos = 0.55
-        axins1 = inset_axes(ax, width="40%", height="40%", loc=2, borderpad=2, bbox_to_anchor=(left_pos, 0.05, 1, 1), bbox_transform=ax.transAxes)
+        axins1 = inset_axes(
+            ax,
+            width="40%",
+            height="40%",
+            loc=2,
+            borderpad=2,
+            bbox_to_anchor=(left_pos, 0.05, 1, 1),
+            bbox_transform=ax.transAxes,
+        )
         if memory:
             means_arr = [1e-9 * means for means in means_arr]
         elif time:
             means_arr = [means * (1 / 3600) for means in means_arr]
         axins1.plot(
-            index, means_arr[0], ":", label="tsdate", color=constants.colors["tsdate"], marker="^"
+            index,
+            means_arr[0],
+            ":",
+            label="tsdate",
+            color=constants.colors["tsdate"],
+            marker="^",
         )
         axins1.plot(
-            index, means_arr[1], "--", label="tsinfer", color=constants.colors["tsdate"], marker="v"
+            index,
+            means_arr[1],
+            "--",
+            label="tsinfer",
+            color=constants.colors["tsdate"],
+            marker="v",
         )
         axins1.plot(
             index,
             means_arr[0] + means_arr[1],
             label="tsinfer + tsdate",
-            color=constants.colors["tsdate"], marker="D"
+            color=constants.colors["tsdate"],
+            marker="D",
         )
         axins1.plot(
-            index, means_arr[2], label="relate", color=constants.colors["relate"], marker="h"
+            index,
+            means_arr[2],
+            label="relate",
+            color=constants.colors["relate"],
+            marker="h",
         )
         axins1.plot(
-            index, means_arr[3], label="GEVA", color=constants.colors["geva"], marker="s"
+            index,
+            means_arr[3],
+            label="GEVA",
+            color=constants.colors["geva"],
+            marker="s",
         )
         axins1.tick_params(axis="both", labelsize=7)
         return axins1
@@ -1230,9 +1269,7 @@ class ScalingFigure(Figure):
         self.samples_index = samples_means.index
         self.length_index = length_means.index / 1000000
 
-        fig, ax = plt.subplots(
-            nrows=2, ncols=2, figsize=(20, 9), sharex=False, 
-        )
+        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(20, 9), sharex=False,)
         self.plot_subplot(
             ax[0, 0],
             self.samples_index,
@@ -1253,7 +1290,7 @@ class ScalingFigure(Figure):
                 samples_means["tsdate_infer_cpu"],
                 samples_means["tsinfer_cpu"],
                 samples_means["relate_cpu"],
-                samples_means["geva_cpu"]
+                samples_means["geva_cpu"],
             ],
             time=True,
         )
@@ -1278,9 +1315,9 @@ class ScalingFigure(Figure):
                 samples_means["tsdate_infer_memory"],
                 samples_means["tsinfer_memory"],
                 samples_means["relate_memory"],
-                samples_means["geva_memory"]
-            ],  
-            memory=True
+                samples_means["geva_memory"],
+            ],
+            memory=True,
         )
         self.plot_subplot(
             ax[0, 1],
@@ -1293,7 +1330,7 @@ class ScalingFigure(Figure):
             ],
             time=True,
             length=True,
-            ylabel=True
+            ylabel=True,
         )
         self.plot_inset_ax(
             ax[0, 1],
@@ -1302,8 +1339,8 @@ class ScalingFigure(Figure):
                 length_means["tsdate_infer_cpu"],
                 length_means["tsinfer_cpu"],
                 length_means["relate_cpu"],
-                length_means["geva_cpu"]
-            ],  
+                length_means["geva_cpu"],
+            ],
             time=True,
         )
         self.plot_subplot(
@@ -1320,16 +1357,16 @@ class ScalingFigure(Figure):
             xlabel=True,
             ylabel=True,
         )
-        axins = self.plot_inset_ax( 
+        axins = self.plot_inset_ax(
             ax[1, 1],
             self.length_index,
             [
                 length_means["tsdate_infer_memory"],
                 length_means["tsinfer_memory"],
                 length_means["relate_memory"],
-                length_means["geva_memory"]
+                length_means["geva_memory"],
             ],
-            memory=True  
+            memory=True,
         )
         ax[0, 1].get_xaxis().get_major_formatter().set_scientific(False)
         ax[1, 1].get_xaxis().get_major_formatter().set_scientific(False)
@@ -1337,7 +1374,13 @@ class ScalingFigure(Figure):
         ax[0, 1].set_title(self.col_2_name)
         handles, labels = ax[0, 0].get_legend_handles_labels()
         insert_handles, insert_labels = axins.get_legend_handles_labels()
-        lgd = fig.legend(handles + [insert_handles[-1]], labels + [insert_labels[-1]], fontsize=14, ncol=1, loc=7)
+        fig.legend(
+            handles + [insert_handles[-1]],
+            labels + [insert_labels[-1]],
+            fontsize=14,
+            ncol=1,
+            loc=7,
+        )
         self.save(self.name)
 
 
@@ -1425,7 +1468,6 @@ class TgpMutationAgeComparisons(Figure):
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
         ]
-        frequency = comparable_mutations["tsdate_frequency"]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
@@ -2440,11 +2482,10 @@ class TmrcaClustermap(Figure):
                 ancient_origin[pop] = "black"
 
         row_colors = {}
-        region_colours = get_tgp_hgdp_sgdp_region_colours()
-        region_colours["Ancients"] = "orange"
+        region_colors["Ancients"] = "orange"
 
         for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
-            row_colors[pop_suffix] = region_colours[region]
+            row_colors[pop_suffix] = region_colors[region]
 
         tmrcas = tmrcas.drop(columns="region")
         tmrcas.index = tmrcas.columns
@@ -2464,7 +2505,6 @@ class TmrcaClustermap(Figure):
             [tgp_origin, hgdp_origin, sgdp_origin, ancient_origin], axis=1
         )
         mask = np.zeros_like(mergedg, dtype=np.bool)
-        n = mask.shape[0]
         mask[np.tril_indices_from(mask, k=-1)] = True
         cg = sns.clustermap(mergedg, mask=mask, method="average")
         mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
@@ -2499,7 +2539,7 @@ class TmrcaClustermap(Figure):
         )
         cg.ax_heatmap.set_yticks([])
 
-        for region, col in region_colours.items():
+        for region, col in region_colors.items():
             cg.ax_col_dendrogram.bar(0, 0, color=col, label=region, linewidth=0)
 
         cg.ax_col_dendrogram.set_xlim([0, 0])
@@ -2564,7 +2604,7 @@ class InsetTmrcaHistograms(Figure):
         raw_data = np.load(os.path.join(self.data_path, base_name + "_RAW.npz"))
         raw_logtimes = raw_data[list(raw_data.keys())[0]]
         # Make data accessible to plot code: everything under 1 generation get put at 1
-        self.raw_logtimes = np.where(np.exp(raw_logtimes)< 1, np.log(1), raw_logtimes)
+        self.raw_logtimes = np.where(np.exp(raw_logtimes) < 1, np.log(1), raw_logtimes)
         self.raw_weights = raw_data[list(raw_data.keys())[1]]
         self.data_rownames = hist_data["combos"]
         super().__init__()
@@ -2572,7 +2612,7 @@ class InsetTmrcaHistograms(Figure):
     def plot(self):
         df = self.data[0]
         df = df.set_index(df.columns[0])
-        region_colours = get_tgp_hgdp_sgdp_region_colours()
+        # region_colors = get_tgp_hgdp_sgdp_region_colors()
         pop_names = df.columns
         pop_names = [pop.split(".")[0] for pop in pop_names]
         pop_names = np.array([pop.split(" ")[0] for pop in pop_names])
@@ -2584,7 +2624,7 @@ class InsetTmrcaHistograms(Figure):
             regions.append(tgp_region_map[pop])
         for pop in pop_names[80:210]:
             regions.append(sgdp_region_map[pop])
-        for pop in pop_names[210:]:
+        for _ in pop_names[210:]:
             regions.append("Ancients")
         regions = np.array(regions)
 
@@ -2592,18 +2632,21 @@ class InsetTmrcaHistograms(Figure):
             ax.set_facecolor("lightgrey")
             av_weight = np.mean(self.raw_weights[rows, :], axis=0)
             assert av_weight.shape[0] == len(self.raw_logtimes)
-            keep = (av_weight != 0)
+            keep = av_weight != 0
             _, bins = np.histogram(
                 self.raw_logtimes[keep],
                 weights=av_weight[keep],
                 bins=num_bins,
-                range=[np.log(1), max(self.raw_logtimes)])
+                range=[np.log(1), max(self.raw_logtimes)],
+            )
             # If any bins are < 20 generations, merge them into the lowest bin
-            bins = np.concatenate((bins[:1], bins[np.exp(bins)>=20]))
-            values, bins = np.histogram(self.raw_logtimes[keep],
+            bins = np.concatenate((bins[:1], bins[np.exp(bins) >= 20]))
+            values, bins = np.histogram(
+                self.raw_logtimes[keep],
                 weights=av_weight[keep],
                 bins=bins,
-                density=True)
+                density=True,
+            )
             x1, y1 = (
                 np.append(bins, bins[-1]),
                 np.zeros(values.shape[0] + 2),
@@ -2622,13 +2665,14 @@ class InsetTmrcaHistograms(Figure):
         #############
 
         fig, axes = plt.subplots(
-            3, 1, constrained_layout=True, figsize=(15, 10), sharex=True)
+            3, 1, constrained_layout=True, figsize=(15, 10), sharex=True
+        )
 
-        ## Bottom Plot:
+        # Bottom Plot:
         # Samaritan/Samaritan and Samaritan/Others
         xmin = np.log(10)
         ax2 = axes[2]
-        params = {'num_bins': 60, 'min_bin': 10, 'ax': ax2}
+        params = {"num_bins": 60, "min_bin": 10, "ax": ax2}
         exsamaritan = np.logical_and(
             np.any(self.data_rownames == "Samaritan (SGDP)", axis=1),
             ~np.all(self.data_rownames == "Samaritan (SGDP)", axis=1),
@@ -2639,7 +2683,7 @@ class InsetTmrcaHistograms(Figure):
         label, col = "Samaritan/Modern Humans \n(ex Samaritan)", "white"
         plot_hist(exarchaic_exsamaritan, label, col, fill=True, **params)
         samaritan = np.all(self.data_rownames == "Samaritan (SGDP)", axis=1)
-        label, col = "Samaritan/Samaritan",  region_colours["West Eurasia"]
+        label, col = "Samaritan/Samaritan", region_colors["West Eurasia"]
         plot_hist(samaritan, label, col, **params)
 
         ax2.set_yticks([])
@@ -2648,15 +2692,15 @@ class InsetTmrcaHistograms(Figure):
         ax2.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
         ax2.set_xticklabels([str(int(x)) for x in xticks])
 
-        ## Middle Plot:
+        # Middle Plot:
         # Papuan+Australian/Denisovan & Denisovan/modern humans (ex papuan + australian)
-        xmin=np.log(100)
+        xmin = np.log(100)
         ylim = axes[1].get_ylim()
         ax1 = axes[1].inset_axes(
-            [xmin, ylim[0], xmax - xmin, ylim[1]-ylim[0]],
+            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]],
             transform=axes[1].transData,
         )
-        params = {'num_bins': 60, 'min_bin': 1000, 'ax': ax1}
+        params = {"num_bins": 60, "min_bin": 1000, "ax": ax1}
         sahul_names = [
             "Bougainville",
             "Bougainville (SGDP)",
@@ -2683,37 +2727,36 @@ class InsetTmrcaHistograms(Figure):
             np.any(self.data_rownames == "Denisovan", axis=1),
             np.any(np.isin(self.data_rownames, sahul_names), axis=1),
         )
-        label, col = "Denisovan/Papuans+Australians", region_colours["Oceania"]
+        label, col = "Denisovan/Papuans+Australians", region_colors["Oceania"]
         plot_hist(sahul, label, col, **params)
-        
-        axes[1].axis('off')  # Hide the encapsulating axis
+
+        axes[1].axis("off")  # Hide the encapsulating axis
         ax1.set_yticks([])
         ax1.set_xlim([xmin, xmax])
         ax1.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
         ax1.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
         ax1.set_xticklabels([])
 
-        ## Top Plot:
+        # Top Plot:
         # African/African and Non-African/Non-African
-        xmin=np.log(1000)
+        xmin = np.log(1000)
         ylim = axes[0].get_ylim()
         ax0 = axes[0].inset_axes(
-            [xmin, ylim[0], xmax-xmin, ylim[1]-ylim[0]],
-            transform=axes[0].transData
+            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]], transform=axes[0].transData
         )
-        params = {'num_bins': 60, 'min_bin': 1000, 'ax': ax0}
+        params = {"num_bins": 60, "min_bin": 1000, "ax": ax0}
         african_names = pop_names[regions == "Africa"]
         african = np.all(np.isin(self.data_rownames, african_names), axis=1)
-        label, col = "African/African", region_colours["Africa"]
+        label, col = "African/African", region_colors["Africa"]
         plot_hist(african, label, col, fill=True, alpha=0.4, **params)
         nonafrican_names = pop_names[
-            np.logical_and(regions != "Africa",  ~np.isin(pop_names, archaic_names))
+            np.logical_and(regions != "Africa", ~np.isin(pop_names, archaic_names))
         ]
         nonafricans = np.all(np.isin(self.data_rownames, nonafrican_names), axis=1)
         label, col = "Non-African/Non-African \n(ex Archaics)", "black"
         plot_hist(nonafricans, label, col, **params)
-        
-        axes[0].axis('off')  # Hide the encapsulating axis
+
+        axes[0].axis("off")  # Hide the encapsulating axis
         ax0.set_yticks([])
         ax0.set_xlim([xmin, xmax])
         ax0.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
@@ -2728,21 +2771,23 @@ class plot_sample_locations(Figure):
     """
     Plot the locations of samples used in Figure 5.
     """
+
     name = "sample_locations"
     data_path = "data"
     filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
     delimiter = " "
     header = None
-    ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    # Remove samples in 1kg
-    hgdp_sgdp_ancients = ts.simplify(
-        np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54,80)))[0])
 
     def plot(self):
+        # Remove samples in 1kg
+        hgdp_sgdp_ancients = ts.simplify(
+            np.where(
+                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+            )[0]
+        )
         tgp_hgdp_sgdp_ancestor_locations = self.data[0]
 
-        fig = plt.figure(figsize=(15, 6))
+        _ = plt.figure(figsize=(15, 6))
         ax = plt.axes(projection=ccrs.Robinson())
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
@@ -2756,14 +2801,14 @@ class plot_sample_locations(Figure):
 
         unique_hgdp_locations = np.unique(
             tgp_hgdp_sgdp_ancestor_locations[
-                np.isin(self.hgdp_sgdp_ancients.tables.nodes.population, np.arange(0, 54))
+                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(0, 54))
             ],
             axis=0,
             return_counts=True,
         )
         unique_sgdp_locations = np.unique(
             tgp_hgdp_sgdp_ancestor_locations[
-                np.isin(self.hgdp_sgdp_ancients.tables.nodes.population, np.arange(54, 184))
+                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(54, 184))
             ],
             axis=0,
             return_counts=True,
@@ -2771,8 +2816,8 @@ class plot_sample_locations(Figure):
         unique_ancient_locations = np.unique(
             tgp_hgdp_sgdp_ancestor_locations[
                 np.isin(
-                    self.hgdp_sgdp_ancients.tables.nodes.population,
-                    np.arange(184, self.hgdp_sgdp_ancients.num_populations),
+                    hgdp_sgdp_ancients.tables.nodes.population,
+                    np.arange(184, hgdp_sgdp_ancients.num_populations),
                 )
             ],
             axis=0,
@@ -2813,15 +2858,6 @@ class plot_sample_locations(Figure):
         lgnd.legendHandles[0]._sizes = [200]
         lgnd.legendHandles[1]._sizes = [200]
         lgnd.legendHandles[2]._sizes = [200]
-        pop_locs = np.vstack(
-            [
-                unique_hgdp_locations[0],
-                unique_sgdp_locations[0],
-                unique_ancient_locations[0],
-            ]
-        )
-        focal_line = unique_hgdp_locations[0][35]
-
         self.save(self.name)
 
 
@@ -2829,19 +2865,18 @@ class PopulationAncestors(Figure):
     """
     Figure 4b: Plot average position of ancestors of each population
     """
+
     name = "population_ancestors"
     data_path = "data"
-    filename = ["avg_pop_ancestral_location_LATS",
-            "avg_pop_ancestral_location_LONGS", "num_ancestral_lineages"]
+    filename = [
+        "avg_pop_ancestral_location_LATS",
+        "avg_pop_ancestral_location_LONGS",
+        "num_ancestral_lineages",
+    ]
     delimiter = ","
     header = None
-    ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
 
-    def colorline(
-            self, x, y, z=None, transform=ccrs.PlateCarree(),
-            cmap=plt.get_cmap('copper'), norm=plt.Normalize(0.0, 1.0),
-            linewidth=3, alpha=1.0, ax=plt.gca):
+    def colorline(self, x, y, z, transform, cmap, norm, ax, linewidth=3, alpha=1.0):
         """
         This function is from:
         http://nbviewer.ipython.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
@@ -2864,13 +2899,19 @@ class PopulationAncestors(Figure):
 
         segments = self.make_segments(x, y)
 
-        lc = matplotlib.collections.LineCollection(segments, array=z, cmap=cmap, norm=norm,
-                      linewidth=linewidth, alpha=alpha, transform=transform)
+        lc = matplotlib.collections.LineCollection(
+            segments,
+            array=z,
+            cmap=cmap,
+            norm=norm,
+            linewidth=linewidth,
+            alpha=alpha,
+            transform=transform,
+        )
 
         ax.add_collection(lc)
 
         return lc
-
 
     def make_segments(self, x, y):
         """
@@ -2888,51 +2929,47 @@ class PopulationAncestors(Figure):
 
         return segments
 
-
     def plot(self):
         lat_list = self.data[0].to_numpy()
         long_list = self.data[1].to_numpy()
         num_ancestral_lineages = self.data[2].to_numpy()
         print(num_ancestral_lineages)
         # Remove samples in 1kg
-        hgdp_sgdp_ancients = self.ts.simplify(
-                np.where(~np.isin(
-                    self.ts.tables.nodes.population[self.ts.samples()],
-                    np.arange(54, 80)))[0])
-        fig=plt.figure(figsize=(16, 10))
+        hgdp_sgdp_ancients = ts.simplify(
+            np.where(
+                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+            )[0]
+        )
+        fig = plt.figure(figsize=(16, 10))
         ax = plt.axes(projection=ccrs.Robinson())
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
         ax.set_global()
         ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
-        m = ["o", "v", "s", "p", "h", "*"]
-        cmap = matplotlib.cm.get_cmap('viridis')
-        c = [cmap(color) for color in [0, 1/6, 2/6, 3/6, 4/6, 5/6, 1]]
-#        for population in hgdp_sgdp_ancients.num_populations:
-#            ax.plot(avg_long_lists[population], avg_lat_lists[population],
-#                    label=pop_name, transform=ccrs.PlateCarree(),c="black")
-#
-#            N = 10
-#            np.random.seed(101)
-#            x = np.random.rand(N)
-#            y = np.random.rand(N)
-#            z = np.linspace(0, 1, len(avg_long_lists[0]))
-        time_windows_smaller = np.concatenate([np.array([0]), np.logspace(3.5,11, num=40, base=2.718)])
+        time_windows_smaller = np.concatenate(
+            [np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)]
+        )
         for population in np.arange(0, 55):
             pop_size = np.sum(hgdp_sgdp_ancients.tables.nodes.population == population)
             result_colorline = self.colorline(
-                    long_list[population],
-                    lat_list[population], np.linspace(0, 1, len(long_list)),
-                    cmap=plt.get_cmap('plasma_r'),
-                    linewidth=0.002 *
-                    (num_ancestral_lineages[population] / pop_size),
-                    transform=ccrs.Geodetic(), ax=ax)
-            #     plt.scatter(avg_long_lists[population], avg_lat_lists[population],transform=ccrs.PlateCarree())
-            cax = fig.add_axes([ax.get_position().x0,ax.get_position().y0-0.1,0.78,0.05])
-            cbar = fig.colorbar(result_colorline,cax=cax, orientation="horizontal")
+                long_list[population],
+                lat_list[population],
+                np.linspace(0, 1, len(long_list)),
+                cmap=plt.get_cmap("plasma_r"),
+                norm=plt.Normalize(0.0, 1.0),
+                linewidth=0.002 * (num_ancestral_lineages[population] / pop_size),
+                transform=ccrs.Geodetic(),
+                ax=ax,
+            )
+            cax = fig.add_axes(
+                [ax.get_position().x0, ax.get_position().y0 - 0.1, 0.78, 0.05]
+            )
+            cbar = fig.colorbar(result_colorline, cax=cax, orientation="horizontal")
 
             cbar.set_label(label="Time in Years", size=20)
-            cbar.ax.set_xticklabels(25 * np.round(time_windows_smaller[[0, 4, 8, 12, 16, 20]]))
+            cbar.ax.set_xticklabels(
+                25 * np.round(time_windows_smaller[[0, 4, 8, 12, 16, 20]])
+            )
         self.save(self.name)
 
 
@@ -2940,89 +2977,107 @@ class WorldDensity(Figure):
     """
     Figure 4c, world map with all ancestors plotted at six timepoints
     """
+
     name = "world_density"
     data_path = "data"
     filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
     delimiter = " "
     header = None
 
-    ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    
     def plot(self):
         locations = self.data[0].to_numpy()
         # Remove samples in 1kg
-        ts = self.ts.simplify(
-            np.where(~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54,80)))[0])
+        ts = ts.simplify(
+            np.where(
+                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+            )[0]
+        )
         times = ts.tables.nodes.time[:]
         for time in [100, 1000, 2240, 5600, 11200, 33600]:
-            fig=plt.figure(figsize=(15, 6))
+            _ = plt.figure(figsize=(15, 6))
             ax = plt.axes(projection=ccrs.Robinson())
             ax.set_global()
             ax.coastlines()
             ax.add_feature(cartopy.feature.LAND)
-            edges = np.logical_and(times[ts.tables.edges.child] <= time,
-                                               times[ts.tables.edges.parent] > time)
+            edges = np.logical_and(
+                times[ts.tables.edges.child] <= time,
+                times[ts.tables.edges.parent] > time,
+            )
             time_slice_child = ts.tables.edges.child[edges]
             time_slice_parent = ts.tables.edges.parent[edges]
             edge_lengths = times[time_slice_parent] - times[time_slice_child]
             weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
             weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
             lat_arr = np.vstack(
-                    [locations[time_slice_parent][:, 0],
-                        locations[time_slice_child][:, 0]]).T
+                [locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]
+            ).T
             long_arr = np.vstack(
-                    [locations[time_slice_parent][:, 1],
-                        locations[time_slice_child][:, 1]]).T
+                [locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]
+            ).T
             weights = np.vstack([weight_parent, weight_child]).T
             lats, longs = utility.vectorized_weighted_geographic_center(
-                    lat_arr, long_arr, weights)
+                lat_arr, long_arr, weights
+            )
             avg_locations = np.array([lats, longs]).T
-            xynps = ax.projection.transform_points(ccrs.Geodetic(), avg_locations[:, 1],
-                                                   avg_locations[:, 0])
+            xynps = ax.projection.transform_points(
+                ccrs.Geodetic(), avg_locations[:, 1], avg_locations[:, 0]
+            )
             h = ax.hist2d(
-                    xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.5, cmin=10)
-            cbar = plt.colorbar(h[3], ax=ax, shrink=0.7, format='%.1f', pad=0.02)
+                xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.5, cmin=10
+            )
+            _ = plt.colorbar(h[3], ax=ax, shrink=0.7, format="%.1f", pad=0.02)
             ax.set_global()
-            plt.title(str(xynps.shape[0]) +  " Ancestral Lineages", fontsize=20)
+            plt.title(str(xynps.shape[0]) + " Ancestral Lineages", fontsize=20)
             self.save(self.name + "_" + str(time))
+
 
 class AncientDescent(Figure):
     """
     Parent class for all ancient descent figures
     """
 
-    def plot_total_median_descent(
-        self, proxy_node_age, exclude_pop_names, children, axis_label
-    ):
-        tables = ts.tables
-        exclude_pop = ~np.in1d(pop_names, exclude_pop_names)
-        proxy_nodes = np.where(tables.nodes.time == proxy_node_age)
-        vals = np.sum(normalised_descendants[proxy_nodes], axis=0)[exclude_pop]
-        median_descent = {}
-        #     descent = np.array(list(ts.samples()))[np.where(np.sum(children[ts.samples()], axis=1) != 0)[0]]
-        #     children_subset = children[descent]
-        children_subset = children[ts.samples()]
-        for pop in range(len(reference_sets)):
-            #         cur_descent = np.in1d(descent, )
+    reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
+    ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
+    pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
+    regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
 
-            median_descent[pop] = np.sum(children_subset[reference_sets[pop]], axis=1)
+    def plot_total_median_descent(
+        self,
+        proxy_node_age,
+        exclude_pop_names,
+        normalised_descendants,
+        descent_sum_sample,
+        axis_label,
+        filename,
+    ):
+        # Remove populations which should not be plotted
+        # For example, don't plot other archaics as scale will be off
+        exclude_pop = ~np.in1d(self.pop_names, exclude_pop_names)
+        index = np.where(exclude_pop)[0]
+        # Determine population level descent from ancients
+        vals = np.sum(normalised_descendants, axis=0)[exclude_pop]
+        vals = pd.Series(vals, index=index)
+        median_descent = {}
+        for pop in index:
+            median_descent[pop] = descent_sum_sample[self.reference_sets[pop]]
+        median_descent = pd.Series(median_descent)
+        reference_set_lens = np.array([len(ref_set) for ref_set in self.reference_sets])
         df = pd.DataFrame(
             {
                 "descent": vals,
-                "regions": regions[exclude_pop],
-                "populations": pop_names[exclude_pop],
-                "colors": colours[exclude_pop],
+                "regions": self.regions[exclude_pop],
+                "populations": self.pop_names[exclude_pop],
+                "colors": [region_colors[reg] for reg in self.regions[exclude_pop]],
                 "population_size": reference_set_lens[exclude_pop],
-                "median_descent": pd.Series(median_descent)[exclude_pop],
-            }
+                "median_descent": median_descent,
+            },
+            index=index,
         )
         df = df.sort_values(["regions", "descent"])
         df = df[df["descent"] > 0.00003]
         fig, axes = plt.subplots(
             2, 1, figsize=(55, 10), sharex=True, gridspec_kw={"wspace": 0, "hspace": 0}
         )
-        x_values = list()
         total = 0
         for region in np.unique(df["regions"]):
             x_value = np.arange(np.sum(df["regions"] == region)) + 1 + total
@@ -3035,12 +3090,11 @@ class AncientDescent(Figure):
 
         axes[0].set_xticks([])
         axes[0].set_yticklabels(axes[0].get_yticks(), size=16)
-        axes[0].yaxis.set_major_formatter(FormatStrFormatter("%.3f"))
+        axes[0].yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.3f"))
         axes[0].set_ylabel(
             "Normalised Descent from \n" + axis_label + "-like Ancestry", size=19
         )
-
-        boxes = axes[1].boxplot(df["median_descent"])
+        boxes = axes[1].boxplot(df["median_descent"].to_numpy())
         for color, box in zip(df["colors"], boxes["boxes"]):
             box.set_color(color)
         yticks = axes[1].get_yticks()
@@ -3073,21 +3127,23 @@ class AncientDescent(Figure):
                 size=24,
             )
         axes[1].xaxis.grid(alpha=0.5)
-        plt.show()
+        self.save(filename)
 
-    def plot_haplotype_linkage(self, df, children, descendants):
+    def plot_haplotype_linkage(self, df, children, descendants, filename):
         cmap = matplotlib.colors.ListedColormap(["white", "black"])
         fig = plt.figure(figsize=(40, 20))
         Y = scipy.cluster.hierarchy.linkage(df, method="average")
         Z2 = scipy.cluster.hierarchy.dendrogram(Y, orientation="left", no_plot=True)
-        idx1 = Z2["leaves"][:]
+        idx1 = np.array(Z2["leaves"][:])
         region_matrix = fig.add_axes([0.0, 0.1, 0.04, 0.6])
 
         num_rows = len(idx1)
         height = [1 / num_rows for descent in range(num_rows)]
         errorboxes = []
+
         facecolors = [
-            region_colours[region] for region in regions[ref_set_map[descendants[idx1]]]
+            region_colors[region]
+            for region in self.regions[self.ref_set_map[descendants[idx1]]]
         ]
 
         for x, y, xe, ye in zip(
@@ -3105,8 +3161,9 @@ class AncientDescent(Figure):
         region_matrix.set_xticklabels([])
         region_matrix.set_yticklabels([])
         haplo_matrix_1 = fig.add_axes([0.04, 0.1, 0.45, 0.6])
-        D = children[descendants][idx1]
-        im = haplo_matrix_1.imshow(
+        # D = children[descendants][idx1]
+        D = children[idx1]
+        _ = haplo_matrix_1.imshow(
             D[:, :25000], aspect="auto", origin="upper", cmap=cmap
         )
         haplo_matrix_1.set_xticks(np.arange(0, 25000, 5000))
@@ -3114,7 +3171,7 @@ class AncientDescent(Figure):
         haplo_matrix_1.set_yticklabels([])
         haplo_matrix_1.grid({"color": "lightgray"})
         haplo_matrix_2 = fig.add_axes([0.51, 0.1, 0.45, 0.6])
-        im = haplo_matrix_2.imshow(
+        _ = haplo_matrix_2.imshow(
             D[:, 30000:], aspect="auto", origin="upper", cmap=cmap
         )
         haplo_matrix_2.set_xticks(np.concatenate([np.arange(0, 35000, 5000), [34444]]))
@@ -3134,10 +3191,58 @@ class AncientDescent(Figure):
             rotation="vertical",
             size=30,
         )
-        fig.show()
+        self.save(filename)
+
+    def plot(self):
+        descent_arr = np.genfromtxt(
+            "data/combined_ts_" + self.plotname + "_descent_arr.csv", delimiter=","
+        )
+        descendants = self.data[0].to_numpy().ravel().astype(int)
+        corrcoef_df = self.data[1]
+        sample_desc_sum = self.data[2].T.to_numpy()[0]
+        genomic_descent = self.data[3]
+        genomic_descent = genomic_descent.set_index(genomic_descent.columns[0])
+        genomic_descent.columns = genomic_descent.iloc[0]
+        genomic_descent = genomic_descent[1:]
+        genomic_descent.columns.name = "Population ID"
+        genomic_descent = genomic_descent[
+            genomic_descent.index == self.plotname.capitalize()
+        ]
+        corrcoef_df = corrcoef_df[1:]
+        corrcoef_df = corrcoef_df.set_index(corrcoef_df.columns[0])
+        self.plot_total_median_descent(
+            self.proxy_time,
+            self.exclude_pop_names,
+            genomic_descent,
+            sample_desc_sum,
+            self.plotname.capitalize(),
+            self.plotname + "_median_descent",
+        )
+        self.plot_haplotype_linkage(
+            corrcoef_df, descent_arr, descendants, self.plotname + "_haplotpyes"
+        )
 
 
-class VindiajDescent(AncientDescent):
+class AfanasievoDescent(AncientDescent):
+    """
+    Find Descendants of the Afanasievo Sons
+    """
+
+    name = "afanasievo_descent"
+    data_path = "data"
+    filename = [
+        "combined_ts_afanasievo_descendants",
+        "combined_ts_afanasievo_corrcoef_df",
+        "combined_ts_afanasievo_sample_desc_sum",
+        "combined_ts_ancient_descendants",
+    ]
+    header = None
+    plotname = "afanasievo"
+    proxy_time = 164.01
+    exclude_pop_names = ["Afanasievo"]
+
+
+class VindijaDescent(AncientDescent):
     """
     Find Descendants of the Vindija Neanderthal
     """
@@ -3145,17 +3250,72 @@ class VindiajDescent(AncientDescent):
     name = "vindija_descent"
     data_path = "data"
     filename = [
-        "combined_ts_vindija_descent_arr",
         "combined_ts_vindija_descendants",
-        "combined_ts_vindija_corrcoeff_df",
+        "combined_ts_vindija_corrcoef_df",
+        "combined_ts_vindija_sample_desc_sum",
+        "combined_ts_ancient_descendants",
     ]
+    header = None
+    plotname = "vindija"
+    proxy_time = 2000.01
+    exclude_pop_names = ["Vindija"]
 
-    def plot(self):
-        descent_arr = self.data[0]
-        descendants = self.data[1]
-        corrcoeff_df = self.data[2]
-        self.plot_haplotype_linkage(corrcoef_df, descent_arr, descendants)
-        self.save(self.name)
+
+class DenisovanDescent(AncientDescent):
+    """
+    Find Descendants of the Denisovan
+    """
+
+    name = "denisovan_descent"
+    data_path = "data"
+    filename = [
+        "combined_ts_denisovan_descendants",
+        "combined_ts_denisovan_corrcoef_df",
+        "combined_ts_denisovan_sample_desc_sum",
+        "combined_ts_ancient_descendants",
+    ]
+    header = None
+    plotname = "denisovan"
+    proxy_time = 2556.01
+    exclude_pop_names = ["Denisovan"]
+
+
+class ChagyrskayaDescent(AncientDescent):
+    """
+    Find Descendants of the Chagyrskaya
+    """
+
+    name = "chagyrskaya_descent"
+    data_path = "data"
+    filename = [
+        "combined_ts_chagyrskaya_descendants",
+        "combined_ts_chagyrskaya_corrcoef_df",
+        "combined_ts_chagyrskaya_sample_desc_sum",
+        "combined_ts_ancient_descendants",
+    ]
+    header = None
+    plotname = "chagyrskaya"
+    proxy_time = 3200.01
+    exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
+
+
+class AltaiDescent(AncientDescent):
+    """
+    Find Descendants of the Altai
+    """
+
+    name = "altai_descent"
+    data_path = "data"
+    filename = [
+        "combined_ts_altai_descendants",
+        "combined_ts_altai_corrcoef_df",
+        "combined_ts_altai_sample_desc_sum",
+        "combined_ts_ancient_descendants",
+    ]
+    header = None
+    plotname = "altai"
+    proxy_time = 4400.01
+    exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
 
 
 class SiteLinkageAndQuality(Figure):
@@ -3185,24 +3345,20 @@ class SiteLinkageAndQuality(Figure):
     def plot(self):
 
         client = dask.distributed.Client(
-            dashboard_address="localhost:22222",
-            processes=False,
+            dashboard_address="localhost:22222", processes=False,
         )
 
-        ts = tskit.load(
-            "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees"
-        )
         haploid = ts.genotype_matrix()
         haploid = da.from_array(haploid, chunks=(10000, haploid.shape[1]))
-        #Convert to bi-allelic
+        # Convert to bi-allelic
         haploid[haploid > 1] = 1
 
-        #Calculate AF
+        # Calculate AF
         alt_count = (haploid == 1).sum(axis=1)
         af = (alt_count / haploid.shape[1]).astype(np.float32)
         af = af.compute()
 
-        #Filter sites by AF
+        # Filter sites by AF
         sites_to_keep = np.logical_and(af >= 0.01, af <= 0.99)
         f_haploid_gt = haploid[sites_to_keep]
 
@@ -3239,8 +3395,9 @@ class SiteLinkageAndQuality(Figure):
 
         # For a given region sum the LD for each site in a 100-site window around that site
         @numba.guvectorize(
-            ["void(int8[:,:], float32[:])"], "(variants,samples)->(variants)",
-            nopython=True
+            ["void(int8[:,:], float32[:])"],
+            "(variants,samples)->(variants)",
+            nopython=True,
         )
         def ld_window_sum(region, ld_out):
             for i in range(len(region)):
@@ -3260,7 +3417,7 @@ class SiteLinkageAndQuality(Figure):
             dtype=np.float32,
         ).compute()
 
-        ld  = np.full((len(haploid),), np.nan)
+        ld = np.full((len(haploid),), np.nan)
         ld[sites_to_keep] = window_ld
 
         # From https://www.internationalgenome.org/announcements/genome-accessibility-masks/
@@ -3272,21 +3429,19 @@ class SiteLinkageAndQuality(Figure):
 
         muts_per_site = np.unique(ts.tables.mutations.site, return_counts=True)[1]
 
-        masked = (mask != "P")
+        masked = mask != "P"
         low_ld = ld < 10
         no_ld = np.isnan(ld)
 
         total_hist, bin_edges = np.histogram(
-            muts_per_site,
-            bins=self.gen_log_space(1000, 50)[1:],
+            muts_per_site, bins=self.gen_log_space(1000, 50)[1:],
         )
         masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
         prop_masked_hist = masked_hist / total_hist
         ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
         prop_ld_hist = ld_hist / total_hist
         neither_hist, bins = np.histogram(
-            muts_per_site[np.logical_and(~masked, ~low_ld)],
-            bins=bin_edges,
+            muts_per_site[np.logical_and(~masked, ~low_ld)], bins=bin_edges,
         )
         prop_neither_hist = neither_hist / total_hist
 
@@ -3300,12 +3455,18 @@ class SiteLinkageAndQuality(Figure):
             color="red",
         )
         ax.plot(
-            bin_edges[:-1], prop_ld_hist, drawstyle="steps", label="Low linkage",
-            color="orange"
+            bin_edges[:-1],
+            prop_ld_hist,
+            drawstyle="steps",
+            label="Low linkage",
+            color="orange",
         )
         ax.plot(
-            bin_edges[:-1], prop_neither_hist, drawstyle="steps", label="Neither",
-            color="green"
+            bin_edges[:-1],
+            prop_neither_hist,
+            drawstyle="steps",
+            label="Neither",
+            color="green",
         )
         ax.legend(prop={"size": 10})
         ax.set_ylabel("Proportion of sites")
@@ -3324,7 +3485,6 @@ class AncestryVideo(Figure):
     filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
     delimiter = " "
     header = None
-    ts = tskit.load("all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees")
 
     def mix_colors(self, color1_arr, color2_arr):
         new_color = np.zeros((color1_arr.shape[0], 3))
@@ -3335,17 +3495,21 @@ class AncestryVideo(Figure):
 
     def plot(self):
         locations = self.data[0].to_numpy()
-        ts = self.ts.simplify(
-            np.where(~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54, 80)))[0])
+        ts_no_tgp = ts.simplify(
+            np.where(
+                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+            )[0]
+        )
         tables = ts.tables
         times = tables.nodes.time[:]
         reference_sets = []
         population_names = []
         pop_region_map = []
         regions = []
-        for pop in ts.populations():
+        for pop in ts_no_tgp.populations():
             reference_sets.append(
-                    np.where(tables.nodes.population == pop.id)[0].astype(np.int32))
+                np.where(tables.nodes.population == pop.id)[0].astype(np.int32)
+            )
             name = json.loads(pop.metadata.decode())["name"]
             population_names.append(name)
             if name in sgdp_region_map:
@@ -3360,14 +3524,18 @@ class AncestryVideo(Figure):
                 region = "Archaics"
             regions.append(region)
             pop_region_map.append(region)
-        descendants = ts.mean_descendants(reference_sets)
+        descendants = ts_no_tgp.mean_descendants(reference_sets)
         regions = set(regions)
         pop_region_map = np.array(pop_region_map)
         regions = np.array(sorted(list(regions)))
         region_ancestors = collections.defaultdict(list)
         all_ancestors = []
         for region in regions:
-            region_ancestors[region] = np.where(np.any(descendants[:, np.where(pop_region_map == region)[0]] != 0, axis=1))[0]
+            region_ancestors[region] = np.where(
+                np.any(
+                    descendants[:, np.where(pop_region_map == region)[0]] != 0, axis=1
+                )
+            )[0]
             all_ancestors.append(region_ancestors[region])
 
         region_unique = collections.defaultdict(list)
@@ -3375,33 +3543,38 @@ class AncestryVideo(Figure):
             region_unique[region] = ancestors
             for cur_region, ancestors in region_ancestors.items():
                 if cur_region != region:
-                    region_unique[region] = region_unique[region][~np.isin(region_unique[region], ancestors)]
+                    region_unique[region] = region_unique[region][
+                        ~np.isin(region_unique[region], ancestors)
+                    ]
 
-
-        ancestor_colors = np.full((
-            ts.num_nodes, 3),
+        ancestor_colors = np.full(
+            (ts_no_tgp.num_nodes, 3),
             matplotlib.colors.to_rgb(
-                matplotlib.colors.get_named_colors_mapping()["black"]))
-        colors = get_tgp_hgdp_sgdp_region_colours()
+                matplotlib.colors.get_named_colors_mapping()["black"]
+            ),
+        )
+        # colors = get_tgp_hgdp_sgdp_region_colors()
         for region, ancestors in region_unique.items():
             if region == "Archaics":
-                colors[region] = colors["Ancients"]
+                region_colors[region] = region_colors["Ancients"]
                 region = "Ancients"
-            ancestor_colors[ancestors] = colors[region]
+            ancestor_colors[ancestors] = region_colors[region]
 
         region_unique = collections.defaultdict(list)
-        ancestor_by_region = np.zeros((ts.num_nodes, len(regions)))
+        ancestor_by_region = np.zeros((ts_no_tgp.num_nodes, len(regions)))
         for i, (region, ancestors) in enumerate(region_ancestors.items()):
             region_unique[region] = ancestors
-            ancestor_colors[ancestors] = colors[region]
+            ancestor_colors[ancestors] = region_colors[region]
             ancestor_by_region[ancestors, i] = 1
             for cur_region, cur_ancestors in region_ancestors.items():
                 if cur_region != region:
                     overlap = ancestors[np.isin(ancestors, cur_ancestors)]
                     ancestor_colors[overlap] = self.mix_colors(
-                            ancestor_colors[overlap],
-                            np.tile(colors[cur_region],
-                                    len(overlap)).reshape(len(overlap), 3))
+                        ancestor_colors[overlap],
+                        np.tile(region_colors[cur_region], len(overlap)).reshape(
+                            len(overlap), 3
+                        ),
+                    )
                     ancestor_by_region[ancestors, i] = 1
         ancestor_colors[np.where(ancestor_colors > 1)] = 0
 
@@ -3412,20 +3585,26 @@ class AncestryVideo(Figure):
         time_intervals_log = np.concatenate([lintime, logtime])
         ancestor_children = []
         for time in time_intervals_log:
-            edges = np.logical_and(times[ts.tables.edges.child] <= time,
-                                   times[ts.tables.edges.parent] > time)
-            time_slice_child = ts.tables.edges.child[edges]
-            time_slice_parent = ts.tables.edges.parent[edges]
+            edges = np.logical_and(
+                times[ts_no_tgp.tables.edges.child] <= time,
+                times[ts_no_tgp.tables.edges.parent] > time,
+            )
+            time_slice_child = ts_no_tgp.tables.edges.child[edges]
+            time_slice_parent = ts_no_tgp.tables.edges.parent[edges]
             ancestor_children.append(time_slice_child)
             edge_lengths = times[time_slice_parent] - times[time_slice_child]
             weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
             weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
-            lat_arr = np.vstack([locations[time_slice_parent][:, 0],
-                                locations[time_slice_child][:, 0]]).T
-            long_arr = np.vstack([locations[time_slice_parent][:, 1],
-                                 locations[time_slice_child][:, 1]]).T
+            lat_arr = np.vstack(
+                [locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]
+            ).T
+            long_arr = np.vstack(
+                [locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]
+            ).T
             weights = np.vstack([weight_parent, weight_child]).T
-            lats, longs = utility.vectorized_weighted_geographic_center(lat_arr, long_arr, weights)
+            lats, longs = utility.vectorized_weighted_geographic_center(
+                lat_arr, long_arr, weights
+            )
             avg_locations = np.array([lats, longs]).T
             time_locations.append(avg_locations)
 
@@ -3437,26 +3616,31 @@ class AncestryVideo(Figure):
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
 
         xynps = ax.projection.transform_points(
-                ccrs.Geodetic(),
-                time_locations[0][:, 1],
-                time_locations[0][:, 0])
-        scat = ax.scatter(xynps[:, 0], xynps[:, 1], s=0.05, alpha=.1,
-                          c=ancestor_colors[ancestor_children[0]][:])
+            ccrs.Geodetic(), time_locations[0][:, 1], time_locations[0][:, 0]
+        )
+        scat = ax.scatter(
+            xynps[:, 0],
+            xynps[:, 1],
+            s=0.05,
+            alpha=0.1,
+            c=ancestor_colors[ancestor_children[0]][:],
+        )
 
         def animate(i):
             #############
             # Code to plot individual ancestors
             xynps = ax.projection.transform_points(
-                ccrs.Geodetic(),
-                time_locations[i][:, 1],
-                time_locations[i][:, 0])
+                ccrs.Geodetic(), time_locations[i][:, 1], time_locations[i][:, 0]
+            )
             scat.set_offsets(np.c_[xynps[:, 0], xynps[:, 1]])
             scat.set_color(c=ancestor_colors[ancestor_children[i]][:])
             #############
-            plt.title(str(int(np.round(time_intervals_log[i]*25, -2))) + " Years Ago")
+            plt.title(str(int(np.round(time_intervals_log[i] * 25, -2))) + " Years Ago")
+
         # prevlayers = [h]
-        anim = FuncAnimation(fig, animate, interval=90,
-                             frames=len(time_intervals_log), repeat=True)
+        anim = FuncAnimation(
+            fig, animate, interval=90, frames=len(time_intervals_log), repeat=True
+        )
         self.save(self.name, animation=anim)
 
 
@@ -3466,13 +3650,11 @@ class Timeline(Figure):
     """
 
     name = "timeline"
-    ts = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees")
-    times = ts.tables.nodes.time[:]
     data_path = None
     filename = None
 
     def plot(self):
+        times = ts.tables.nodes.time[:]
         fig, ax = plt.subplots(2, 1, figsize=(10, 1))
         fig = plt.figure(figsize=(10, 1))
         spec = fig.add_gridspec(ncols=1, nrows=2, height_ratios=[1, 0.1])
@@ -3480,15 +3662,19 @@ class Timeline(Figure):
         dummy = fig.add_subplot(spec[1])
         dummy.axis("off")
         ax.set_yticks([])
-        logtime = np.exp(np.geomspace(np.log(100), np.log(np.max(self.times)), 384))
+        logtime = np.exp(np.geomspace(np.log(100), np.log(np.max(times)), 384))
         lintime = np.linspace(0, logtime[0], 64)[:-1]
         time_intervals_log = np.concatenate([lintime, logtime])
         vline = ax.axvline(time_intervals_log[0], linewidth=11, color="grey")
-        text = ax.text(time_intervals_log[0] + (time_intervals_log[0] * 0.5), 0.5,
-                       str(int(np.round(time_intervals_log[0] * 25, -1))) +
-                       " Years \n" +
-                       "(" + str(int(np.round(time_intervals_log[0], -1))) +
-                       " Generations)")
+        text = ax.text(
+            time_intervals_log[0] + (time_intervals_log[0] * 0.5),
+            0.5,
+            str(int(np.round(time_intervals_log[0] * 25, -1)))
+            + " Years \n"
+            + "("
+            + str(int(np.round(time_intervals_log[0], -1)))
+            + " Generations)",
+        )
         ax.set_xscale("log")
         ax.set_xlim(time_intervals_log[1], time_intervals_log[-1])
         ax.tick_params(labelsize=10)
@@ -3496,13 +3682,19 @@ class Timeline(Figure):
         def animate(i):
             vline.set_xdata(time_intervals_log[i])
             text.set_text(
-                    str(int(np.round(time_intervals_log[i] * 25, -2))) +
-                    " Years \n" + "(" + str(int(np.round(time_intervals_log[i], -2))) +
-                    " Generations)")
+                str(int(np.round(time_intervals_log[i] * 25, -2)))
+                + " Years \n"
+                + "("
+                + str(int(np.round(time_intervals_log[i], -2)))
+                + " Generations)"
+            )
             text.set_position(
-                    time_intervals_log[i] + (time_intervals_log[i] * 0.5), 0.5)
+                time_intervals_log[i] + (time_intervals_log[i] * 0.5), 0.5
+            )
+
         anim = FuncAnimation(
-                fig, animate, interval=90, frames=len(time_intervals_log), repeat=True)
+            fig, animate, interval=90, frames=len(time_intervals_log), repeat=True
+        )
         self.save(self.name, animation=anim)
 
 
