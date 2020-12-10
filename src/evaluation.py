@@ -26,6 +26,7 @@ import stdpopsim
 
 import utility
 import run_inference
+from intervals import read_hapmap
 
 import tsdate  # NOQA
 
@@ -111,43 +112,48 @@ def get_genetic_map_chr20_snippet(rowdata, filename):
 
 def infer_with_mismatch(
     sample_data,
-    chromosome,
+    path_to_genetic_map,
     ma_mismatch=0.1,
     ms_mismatch=0.1,
-    precision=None,
-    modern_samples_match=False,
-    ancient_ancestors=False,
+    precision=15,
     num_threads=1,
 ):
     ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads)
-    genetic_map = run_inference.get_genetic_map(chromosome)
-    rho, ma_mis, ms_mis, precision = run_inference.get_rho(
+    # genetic_map = run_inference.get_genetic_map(chromosome)
+    # genetic_map = msprime.RecombinationMap.read_hapmap(path_to_genetic_map)
+    gmap = read_hapmap(path_to_genetic_map)
+    # inference_pos = ancestors.sites_position[:]
+    # inference_distances = run_inference.physical_to_genetic(genetic_map, inference_pos)
+    # d = np.diff(inference_distances)
+    # rho = np.concatenate(([0.0], d))
+    # if np.any(d==0):
+    #    w = np.where(d==0)
+    #    raise ValueError("Zero recombination rates at", w, inference_pos[w])
+
+    #    rho, ma_mis, ms_mis, precision = run_inference.get_rho(
+    #        sample_data,
+    #        ancestors,
+    #        genetic_map,
+    #        ma_mismatch,
+    #        ms_mismatch,
+    #        precision=None,
+    #        num_threads=num_threads,
+    #    )
+    # rho[:-1][rho[:-1] == 0] = np.min(rho[:-1][rho[:-1] != 0]) / 100
+    ancestors_ts = tsinfer.match_ancestors(
         sample_data,
         ancestors,
-        genetic_map,
-        ma_mismatch,
-        ms_mismatch,
-        precision=None,
+        recombination_rate=gmap,
+        mismatch_ratio=ma_mismatch,
+        precision=precision,
         num_threads=num_threads,
     )
-    rho[:-1][rho[:-1] == 0] = np.min(rho[:-1][rho[:-1] != 0]) / 100
-    ancestors_ts = run_inference.match_ancestors(
-        sample_data,
-        ancestors,
-        rho,
-        ma_mis,
-        precision=13,
-        ancient_ancestors=ancient_ancestors,
-        num_threads=num_threads,
-    )
-    return run_inference.match_samples(
+    return tsinfer.match_samples(
         sample_data,
         ancestors_ts,
-        rho,
-        ms_mis,
-        13,
-        modern_samples_match=modern_samples_match,
-        ancient_ancestors=ancient_ancestors,
+        recombination_rate=gmap,
+        mismatch_ratio=ms_mismatch,
+        precision=precision,
         num_threads=num_threads,
     )
 
@@ -359,14 +365,18 @@ def compare_mutations(
     ts = ts_list[0]
     print("Number of mutations", ts.num_mutations)
     run_results = utility.get_mut_pos_df(
-        ts, "simulated_ts", ts.tables.nodes.time
-    )  # , mutation_age="arithmetic")
+        ts, "simulated_ts", ts.tables.nodes.time, mutation_age="uniform"
+    )
     print("Number of mutations with true dates", run_results.shape[0])
 
     for cur_ts, method in zip(ts_list[1:], method_names[1:]):
         # Load age of mutations for each tree sequence
         mut_dated_ages = utility.get_mut_pos_df(
-            cur_ts, method, cur_ts.tables.nodes.time
+            cur_ts,
+            method,
+            cur_ts.tables.nodes.time,
+            mutation_age="arithmetic",
+            exclude_root=True,
         )
         print("Number of mutations dated by " + method + ": ", mut_dated_ages.shape[0])
         run_results = pd.merge(
@@ -379,9 +389,7 @@ def compare_mutations(
         # remove mutations that relate can't date or flipped
         relate_ages = relate_ages[relate_ages["is_flipped"] == 0]
         relate_ages = relate_ages[relate_ages["is_not_mapping"] == 0]
-        relate_ages[col_name] = np.sqrt(
-            relate_ages["age_begin"] * relate_ages["age_end"]
-        )
+        relate_ages[col_name] = (relate_ages["age_begin"] + relate_ages["age_end"]) / 2
         relate = relate_ages[["pos_of_snp", col_name]].copy()
         relate = relate.rename(columns={"pos_of_snp": "position"}).set_index("position")
         print("Number of mutations dated by " + col_name + ": ", relate.shape[0])
@@ -393,7 +401,9 @@ def compare_mutations(
     if relate_ages is not None:
         run_results = get_relate_df(relate_ages, run_results, col_name="relate")
     if relate_reinfer is not None:
-        run_results = get_relate_df(relate_ages, run_results, col_name="relate_reage")
+        run_results = get_relate_df(
+            relate_reinfer, run_results, col_name="relate_iterate"
+        )
 
     if geva_ages is not None and geva_positions is not None:
         # Merge the GEVA position indices and age estimates
@@ -1002,22 +1012,34 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
     return new_ages, new_relate_ts
 
 
-def run_geva(file_name, Ne, mut_rate, rec_rate):
+def run_geva(file_name, Ne, mut_rate, rec_rate=None, genetic_map_path=None):
     """
     Perform GEVA age estimation on a given vcf
     """
-    print(file_name)
-    subprocess.check_output(
-        [
-            geva_executable,
-            "--out",
-            file_name,
-            "--rec",
-            str(rec_rate),
-            "--vcf",
-            file_name + ".vcf",
-        ]
-    )
+    if genetic_map_path is None:
+        subprocess.check_output(
+            [
+                geva_executable,
+                "--out",
+                file_name,
+                "--rec",
+                str(rec_rate),
+                "--vcf",
+                file_name + ".vcf",
+            ]
+        )
+    else:
+        subprocess.check_output(
+            [
+                geva_executable,
+                "--out",
+                file_name,
+                "--map",
+                genetic_map_path,
+                "--vcf",
+                file_name + ".vcf",
+            ]
+        )
     with open(file_name + ".positions.txt", "wb") as out:
         subprocess.call(
             ["awk", "NR>3 {print last} {last = $3}", file_name + ".marker.txt"],
@@ -1038,10 +1060,6 @@ def run_geva(file_name, Ne, mut_rate, rec_rate):
                 str(Ne),
                 "--mut",
                 str(mut_rate),
-                "--maxConcordant",
-                "200",
-                "--maxDiscordant",
-                "200",
                 "-o",
                 file_name + "_estimation",
             ]
@@ -1096,10 +1114,6 @@ def geva_age_estimate(file_name, Ne, mut_rate, rec_rate):
                 str(Ne),
                 "--mut",
                 str(mut_rate),
-                "--maxConcordant",
-                "200",
-                "--maxDiscordant",
-                "200",
                 "-o",
                 file_name + "_estimation",
             ]
