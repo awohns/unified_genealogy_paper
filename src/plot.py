@@ -2228,12 +2228,12 @@ class Chr20Sims(Figure):
     name = "chr20_sims"
     data_path = "simulated-data"
     filename = [
-        "chr20_simulated_mutation_accuracy_mutations",
-        "chr20_simulated_mutation_accuracy_error_mutations",
-        "chr20_simulated_mutation_accuracy_anc_error_mutations",
-        "chr20_simulated_mutation_accuracy_kc_distances",
-        "chr20_simulated_mutation_accuracy_error_kc_distances",
-        "chr20_simulated_mutation_accuracy_anc_error_kc_distances",
+        "chr20_sims_mutations",
+        "chr20_sims_error_mutations",
+        "chr20_sims_anc_error_mutations",
+        "chr20_sims_kc_distances",
+        "chr20_sims_error_kc_distances",
+        "chr20_sims_anc_error_kc_distances",
     ]
     plt_title = "simulated_accuracy_chr20"
 

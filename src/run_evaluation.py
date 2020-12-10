@@ -800,7 +800,7 @@ class Chr20Sims(NeutralSims):
     using the out of africa model from stdpopsim
     """
 
-    name = "Chr20Sims"
+    name = "chr20_sims"
 
     def __init__(self):
         DataGeneration.__init__(self)
@@ -820,11 +820,11 @@ class Chr20Sims(NeutralSims):
         ]
         self.empirical_error = True
         self.ancestral_state_error = True
-        self.tsinfer_mismatch = False
+        self.tsinfer_mismatch = True
         self.tsinfer_iterate_mismatch = True
         self.tsinfer_iterate = True
         self.relate_reinfer = True
-        self.modern_sample_size = 210
+        self.modern_sample_size = 240
         self.ancient_sample_size = 0
         self.remove_ancient_mutations = False
         self.ancient_times = None
@@ -838,7 +838,7 @@ class Chr20Sims(NeutralSims):
             raise ValueError("must specify ancient times if simulating ancients")
 
         row_data["Ne"] = 10000
-        row_data["length"] = 3e5
+        row_data["length"] = 5e6
         row_data["mut_rate"] = 1e-8
         row_data["rec_rate"] = 1e-8
 
@@ -950,7 +950,7 @@ class Chr20Sims(NeutralSims):
         return genetic_map_output
 
 
-class Chr20AncientIteration(Chr20SimulatedMutationAccuracy):
+class Chr20AncientIteration(Chr20Sims):
     """
     Data for Figure 1d: Ancient samples improve inference accuracy
     """
