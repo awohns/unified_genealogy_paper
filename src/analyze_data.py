@@ -75,7 +75,6 @@ def get_relate_tgp_age_df():
                         on=["CHR", "BP", "ID", "ancestral/derived"],
                         suffixes=["", "_" + f[-9:-6]],
                     )
-                print(relate_ages)
         # age_cols = [c for c in relate_ages.columns if "mean_est" in c]
         # relate_ages["relate_avg_age"] = relate_ages[age_cols].mean(axis=1)
         # upper_age_cols = [c for c in relate_ages.columns if "upper_age" in c]
@@ -221,29 +220,12 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
 
 
 def get_ancient_constraints_tgp(args):
-    if os.path.exists("all-data/1kg_ancients_only_chr20.samples"):
+    if os.path.exists("all-data/all_ancients_chr20.samples"):
         ancient_samples = tsinfer.load("all-data/all_ancients_chr20.samples")
-    #    else:
-    #        ancient_samples = tsinfer.load("all-data/1kg_ancients_chr20.samples")
-    #        print("Subsetting SampleData file to only keep ancient samples")
-    #        ancient_indiv_ids = np.where(ancient_samples.individuals_time[:] != 0)[0]
-    #        ancient_sample_ids = np.where(
-    #            ancient_samples.individuals_time[:][ancient_samples.samples_individual] != 0
-    #        )[0]
-    #        ancient_genos = ancient_samples.sites_genotypes[:]
-    #        ancient_sites = np.where(
-    #            np.any(ancient_genos[:, ancient_sample_ids] == 1, axis=1)
-    #        )[0]
-    #        ancient_samples = ancient_samples.subset(
-    #            individuals=ancient_indiv_ids, sites=ancient_sites
-    #        )
-    #        copy = ancient_samples.copy("all-data/1kg_ancients_only_chr20.samples")
-    #        copy.finalise()
-    #        print(
-    #            "Subsetted to {} samples and {} sites".format(
-    #                ancient_samples.num_samples, ancient_samples.num_sites
-    #            )
-    #        )
+    else:
+        raise FileNotFoundError(
+            "Must create all_ancients_chr20.samples using all-data/Makefile"
+        )
     genotypes = ancient_samples.sites_genotypes[:]
     positions = ancient_samples.sites_position[:]
     alleles = ancient_samples.sites_alleles[:]
@@ -773,7 +755,8 @@ def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_
     descendants_arr = descendants_arr[high_descendants]
     # Construct a dataframe of correlation coefficients between descendants
     corrcoef_df = pd.DataFrame(
-        np.corrcoef(descendants_arr), index=pop_names[ref_set_map[high_descendants]],
+        np.corrcoef(descendants_arr),
+        index=pop_names[ref_set_map[high_descendants]],
     )
     return descendants_arr.astype(int), corrcoef_df, high_descendants, sample_desc_sum
 

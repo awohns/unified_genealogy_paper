@@ -28,7 +28,6 @@ from tsdate.prior import SpansBySamples, ConditionalCoalescentTimes
 
 import evaluation
 import constants
-import iteration
 import utility
 import error_generation
 
@@ -106,7 +105,8 @@ class DataGeneration:
 
                 # Create sampledata file
                 samples = tsinfer.formats.SampleData.from_tree_sequence(
-                    sim, use_sites_time=False,
+                    sim,
+                    use_sites_time=False,
                 )
                 sample_data_indiv_times = samples.copy(
                     path=os.path.join(self.data_dir, filename + ".samples")
@@ -221,7 +221,7 @@ class DataGeneration:
 class NeutralSimulatedMutationAccuracy(DataGeneration):
     """
     Template for mutation-based evaluation of various methods.
-    Generates data for supplemental figure 4.
+    Generates data for Supplemental Figure 3.
     """
 
     name = "neutral_simulated_mutation_accuracy"
@@ -414,7 +414,10 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
                 relate_iter_ages = None
                 relate_iter_ts = None
             geva_ages, geva_cpu, geva_memory = evaluation.run_geva(
-                path_to_file + output_fn, row["Ne"], row["mut_rate"], row["rec_rate"]
+                path_to_file + output_fn,
+                row["Ne"],
+                row["mut_rate"],
+                path_to_genetic_map,
             )
             geva_positions = pd.read_csv(
                 path_to_file + output_fn + ".marker.txt",
@@ -526,7 +529,7 @@ class NeutralSimulatedMutationAccuracy(DataGeneration):
 
 class TsdateNeutralSimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
     """
-    Generate data for figure 1b: tsdate evaluation on neutral simulations
+    Generate data for Figure 1b: tsdate evaluation on neutral simulations
     """
 
     name = "tsdate_neutral_simulated_mutation_accuracy"
@@ -749,144 +752,18 @@ class CpuScalingLength(CpuScalingSampleSize):
         )
 
 
-class IterationTsdate(NeutralSimulatedMutationAccuracy):
-    name = "tsdate_iteration_neutral_simulated_mutation_accuracy"
-
-    def __init__(self):
-        DataGeneration.__init__(self)
-        self.columns = [
-            "simulated_ts",
-            "tsdate",
-            "tsdate_1stiter",
-            "tsdate_2nditer",
-            "tsdate_inferred",
-            "tsdate_inferred_1stiter",
-            "tsdate_inferred_2nditer",
-            "tsdate_inferred_error",
-            "tsdate_inferred_error_1stiter",
-            "tsdate_inferred_error_2nditer",
-        ]
-        self.default_replicates = 50
-        self.sim_cols = self.sim_cols
-        self.num_rows = self.default_replicates
-        self.data = pd.DataFrame(columns=self.sim_cols)
-        self.rng = random.Random(self.default_seed)
-        self.empirical_error = False
-        self.make_vcf = False
-
-    def inference(self, row_data):
-        """
-        Run tsdate and tsinfer+tsdate on the simulated data, with iterations
-        """
-        index = row_data[0]
-        row = row_data[1]
-        Ne = row["Ne"]
-        mut_rate = row["mut_rate"]
-        # Name of output file with mutations ages
-        path_to_file = os.path.join(self.data_dir, row["filename"])
-        sim = tskit.load(path_to_file + ".trees")
-        priors = tsdate.build_prior_grid(sim, timepoints=20)
-        dated_ts, dates, posterior = evaluation.run_tsdate_posterior_ts(
-            sim, Ne, mut_rate, "inside_outside", priors
-        )
-        iter_dated_1, dates_1, posterior = evaluation.tsdate_iter(
-            sim, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-        iter_dated_2, dates_2, _ = evaluation.tsdate_iter(
-            sim, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-
-        # Infer and date SampleData file
-        inferred_ts, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
-            path_to_file + ".samples", sim.get_sequence_length()
-        )
-        inferred_ts = inferred_ts.simplify()
-        priors = tsdate.build_prior_grid(inferred_ts, timepoints=20)
-        (
-            dated_inferred_ts,
-            inferred_dates,
-            posterior,
-        ) = evaluation.run_tsdate_posterior_ts(
-            inferred_ts, Ne, mut_rate, "inside_outside", priors
-        )
-        infer_iter_dated_1, inferred_dates_1, posterior = evaluation.tsdate_iter(
-            inferred_ts, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-        infer_iter_dated_2, inferred_dates_2, _ = evaluation.tsdate_iter(
-            inferred_ts, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-
-        # Infer and date SampleData file with error
-        error_inferred_ts, _, _ = evaluation.run_tsinfer(
-            path_to_file + ".error.samples", sim.get_sequence_length()
-        )
-        error_inferred_ts = error_inferred_ts.simplify()
-        priors = tsdate.build_prior_grid(error_inferred_ts, timepoints=20)
-        (
-            dated_error_inferred_ts,
-            error_inferred_dates,
-            posterior,
-        ) = evaluation.run_tsdate_posterior_ts(
-            error_inferred_ts, Ne, mut_rate, "inside_outside", priors
-        )
-        (
-            error_infer_iter_dated_1,
-            error_inferred_dates_1,
-            posterior,
-        ) = evaluation.tsdate_iter(
-            error_inferred_ts, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-        error_infer_iter_dated_2, error_inferred_dates_2, _ = evaluation.tsdate_iter(
-            error_inferred_ts, Ne, mut_rate, "inside_outside", priors, posterior
-        )
-        compare_df = evaluation.compare_mutations_tslist(
-            [
-                sim,
-                sim,
-                sim,
-                sim,
-                dated_inferred_ts,
-                dated_inferred_ts,
-                dated_inferred_ts,
-                dated_error_inferred_ts,
-                dated_error_inferred_ts,
-                dated_error_inferred_ts,
-            ],
-            [
-                sim.tables.nodes.time,
-                dates,
-                dates_1,
-                dates_2,
-                inferred_dates,
-                inferred_dates_1,
-                inferred_dates_2,
-                error_inferred_dates,
-                error_inferred_dates_1,
-                error_inferred_dates_2,
-            ],
-            [
-                "simulated_ts",
-                "tsdate",
-                "tsdate_1stiter",
-                "tsdate_2nditer",
-                "tsdate_inferred",
-                "tsdate_inferred_1stiter",
-                "tsdate_inferred_2nditer",
-                "tsdate_inferred_error",
-                "tsdate_inferred_error_1stiter",
-                "tsdate_inferred_error_2nditer",
-            ],
-        )
-        return index, row, compare_df
-
-
 class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
+    """
+    Generate data for Extended Data Figure 2: evaluating accuracy of various methods on Simulated Chromosome 20
+    using the out of africa model from stdpopsim
+    """
+
     name = "chr20_simulated_mutation_accuracy"
 
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "relate", "geva"]
-        self.default_replicates = 1
+        self.default_replicates = 10
         self.num_rows = self.default_replicates
         self.sim_cols = self.sim_cols + ["snippet"]
         self.data = pd.DataFrame(columns=self.sim_cols)
@@ -931,7 +808,7 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
                 msprime.Sample(population=2, time=0)
                 for samp in range(row_data["sample_size_modern"] // 3)
             ]
-            ancient_samples = None
+            ancient_samples = list()
             if self.ancient_times == "empirical_age_distribution":
                 ancient_sample_times = evaluation.sample_times(
                     row_data["sample_size_ancient"], constants.GENERATION_TIME
@@ -1014,176 +891,6 @@ class Chr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
         return genetic_map_output
 
 
-class IterativeApproachNoAncients(NeutralSimulatedMutationAccuracy):
-    name = "iterate_no_ancients"
-
-    def __init__(self):
-        DataGeneration.__init__(self)
-        self.columns = ["simulated_ts", "tsdate", "tsdate_inferred"]
-        self.default_replicates = 2
-        self.num_rows = self.default_replicates
-        self.data = pd.DataFrame(columns=self.sim_cols)
-        self.rng = random.Random(self.default_seed)
-        self.make_vcf = False
-        self.empirical_error = True
-
-    def inference(self, row_data):
-        """
-        Iterative approach with only modern samples
-        Compare with using true ages and with the true topology
-        """
-        index = row_data[0]
-        row = row_data[1]
-        path_to_file = os.path.join(self.data_dir, row["filename"])
-        # Load the original simulation and the one with only modern samples
-        sim = tskit.load(path_to_file + ".trees")
-
-        # Name of output file with mutations ages
-        path_to_file = os.path.join(self.data_dir, row["filename"])
-
-        # Infer the ts based on sample data with keep_times
-        keep_time_samples = tsinfer.formats.SampleData.from_tree_sequence(
-            sim, use_sites_time=True
-        )
-        inferred_ts_keep_times = tsinfer.infer(keep_time_samples)
-        inferred_ts_keep_times = inferred_ts_keep_times.simplify()
-        # inferred_ts_keep_times.dump(path_to_file + ".tsinferred.keep_times.trees")
-        dated_ts_keep_times = tsdate.date(
-            inferred_ts_keep_times, row["Ne"], row["mut_rate"]
-        )
-        dated_ts_true_topo = tsdate.date(sim, row["Ne"], row["mut_rate"])
-
-        # Infer the ts based on sample data
-        samples = tsinfer.load(path_to_file + ".samples")
-
-        def infer_date_iterate(samples):
-            inferred_ts = tsinfer.infer(samples)
-            inferred_ts = inferred_ts.simplify()
-            dated_ts = tsdate.date(inferred_ts, row["Ne"], row["mut_rate"])
-            sample_data_copy = samples.copy()
-            sample_data_copy.sites_time[:] = tsdate.get_sites_time(dated_ts)
-            sample_data_copy.finalise()
-            iter_infer = tsinfer.infer(sample_data_copy).simplify()
-            dated_ts_iter = tsdate.date(iter_infer, row["Ne"], row["mut_rate"])
-            return inferred_ts, dated_ts, iter_infer, dated_ts_iter
-
-        inferred_ts, dated_ts, iter_infer, dated_ts_iter = infer_date_iterate(samples)
-
-        error_samples = tsinfer.load(path_to_file + ".error.samples")
-        # Remove sites that have no derived allele
-        # This can happen as a result of the error injection process
-        derived = np.where(np.sum(error_samples.sites_genotypes[:], axis=1) != 0)[0]
-        if len(derived) != sim.num_sites:
-            no_deriv = np.where(np.sum(error_samples.sites_genotypes[:], axis=1) == 0)[
-                0
-            ]
-            error_samples = error_samples.subset(sites=derived)
-            sim_error_compatible = sim.delete_sites(no_deriv)
-        assert sim_error_compatible.num_sites == error_samples.num_sites
-        (
-            error_inferred_ts,
-            error_dated_ts,
-            error_iter_infer,
-            error_dated_ts_iter,
-        ) = infer_date_iterate(error_samples)
-
-        compare_df = evaluation.compare_mutation_msle_noancients(
-            sim,
-            inferred_ts,
-            dated_ts,
-            iter_infer,
-            dated_ts_iter,
-            inferred_ts_keep_times,
-            dated_ts_keep_times,
-            dated_ts_true_topo,
-            sim_error_compatible,
-            error_inferred_ts,
-            error_dated_ts,
-            error_iter_infer,
-            error_dated_ts_iter,
-        )
-
-        return index, row, compare_df
-
-
-class IterativeApproach_Chr20_no_ancients(Chr20SimulatedMutationAccuracy):
-    name = "iterate_chr20_no_ancients"
-
-    def __init__(self):
-        DataGeneration.__init__(self)
-        self.columns = ["simulated_ts", "tsdate", "tsdate_inferred"]
-        self.default_replicates = 50
-        self.num_rows = self.default_replicates
-        self.data = pd.DataFrame(columns=self.sim_cols)
-        self.rng = random.Random(self.default_seed)
-        self.make_vcf = False
-        self.empirical_error = True
-
-    def inference(self, row_data):
-        """
-        Iterative approach with only modern samples
-        Compare with using true ages and with the true topology
-        """
-        index = row_data[0]
-        row = row_data[1]
-        path_to_file = os.path.join(self.data_dir, row["filename"])
-        # Load the original simulation and the one with only modern samples
-        sim = tskit.load(path_to_file + ".trees")
-
-        # Name of output file with mutations ages
-        path_to_file = os.path.join(self.data_dir, row["filename"])
-
-        # Infer the ts based on sample data
-        inferred_ts, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
-            path_to_file + ".samples", sim.get_sequence_length()
-        )
-        inferred_ts = inferred_ts.simplify()
-        inferred_ts.dump(path_to_file + ".tsinferred.trees")
-
-        # Infer the ts based on sample data with keep_times
-        tsinfer.formats.SampleData.from_tree_sequence(
-            sim, path=path_to_file + ".keep_times.samples", use_sites_time=True
-        )
-        inferred_ts_keep_times, tsinfer_cpu, tsinfer_memory = evaluation.run_tsinfer(
-            path_to_file + ".keep_times.samples", sim.get_sequence_length()
-        )
-        inferred_ts_keep_times = inferred_ts_keep_times.simplify()
-        inferred_ts_keep_times.dump(path_to_file + ".tsinferred.keep_times.trees")
-
-        # tsdate runs
-        tsdate_dates, _, _, _, _ = tsdate.get_dates(inferred_ts, 10000, 1e-8)
-        tsdate_dates = tsdate_dates * 2 * row["Ne"]
-        tsdate_keep_times, _, _, _, _ = tsdate.get_dates(
-            inferred_ts_keep_times, 10000, 1e-8
-        )
-        tsdate_dates = tsdate_dates * 2 * row["Ne"]
-        tsdate_true_topo, _, _, _, _ = tsdate.get_dates(sim, 10000, 1e-8)
-        tsdate_true_topo = tsdate_true_topo * 2 * row["Ne"]
-
-        # Constrain and redate
-        sample_data = tsinfer.load(path_to_file + ".samples")
-        sample_data_copy = sample_data.copy()
-        sample_data_copy.sites_time[:] = np.array(
-            tsdate_dates[inferred_ts.tables.mutations.node]
-        )
-        sample_data_copy.finalise()
-        iter_infer = tsinfer.infer(sample_data_copy).simplify()
-        iter_dates, _, _, _, _ = tsdate.get_dates(iter_infer, 10000, 1e-8)
-        iter_dates = iter_dates * 2 * row["Ne"]
-        compare_df = evaluation.compare_mutation_msle_noancients(
-            sim,
-            inferred_ts,
-            tsdate_dates,
-            iter_infer,
-            iter_dates,
-            inferred_ts_keep_times,
-            tsdate_keep_times,
-            tsdate_true_topo,
-        )
-
-        return index, row, compare_df
-
-
 class SimulateVanillaAncient(DataGeneration):
     name = "simulate_vanilla_ancient"
 
@@ -1230,7 +937,9 @@ class SimulateVanillaAncient(DataGeneration):
         else:
             logging.info("Setting up using a single process")
             for seed in tqdm(
-                enumerate(seeds), desc="Running Simulations", total=len(seeds),
+                enumerate(seeds),
+                desc="Running Simulations",
+                total=len(seeds),
             ):
                 row_data = self.setup_fn(seed)
                 logging.info("Done with sim {}".format(seed[0]))
@@ -2039,9 +1748,9 @@ class EvaluatePrior(DataGeneration):
                 all_results[prior]["in_range"].append(
                     np.sum(
                         np.logical_and(
-                            ts.tables.nodes.time[ts.num_samples:]
+                            ts.tables.nodes.time[ts.num_samples :]
                             < confidence_intervals[:, 3],
-                            ts.tables.nodes.time[ts.num_samples:]
+                            ts.tables.nodes.time[ts.num_samples :]
                             > confidence_intervals[:, 2],
                         )
                     )
@@ -2059,7 +1768,7 @@ class EvaluatePrior(DataGeneration):
 
 class TsdateAccuracy(DataGeneration):
     """
-    Generate data for Supplementary Figure 4: evaluating tsdate's accuracy at various mutation rates
+    Generate data for Supplementary Figure 2: evaluating tsdate's accuracy at various mutation rates
     """
 
     name = "tsdate_accuracy"
@@ -2223,7 +1932,7 @@ class TsdateAccuracy(DataGeneration):
 
 class TsdateChr20(NeutralSimulatedMutationAccuracy):
     """
-    Generate data for Supplementary Figure 6: evaluating tsdate's accuracy on Simulated Chromosome 20
+    Generate data for Supplementary Figure 4: evaluating tsdate's accuracy on Simulated Chromosome 20
     """
 
     name = "tsdate_chr20_accuracy"

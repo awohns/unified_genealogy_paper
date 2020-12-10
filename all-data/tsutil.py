@@ -533,14 +533,29 @@ def delete_site_mutations(tables, site_ids, record_provenance=True):
 
 def combined_ts_constrained_samples(args):
     high_cov_samples = tsinfer.load(args.high_cov)
+    all_ancient_samples = tsinfer.load(args.all_samples)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
     sites_time = tsdate.sites_time_from_ts(dated_hgdp_1kg_sgdp_ts)
-    dated_samples = tsdate.add_sampledata_times(high_cov_samples, sites_time)
+    # Get the ancient bounds from sampledata file of all ancients
+    all_ancient_samples_bound = all_ancient_samples.min_site_times(
+        individuals_only=True
+    )
+    # Assert that the all ancient samples files has same or older ancient bounds than only high cov
+    assert np.all(
+        all_ancient_samples_bound
+        >= high_cov_samples.min_site_times(individuals_only=True)
+    )
+    # Constrain the estimated ages from tree sequence with ancient bounds
+    constrained_sites_time = np.maximum(sites_time, all_ancient_samples_bound)
+    # Add constrained times to sampledata file with moderns and high cov ancients
+    dated_samples = tsdate.add_sampledata_times(
+        high_cov_samples, constrained_sites_time
+    )
     # Record number of constrained sites
     print("Total number of sites: ", sites_time.shape[0])
     print(
         "Number of ancient lower bounds: ",
-        np.sum(high_cov_samples.min_site_times(individuals_only=True) != 0),
+        np.sum(all_ancient_samples_bound != 0),
     )
     print(
         "Number of corrected times: ", np.sum(dated_samples.sites_time[:] != sites_time)
@@ -664,19 +679,6 @@ def main():
     )
     subparser.add_argument("output", type=str, help="Output sampledata file name")
     subparser.set_defaults(func=remove_moderns_reich)
-
-    subparser = subparsers.add_parser("remove-outliers")
-    subparser.add_argument("--samples", type=str, help="Sampledata filename")
-    subparser.add_argument(
-        "--ts", type=str, help="Inferred Tree Sequence.",
-    )
-    subparser.add_argument(
-        "--output-samples", type=str, help="Output sampledata filename"
-    )
-    subparser.add_argument(
-        "--output-ts", type=str, help="Output tree sequence filename"
-    )
-    subparser.set_defaults(func=remove_outliers)
 
     subparser = subparsers.add_parser("combined-ts-dated-samples")
     subparser.add_argument(
