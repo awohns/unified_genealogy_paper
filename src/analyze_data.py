@@ -338,13 +338,6 @@ def get_unified_recurrent_mutations(args):
     df.to_csv("data/unified_chr20.recurrent_counts_nosamples_two_muts.csv")
 
 
-def min_site_times_ancients(args):
-    samples = tsinfer.load("all-data/1kg_ancients_noreich_chr20.samples")
-    min_times = samples.min_site_times(individuals_only=True)
-    df = pd.DataFrame(np.unique(min_times, return_counts=True))
-    df.to_csv("data/1kg_ancients_chr20_min_site_times.csv")
-
-
 class AncestralGeography:
     def __init__(self, ts):
         self.ts = ts
@@ -665,8 +658,6 @@ def find_ancient_descendants(args):
     """
     Calculate genomic descent statistic for proxy nodes in the unified genealogy
     """
-    # ts = tskit.load(
-    #    "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.snipped.trees"
     ts = tskit.load(
         """all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.binned.nosimplify.trees"""
     )
@@ -1053,7 +1044,6 @@ def main():
         "recurrent_mutations": get_unified_recurrent_mutations,
         "tgp_dates": tgp_date_estimates,
         "ancient_constraints": get_ancient_constraints_tgp,
-        "min_site_times_ancients": min_site_times_ancients,
         "hgdp_sgdp_ancients_ancestral_geography": find_ancestral_geographies,
         "average_pop_ancestors_geography": average_population_ancestors_geography,
         "get_reference_sets": get_unified_reference_sets,
@@ -1067,7 +1057,7 @@ def main():
         description="Process the human data and make data files for plotting."
     )
     parser.add_argument(
-        "name", type=str, help="figure name", choices=list(name_map.keys())
+        "name", type=str, help="figure name", choices=list(name_map.keys()) + ["all"]
     )
     parser.add_argument(
         "--num_processes",
@@ -1078,7 +1068,12 @@ def main():
     )
 
     args = parser.parse_args()
-    name_map[args.name](args)
+    if args.name == "all":
+        for func_name, func in name_map.items():
+            print("Running: " + func_name)
+            func(args) 
+    else:
+        name_map[args.name](args)
 
 
 if __name__ == "__main__":
