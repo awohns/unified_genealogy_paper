@@ -106,7 +106,8 @@ class DataGeneration:
 
                 # Create sampledata file
                 samples = tsinfer.formats.SampleData.from_tree_sequence(
-                    sim, use_sites_time=False,
+                    sim,
+                    use_sites_time=False,
                 )
                 sample_data_indiv_times = samples.copy(
                     path=os.path.join(self.data_dir, filename + ".samples")
@@ -247,7 +248,7 @@ class DataGeneration:
 class NeutralSims(DataGeneration):
     """
     Template for mutation-based evaluation of various methods.
-    Generates data for supplemental figure 4.
+    Generates data for Supplemental Figure 3.
     """
 
     name = "neutral_simulated_mutation_accuracy"
@@ -570,7 +571,7 @@ class NeutralSims(DataGeneration):
 
 class TsdateNeutralSims(NeutralSims):
     """
-    Generate data for figure 1b: tsdate evaluation on neutral simulations
+    Generate data for Figure 1b: tsdate evaluation on neutral simulations
     """
 
     name = "tsdate_neutral_sims"
@@ -794,12 +795,17 @@ class CpuScalingLength(CpuScalingSampleSize):
 
 
 class Chr20Sims(NeutralSims):
+    """
+    Generate data for Extended Data Figure 2: evaluating accuracy of various methods on Simulated Chromosome 20
+    using the out of africa model from stdpopsim
+    """
+
     name = "Chr20Sims"
 
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "relate", "geva"]
-        self.default_replicates = 3  # 10
+        self.default_replicates = 10
         self.num_rows = self.default_replicates
         self.sim_cols = self.sim_cols + ["snippet"]
         self.data = pd.DataFrame(columns=self.sim_cols)
@@ -854,7 +860,7 @@ class Chr20Sims(NeutralSims):
                 msprime.Sample(population=2, time=0)
                 for samp in range(row_data["sample_size_modern"] // 3)
             ]
-            ancient_samples = []
+            ancient_samples = list()
             if self.ancient_times == "empirical_age_distribution":
                 ancient_sample_times = evaluation.sample_times(
                     row_data["sample_size_ancient"], constants.GENERATION_TIME
@@ -1340,7 +1346,7 @@ class EvaluatePrior(DataGeneration):
 
 class TsdateAccuracy(DataGeneration):
     """
-    Generate data for Supplementary Figure 4: evaluating tsdate's accuracy at various mutation rates
+    Generate data for Supplementary Figure 2: evaluating tsdate's accuracy at various mutation rates
     """
 
     name = "tsdate_accuracy"
@@ -1504,7 +1510,7 @@ class TsdateAccuracy(DataGeneration):
 
 class TsdateChr20(NeutralSims):
     """
-    Generate data for Supplementary Figure 6: evaluating tsdate's accuracy on Simulated Chromosome 20
+    Generate data for Supplementary Figure 4: evaluating tsdate's accuracy on Simulated Chromosome 20
     """
 
     name = "tsdate_chr20_accuracy"

@@ -678,7 +678,11 @@ def run_tsdate_posterior_ts(ts, Ne, mut_rate, method="inside_outside", priors=No
     Simple wrapper to get dated tree sequence and posterior NodeGridValues
     """
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
+        ts,
+        Ne=Ne,
+        mutation_rate=mut_rate,
+        method=method,
+        priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()
@@ -707,7 +711,11 @@ def tsdate_iter(ts, Ne, mut_rate, method, priors, posterior):
     """
     priors.grid_data = posterior.grid_data
     dates, posterior, timepoints, eps, nds = tsdate.get_dates(
-        ts, Ne=Ne, mutation_rate=mut_rate, method=method, priors=priors,
+        ts,
+        Ne=Ne,
+        mutation_rate=mut_rate,
+        method=method,
+        priors=priors,
     )
     constrained = tsdate.constrain_ages_topo(ts, dates, eps, nds)
     tables = ts.dump_tables()
@@ -876,7 +884,7 @@ def run_tsinfer(
 
 def run_relate(ts, path_to_vcf, mut_rate, Ne, genetic_map_path, working_dir, output):
     """
-    Run relate software on tree sequence. Requires vcf of simulated data
+    Run relate software on tree sequence. Requires vcf of simulated data and genetic map.
     Relate needs to run in its own directory (param working_dir)
     NOTE: Relate's effective population size is "of haplotypes"
     """
@@ -1076,269 +1084,6 @@ def run_geva(file_name, Ne, mut_rate, rec_rate=None, genetic_map_path=None):
     return keep_ages, cpu_time, memory_use
 
 
-def geva_age_estimate(file_name, Ne, mut_rate, rec_rate):
-    """
-    Perform GEVA age estimation on a given vcf
-    """
-    file_name = "tmp/" + file_name
-    subprocess.check_output(
-        [
-            geva_executable,
-            "--out",
-            file_name,
-            "--rec",
-            str(rec_rate),
-            "--vcf",
-            file_name + ".vcf",
-        ]
-    )
-    with open(file_name + ".positions.txt", "wb") as out:
-        subprocess.call(
-            ["awk", "NR>3 {print last} {last = $3}", file_name + ".marker.txt"],
-            stdout=out,
-        )
-    try:
-        subprocess.check_output(
-            [
-                geva_executable,
-                "-i",
-                file_name + ".bin",
-                "--positions",
-                file_name + ".positions.txt",
-                "--hmm",
-                "/Users/anthonywohns/Documents/mcvean_group/age_inference/"
-                "tsdate/tools/geva/hmm/hmm_initial_probs.txt",
-                "/Users/anthonywohns/Documents/mcvean_group/age_inference/tsdate/tools/"
-                "geva/hmm/hmm_emission_probs.txt",
-                "--Ne",
-                str(Ne),
-                "--mut",
-                str(mut_rate),
-                "-o",
-                file_name + "_estimation",
-            ]
-        )
-    except subprocess.CalledProcessError as grepexc:
-        print(grepexc.output)
-
-    age_estimates = pd.read_csv(
-        file_name + "_estimation.sites.txt", sep=" ", index_col="MarkerID"
-    )
-    keep_ages = age_estimates[
-        (age_estimates["Clock"] == "J") & (age_estimates["Filtered"] == 1)
-    ]
-    return keep_ages
-
-
-def constrain_with_ancient(
-    sample_data, dates, inferred, ancient_genos=None, ancient_ages=None
-):
-    """
-    Take date estimates and constrain using ancient information
-    """
-
-    ancient_ages = np.array(ancient_ages)
-    constr_ages = np.zeros_like(sample_data.sites_time[:])
-    sites_pos = sample_data.sites_position[:]
-
-    if ancient_ages is not None:
-        constr_sites = {}
-    else:
-        constr_sites = None
-    for mut in inferred.mutations():
-        constr_ages[sites_pos == mut.position] = dates[mut.node]
-        if ancient_ages is not None:
-            if np.any(ancient_genos[mut.id] == 1):
-                constr_sites[mut.position] = np.max(
-                    ancient_ages[ancient_genos[mut.id] == 1]
-                )
-                if np.max(ancient_ages[ancient_genos[mut.id] == 1]) > dates[mut.node]:
-                    constr_ages[sites_pos == mut.position] = np.max(
-                        ancient_ages[ancient_genos[mut.id] == 1]
-                    )
-
-    constr_sample_data = sample_data.copy()
-    constr_sample_data.sites_time[:] = constr_ages
-    constr_sample_data.finalise()
-    return constr_sample_data, constr_sites
-
-
-def run_all_methods_compare(
-    index,
-    ts,
-    n,
-    Ne,
-    mutation_rate,
-    recombination_rate,
-    time_grid,
-    grid_slices,
-    estimation_method,
-    approximate_prior,
-    error_model,
-    include_geva,
-    seed,
-):
-    """
-    Function to run all comparisons and return dataframe of mutations
-    """
-    output = "comparison_" + str(index)
-    if error_model is not None:
-        error_samples = generate_samples(
-            ts, "error_comparison_" + str(index), empirical_seq_err_name=error_model
-        )
-        # return_vcf(samples, "comparison_" + str(index))
-        sampledata_to_vcf(error_samples, "comparison_" + str(index))
-    else:
-        samples = generate_samples(ts, "comparison_" + str(index))
-        sampledata_to_vcf(samples, "comparison_" + str(index))
-    dated_ts, inferred_ts, dated_inferred_ts = run_tsdate(
-        ts,
-        n,
-        Ne,
-        mutation_rate,
-        time_grid,
-        grid_slices,
-        estimation_method,
-        approximate_prior,
-    )
-    if include_geva:
-        geva_ages = geva_age_estimate(
-            "comparison_" + str(index), Ne, mutation_rate, recombination_rate
-        )
-        geva_positions = pd.read_csv(
-            "tmp/comparison_" + str(index) + ".marker.txt",
-            delimiter=" ",
-            index_col="MarkerID",
-        )
-    relate_output = run_relate(
-        ts, "comparison_" + str(index), mutation_rate, Ne * 2, output
-    )
-    if include_geva:
-        compare_df = compare_mutations(
-            ["simulated_ts", "tsdate", "tsdate_inferred", "geva", "relate"],
-            [ts, dated_ts, dated_inferred_ts],
-            geva_ages=geva_ages,
-            geva_positions=geva_positions,
-            relate_ages=relate_output[1],
-        )
-        tmrca_compare = find_tmrcas_snps(
-            {
-                "ts": ts,
-                "tsdate_true": dated_ts,
-                "tsdate_inferred": dated_inferred_ts,
-                "relate": relate_output[0],
-            }
-        )
-        # kc_distances = [kc_distance_ts(ts, inferred_ts, 0),
-        #                 kc_distance_ts(ts, relate_output[0], 0),
-        #                 kc_distance_ts(ts, inferred_ts_round2, 0),
-        #                 kc_distance_ts(ts, dated_ts, 1),
-        #                 kc_distance_ts(ts, dated_inferred_ts, 1),
-        #                 kc_distance_ts(ts, tsdated_inferred_ts_wtimes, 1),
-        #                 kd_distance_ts(ts, tsdated_ts_round2),
-        #                 kc_distance_ts(ts, relate_output[0], 1)]
-    else:
-        compare_df = compare_mutations(
-            ["simulated_ts", "tsdate", "tsdate_inferred", "geva", "relate"],
-            [ts, dated_ts, dated_inferred_ts],
-            relate_ages=relate_output[1],
-        )
-        tmrca_compare = find_tmrcas_snps(
-            {
-                "ts": ts,
-                "tsdate_true": dated_ts,
-                "tsdate_inferred": dated_inferred_ts,
-                "relate": relate_output[0],
-            }
-        )
-        # kc_distances = [kc_distance_ts(ts, inferred_ts, 0),
-        #                 kc_distance_ts(ts, relate_output[0], 0),
-        #                 kc_distance_ts(ts, inferred_ts_round2, 0),
-        #                 kc_distance_ts(ts, dated_ts, 1),
-        #                 kc_distance_ts(ts, dated_inferred_ts, 1),
-        #                 kc_distance_ts(ts, tsdated_inferred_ts_wtimes, 1),
-        #                 kd_distance_ts(ts, tsdated_ts_round2),
-        #                 kc_distance_ts(ts, relate_output[0], 1)]
-
-    return compare_df, tmrca_compare
-
-
-def run_all_tests(params):
-    """
-    Runs simulation and all tests for the simulation
-    """
-    index = int(params[0])
-    n = int(params[1])
-    Ne = float(params[2])
-    length = int(params[3])
-    mutation_rate = float(params[4])
-    recombination_rate = float(params[5])
-    model = params[6]
-    time_grid = params[7]
-    grid_slices = params[8]
-    estimation_method = params[9]
-    approximate_prior = params[10]
-    error_model = params[11]
-    include_geva = params[12]
-    seed = float(params[13])
-
-    if model == "neutral":
-        ts = run_neutral_sim(n, Ne, length, mutation_rate, recombination_rate, seed)
-    elif model == "out_of_africa":
-        ts = out_of_africa(n, mutation_rate, recombination_rate, length)
-    compare_df, tmrca_compare = run_all_methods_compare(
-        index,
-        ts,
-        n,
-        Ne,
-        mutation_rate,
-        recombination_rate,
-        time_grid,
-        grid_slices,
-        estimation_method,
-        approximate_prior,
-        error_model,
-        include_geva,
-        seed,
-    )
-
-    return compare_df, tmrca_compare
-
-
-def run_multiprocessing(function, params, output, num_replicates, num_processes):
-    """
-    Run multiprocessing of inputted function a specified number of times
-    """
-    mutation_results = list()
-    tmrca_results = list()
-    # kc_distances = list()
-    if num_processes > 1:
-        logging.info(
-            "Setting up using multiprocessing ({} processes)".format(num_processes)
-        )
-        with multiprocessing.Pool(processes=num_processes, maxtasksperchild=2) as pool:
-            for result in pool.imap_unordered(function, params):
-                #  prior_results = pd.read_csv("data/result")
-                #  combined = pd.concat([prior_results, result])
-                mutation_results.append(result[0])
-                tmrca_results.append(result[1])
-                # kc_distances.append(result[2])
-    else:
-        # When we have only one process it's easier to keep everything in the
-        # same process for debugging.
-        logging.info("Setting up using a single process")
-        for result in map(function, params):
-            mutation_results.append(result[0])
-            tmrca_results.append(result[1])
-            # kc_distances.append(result[2])
-    master_mutation_df = pd.concat(mutation_results)
-    master_tmrca_df = np.column_stack(tmrca_results)
-    master_mutation_df.to_csv("data/" + output + "_mutations")
-    np.savetxt("data/" + output + "_tmrcas", master_tmrca_df, delimiter=",")
-    # print(kc_distances)
-    return master_mutation_df
-
-
 def time_cmd(cmd, stdout=sys.stdout):
     """
     Runs the specified command line (a list suitable for subprocess.call)
@@ -1373,104 +1118,3 @@ def time_cmd(cmd, stdout=sys.stdout):
         system_time = float(split[1])
         user_time = float(split[2])
     return user_time + system_time, max_memory
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--replicates", type=int, default=10, help="number of replicates"
-    )
-    parser.add_argument("num_samples", help="number of samples to simulate")
-    parser.add_argument("output", help="name of output files")
-    parser.add_argument(
-        "-n", "--Ne", type=float, default=10000, help="effective population size"
-    )
-    parser.add_argument(
-        "--length", "-l", type=int, default=1e5, help="Length of the sequence"
-    )
-    parser.add_argument(
-        "-m", "--mutation-rate", type=float, default=None, help="mutation rate"
-    )
-    parser.add_argument(
-        "-r",
-        "--recombination-rate",
-        type=float,
-        default=None,
-        help="recombination rate",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="neutral",
-        help="choose neutral or out of africa model",
-    )
-    parser.add_argument(
-        "-g",
-        "--grid-slices",
-        type=int,
-        default=50,
-        help="how many slices/quantiles to pass to time grid",
-    )
-    parser.add_argument(
-        "--estimation-method",
-        type=str,
-        default="inside_outside",
-        help="use inside-outside or maximization method",
-    )
-    parser.add_argument(
-        "-e", "--error-model", type=str, default=None, help="input error model"
-    )
-    parser.add_argument(
-        "-t",
-        "--time-grid",
-        type=str,
-        default="adaptive",
-        help="adaptive or uniform time grid",
-    )
-    parser.add_argument(
-        "-a", "--approximate-prior", action="store_true", help="use approximate prior"
-    )
-    parser.add_argument(
-        "--include-geva", action="store_true", help="run comparisons with GEVA"
-    )
-    parser.add_argument(
-        "--seed", "-s", type=int, default=123, help="use a non-default RNG seed"
-    )
-    parser.add_argument(
-        "--processes",
-        "-p",
-        type=int,
-        default=1,
-        help="number of worker processes, e.g. 40",
-    )
-    args = parser.parse_args()
-    np.random.seed(args.seed)
-    rng = random.Random(args.seed)
-    seeds = [rng.randint(1, 2 ** 31) for i in range(args.replicates)]
-    inputted_params = [
-        int(args.num_samples),
-        args.Ne,
-        args.length,
-        args.mutation_rate,
-        args.recombination_rate,
-        args.model,
-        args.time_grid,
-        args.grid_slices,
-        args.estimation_method,
-        args.approximate_prior,
-        args.error_model,
-        args.include_geva,
-    ]
-    params = iter(
-        [
-            np.concatenate([[index], inputted_params, [seed]])
-            for index, seed in enumerate(seeds)
-        ]
-    )
-    mutation_df = run_multiprocessing(
-        run_all_tests, params, args.output, args.replicates, args.processes
-    )
-
-
-if __name__ == "__main__":
-    main()

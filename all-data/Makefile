@@ -26,14 +26,14 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 		python3 bin_missing.py $^ $@
 
 1kg_chr20.trees: 1kg_chr20.samples
-		python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 1 -S 1
+		python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 0.1 -S 0.1
 		python3 tsutil.py simplify 1kg_chr20.nosimplify.trees $@
 
 %.trees: %.samples recomb-hg38/
 		python3 ../src/run_inference.py $< -t ${NUM_THREADS} -A 0.1 -S 0.1 -m recomb-hg38/genetic_map_GRCh38_
 		python3 tsutil.py simplify $*.nosimplify.trees $@
 
-%.dated.trees: %.trees %.samples
+%.dated.trees: %.trees
 		python3 -m tsdate preprocess $< $*.preprocessed.trees
 		python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS}
 

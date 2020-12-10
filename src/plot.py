@@ -39,7 +39,9 @@ import constants
 import utility
 
 # Unified TS used in multiple plots
-ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
+ts = tskit.load(
+    "all-data/hgdp_1kg_sgdp_ma_1_ms_1/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
+)
 
 sgdp_region_map = {
     "Abkhasian": "West Eurasia",
@@ -1071,6 +1073,14 @@ class AncientConstraints(Figure):
         ax_scale = fig.add_subplot(spec5[3])
         ax_scale.set_yscale("linear")
 
+        # Make one column a list of all relate estimates
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        # df= df.melt(id_vars="position", value_vars=relate_estimates, var_name="relate_pop_est", value_name="relate_age")
+        # df["relate_age"] = list(df[relate_estimates].to_numpy())
+        relate_upper_estimates = [c for c in df.columns if "upper_age_" in c]
+        # df = df.melt(id_vars="position", value_vars=relate_upper_estimates, var_name="relate_pop_upper", value_name="relate_upper_age")
+        # df["relate_upper_age"] = list(df[relate_upper_estimates].to_numpy())
+
         df["Ancient Bound"] = df["Ancient Bound"] * constants.GENERATION_TIME
         df = df[df["tsdate_frequency"] > 0]
 
@@ -1085,25 +1095,82 @@ class AncientConstraints(Figure):
         scatter_size = 0.2
         scatter_alpha = 0.2
         shading_alpha = 0.2
+        # Plot each method. Relate has estimates for each population, so plot all estimates
         for i, method in enumerate(
             [
                 # Hack the titles with extra spaces to centre properly, as it's too
                 # tricky to centre over a pair or subplots
                 ("tsdate      ", ["tsdate_upper_bound", "tsdate_age"]),
-                ("Relate      ", ["relate_upper_age_avg", "relate_avg_age"]),
+                ("Relate      ", [relate_upper_estimates, relate_estimates]),
                 ("GEVA      ", ["AgeCI95Upper_Jnt", "AgeMean_Jnt"]),
             ]
         ):
             ax = ax_main[i][0]
-            ax.scatter(
-                self.jitter(np.zeros(len(df_new.index)), log=False),
-                constants.GENERATION_TIME * df_new[method[1][1]],
-                c=df_new["tsdate_frequency"],
-                s=scatter_size,
-                alpha=scatter_alpha / 6,
-                cmap="plasma_r",
-                norm=mplc.LogNorm(vmin=np.min(df_new["tsdate_frequency"]), vmax=1),
-            )
+            if (
+                i == 1
+            ):  # Relate has a list of estimates, so needs to be handled differently
+                for estimate in method[1][1]:
+                    cur_df = df_new.dropna(subset=[estimate])
+                    ax.scatter(
+                        self.jitter(np.zeros(len(cur_df.index)), log=False),
+                        constants.GENERATION_TIME * cur_df[estimate],
+                        c=cur_df["tsdate_frequency"],
+                        s=scatter_size,
+                        alpha=scatter_alpha / 6,
+                        cmap="plasma_r",
+                        norm=mplc.LogNorm(
+                            vmin=np.min(cur_df["tsdate_frequency"]), vmax=1
+                        ),
+                    )
+                age_est = np.unique(
+                    df_old[relate_estimates].apply(
+                        lambda x: np.where(
+                            constants.GENERATION_TIME * x > df_old.index, 1, -1
+                        ),
+                        axis=0,
+                    )[~pd.isna(df_old[relate_estimates])],
+                    return_counts=True,
+                )
+                age_accuracy = 100 * (age_est[1][1] / (age_est[1][0] + age_est[1][1]))
+                upper_age_est = np.unique(
+                    df_old[relate_upper_estimates].apply(
+                        lambda x: np.where(
+                            constants.GENERATION_TIME * x > df_old.index, 1, -1
+                        ),
+                        axis=0,
+                    )[~pd.isna(df_old[relate_upper_estimates])],
+                    return_counts=True,
+                )
+                upper_age_accuracy = 100 * (
+                    upper_age_est[1][1] / (upper_age_est[1][0] + upper_age_est[1][1])
+                )
+            else:
+                ax.scatter(
+                    self.jitter(np.zeros(len(df_new.index)), log=False),
+                    constants.GENERATION_TIME * df_new[method[1][1]],
+                    c=df_new["tsdate_frequency"],
+                    s=scatter_size,
+                    alpha=scatter_alpha / 6,
+                    cmap="plasma_r",
+                    norm=mplc.LogNorm(vmin=np.min(df_new["tsdate_frequency"]), vmax=1),
+                )
+                upper_age_accuracy = (
+                    100
+                    / df_old.shape[0]
+                    * np.sum(
+                        (constants.GENERATION_TIME * df_old[method[1][0]])
+                        > df_old.index
+                    )
+                )
+                age_accuracy = (
+                    100
+                    / df_old.shape[0]
+                    * np.sum(
+                        (constants.GENERATION_TIME * df_old[method[1][1]])
+                        > df_old.index
+                    )
+                )
+
             ax = ax_main[i][1]
             ax.set_title(method[0])
             ax.text(
@@ -1125,47 +1192,61 @@ class AncientConstraints(Figure):
             ax.text(
                 0.16,
                 0.06,
-                "{0:.2f}% est. upper bound $>=$ lower bound".format(
-                    100
-                    / df_old.shape[0]
-                    * np.sum(
-                        (constants.GENERATION_TIME * df_old[method[1][0]])
-                        > df_old.index
-                    )
-                ),
+                "{0:.2f}% est. upper bound $>=$ lower bound".format(upper_age_accuracy),
                 fontsize=8,
                 transform=ax.transAxes,
             )
             ax.text(
                 0.16,
                 0.02,
-                "{0:.2f}% est. age $>=$ lower bound".format(
-                    100
-                    / df_old.shape[0]
-                    * np.sum(
-                        (constants.GENERATION_TIME * df_old[method[1][1]])
-                        > df_old.index
-                    )
-                ),
+                "{0:.2f}% est. age $>=$ lower bound".format(age_accuracy),
                 fontsize=8,
                 transform=ax.transAxes,
             )
-            scatter = ax.scatter(
-                self.jitter(df_old.index),
-                constants.GENERATION_TIME * df_old[method[1][1]],
-                c=df_old["tsdate_frequency"],
-                s=scatter_size,
-                alpha=scatter_alpha,
-                cmap="plasma_r",
-                norm=mplc.LogNorm(vmin=np.min(df_old["tsdate_frequency"]), vmax=1),
-            )
-            ax.plot(
-                smoothed_mean["bin_right"].astype(int).values,
-                constants.GENERATION_TIME * smoothed_mean[method[1][1]].values,
-                alpha=0.7,
-                marker="P",
-                color="black",
-            )
+            if i == 1:
+                for estimate in method[1][1]:
+                    cur_df = df_old.dropna(subset=[estimate])
+                    scatter = ax.scatter(
+                        self.jitter(cur_df.index),
+                        constants.GENERATION_TIME * cur_df[estimate],
+                        c=cur_df["tsdate_frequency"],
+                        s=scatter_size,
+                        alpha=scatter_alpha,
+                        cmap="plasma_r",
+                        norm=mplc.LogNorm(
+                            vmin=np.min(cur_df["tsdate_frequency"]), vmax=1
+                        ),
+                    )
+                # If Relate, take average across population estimates
+                ax.plot(
+                    smoothed_mean["bin_right"].astype(int).values,
+                    np.mean(
+                        constants.GENERATION_TIME * smoothed_mean[method[1][1]].values,
+                        axis=1,
+                    ),
+                    alpha=0.7,
+                    marker="P",
+                    color="black",
+                )
+
+            else:
+                scatter = ax.scatter(
+                    self.jitter(df_old.index),
+                    constants.GENERATION_TIME * df_old[method[1][1]],
+                    c=df_old["tsdate_frequency"],
+                    s=scatter_size,
+                    alpha=scatter_alpha,
+                    cmap="plasma_r",
+                    norm=mplc.LogNorm(vmin=np.min(df_old["tsdate_frequency"]), vmax=1),
+                )
+                ax.plot(
+                    smoothed_mean["bin_right"].astype(int).values,
+                    constants.GENERATION_TIME * smoothed_mean[method[1][1]].values,
+                    alpha=0.7,
+                    marker="P",
+                    color="black",
+                )
+
         fig.text(
             0.5,
             0.01,
@@ -1339,7 +1420,12 @@ class ScalingFigure(Figure):
         self.samples_index = samples_means.index
         self.length_index = length_means.index / 1000000
 
-        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(20, 9), sharex=False,)
+        fig, ax = plt.subplots(
+            nrows=2,
+            ncols=2,
+            figsize=(20, 9),
+            sharex=False,
+        )
         self.plot_subplot(
             ax[0, 0],
             self.samples_index,
@@ -2539,10 +2625,11 @@ class AncientDescent(Figure):
     Parent class for all ancient descent figures
     """
 
-    reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
-    ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
-    pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
-    regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
+    def __init__(self):
+        reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
+        ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
+        pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
+        regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
 
     def plot_total_median_descent(
         self,
@@ -2848,7 +2935,8 @@ class SiteLinkageAndQuality(Figure):
     def plot(self):
 
         client = dask.distributed.Client(
-            dashboard_address="localhost:22222", processes=False,
+            dashboard_address="localhost:22222",
+            processes=False,
         )
 
         haploid = ts.genotype_matrix()
@@ -2937,14 +3025,16 @@ class SiteLinkageAndQuality(Figure):
         no_ld = np.isnan(ld)
 
         total_hist, bin_edges = np.histogram(
-            muts_per_site, bins=self.gen_log_space(1000, 50)[1:],
+            muts_per_site,
+            bins=self.gen_log_space(1000, 50)[1:],
         )
         masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
         prop_masked_hist = masked_hist / total_hist
         ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
         prop_ld_hist = ld_hist / total_hist
         neither_hist, bins = np.histogram(
-            muts_per_site[np.logical_and(~masked, ~low_ld)], bins=bin_edges,
+            muts_per_site[np.logical_and(~masked, ~low_ld)],
+            bins=bin_edges,
         )
         prop_neither_hist = neither_hist / total_hist
 
