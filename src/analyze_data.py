@@ -93,10 +93,7 @@ def get_geva_tgp_age_df():
         geva_ages = pd.read_csv("data/1kg_chr20_geva_mutation_ages.csv", index_col=0)
     else:
         geva = pd.read_csv(
-            "data/geva_ages.csv.gz",
-            delimiter=",",
-            skipinitialspace=True,
-            skiprows=3,
+            "data/geva_ages.csv.gz", delimiter=",", skipinitialspace=True, skiprows=3,
         )
         geva_tgp = geva[geva["DataSource"] == "TGP"]
         geva_tgp_consistent = geva_tgp[geva_tgp["AlleleAnc"] == geva_tgp["AlleleRef"]]
@@ -113,10 +110,7 @@ def get_tsdate_tgp_age_df():
             "data/1kg_chr20_tsdate_mutation_ages.csv", index_col=0
         )
     else:
-        # tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.50slices.trees")
         tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.trees")
-        # posterior_mut_ages = tsdate.sites_time_from_ts(tgp_chr20, mutation_age="child")
-        # posterior_upper_bound = tsdate.sites_time_from_ts(tgp_chr20, mutation_age="parent")
         posterior_mut_ages, posterior_upper_bound, oldest_mut_nodes = get_mut_ages(
             tgp_chr20, unconstrained=False
         )
@@ -417,11 +411,11 @@ class AncestralGeography:
 
 def find_ancestral_geographies(args):
     """
-    Calculate ancestral geographies
+    Calculate ancestral geographies for use in Figure 4 and Supplementary Video 
     """
 
     tgp_hgdp_sgdp_ancients = tskit.load(
-        "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees"
+        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
     )
     # Remove 1000 Genomes populations
     hgdp_sgdp_ancients = tgp_hgdp_sgdp_ancients.simplify(
@@ -467,10 +461,7 @@ def average_population_ancestors_geography(args):
         raise FileNotFoundError(
             "Must run 'ancient_descendants' first to infer ancestral geography"
         )
-    ts = tskit.load(
-        """all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.
-            binned.historic.trees"""
-    )
+    ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
     ts = ts.simplify(
         np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80)))[
             0
@@ -778,8 +769,7 @@ def find_ancient_descent_haplotypes(args):
         )
 
     ts = tskit.load(
-        """all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.binned.
-            nosimplify.trees"""
+        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.binned.nosimplify.trees"
     )
     ts = tsdate.preprocess_ts(ts, **{"keep_unary": True})
     (
@@ -812,10 +802,7 @@ def find_archaic_relationships(args):
     descends from an ancestor. These relationships indicate the proportion of ancestors
     genome inherited by younger samples.
     """
-    ts = tskit.load(
-        """all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.
-        binned.historic.snipped.trees"""
-    )
+    ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
     tables = ts.tables
     altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
     chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]

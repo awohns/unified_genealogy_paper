@@ -414,16 +414,16 @@ class Figure(object):
         return hb
 
 
-class TsdateSimulatedAccuracyNeutral(Figure):
+class TsdateNeutralSims(Figure):
     """
-    For Figure 1b: accuracy of tsdate on simulated data under a neutral model.
+    Figure 1b: accuracy of tsdate on simulated data under a neutral model.
     Compares age of mutations: simulated time vs. tsdate estimation using
     simulated topology and tsdate using tsinfer inferred topologies.
     """
 
-    name = "tsdate_simulated_accuracy"
+    name = "tsdate_neutral_sims"
     data_path = "simulated-data"
-    filename = ["tsdate_neutral_simulated_mutation_accuracy_mutations"]
+    filename = ["tsdate_neutral_sims_mutations"]
 
     def plot(self):
         df = self.data[0]
@@ -463,12 +463,12 @@ class TsdateSimulatedAccuracyNeutral(Figure):
         self.save(self.name)
 
 
-class Figure2Ancients(Figure):
+class Chr20AncientIteration(Figure):
     """
-    Main text figure 1d. Accuracy of increasing number of ancient samples.
+    Figure 1d. Accuracy of increasing number of ancient samples.
     """
 
-    name = "iteration_ancients"
+    name = "chr20_ancient_iteration"
     data_path = "simulated-data"
     filename = [
         "chr20_ancient_iteration_msle",
@@ -516,7 +516,7 @@ class Figure2Ancients(Figure):
             x=comb_df["tsdate_inferred"], orient="v", ax=ax[0, 0], color="silver"
         )
         sns.boxplot(
-            x=comb_df["iter_dated_inferred"], orient="v", ax=ax[0, 1], color="silver"
+            x=comb_df["tsdate_iterate"], orient="v", ax=ax[0, 1], color="silver"
         )
         plt.setp(ax[0, 0].artists, edgecolor="k", facecolor="silver")
         plt.setp(ax[0, 1].artists, edgecolor="k", facecolor="silver")
@@ -670,289 +670,348 @@ class Figure2Ancients(Figure):
         self.save(self.name)
 
 
-class Figure2(Figure):
+class TmrcaClustermap(Figure):
     """
-    Main text Figure1d. Accuracy of increasing number of ancient samples.
+    Figure 2: Plot the TMRCA clustermap
     """
 
-    name = "iteration_eval"
-    data_path = "simulated-data"
+    name = "tmrca_clustermap"
+    data_path = "all-data"
     filename = [
-        "chr20_ancient_iteration_msle",
-        "chr20_ancient_iteration_spearman",
-        "chr20_ancient_iteration_amh_msle",
-        "chr20_ancient_iteration_amh_spearman",
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
     ]
-    plt_title = "iteration_eval"
 
-    def __init__(self):
-        super().__init__()
+    def make_symmetric(self, df):
+        """
+        Make TMRCA dataframe symmetric
+        """
+        df_arr = df.values
+        i_upper = np.tril_indices(df.shape[0], 0)
+        df_arr[i_upper] = df_arr.T[i_upper]
+        return df
 
     def plot(self):
-        muts = pd.merge([self.data[0], self.data[2].add_suffix("_amh")])
-        spearman = pd.merge([self.data[1], self.data[3].add_suffix("_amh")])
-        widths = [0.5, 0.5, 3, 0.5]
-        heights = [3, 3]
-        gs_kw = dict(width_ratios=widths, height_ratios=heights)
-        gs_kw.update(wspace=0.03)
-        fig, ax = plt.subplots(
-            ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+        df = self.data[0]
+        df = df.set_index(df.columns[0])
+        tmrcas = self.make_symmetric(df)
+
+        pop_names = tmrcas.columns
+        pop_names = [pop.split(".")[0] for pop in pop_names]
+        pop_names = [pop.split(" ")[0] for pop in pop_names]
+        regions = list()
+        pop_name_suffixes = list()
+        for pop in pop_names[0:54]:
+            pop_name_suffixes.append(pop + "_HGDP")
+            regions.append(hgdp_region_map[pop])
+        for pop in pop_names[54:80]:
+            pop_name_suffixes.append(pop + "_TGP")
+            regions.append(tgp_region_map[pop])
+        for pop in pop_names[80:210]:
+            pop_name_suffixes.append(pop + "_SGDP")
+            regions.append(sgdp_region_map[pop])
+        for pop in pop_names[210:]:
+            pop_name_suffixes.append(pop)
+            regions.append("Ancients")
+        pop_names = pop_name_suffixes
+        tmrcas.columns = pop_names
+        tmrcas["region"] = regions
+        tgp_origin = {pop: "white" for pop in tmrcas.columns}
+        sgdp_origin = {pop: "white" for pop in tmrcas.columns}
+        hgdp_origin = {pop: "white" for pop in tmrcas.columns}
+        ancient_origin = {pop: "white" for pop in tmrcas.columns}
+        for pop in tmrcas.columns:
+            if "TGP" in pop:
+                tgp_origin[pop] = "black"
+            elif "SGDP" in pop:
+                sgdp_origin[pop] = "black"
+            elif "HGDP" in pop:
+                hgdp_origin[pop] = "black"
+            else:
+                ancient_origin[pop] = "black"
+
+        row_colors = {}
+        region_colors["Ancients"] = "orange"
+
+        for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
+            row_colors[pop_suffix] = region_colors[region]
+
+        tmrcas = tmrcas.drop(columns="region")
+        tmrcas.index = tmrcas.columns
+        mergedg = tmrcas
+
+        row_colors = pd.Series(row_colors)
+        row_colors.name = "Region"
+        tgp_origin = pd.Series(tgp_origin)
+        tgp_origin.name = "TGP"
+        hgdp_origin = pd.Series(hgdp_origin)
+        hgdp_origin.name = "HGDP"
+        sgdp_origin = pd.Series(sgdp_origin)
+        sgdp_origin.name = "SGDP"
+        ancient_origin = pd.Series(ancient_origin)
+        ancient_origin.name = "Ancient"
+        col_colors = pd.concat(
+            [tgp_origin, hgdp_origin, sgdp_origin, ancient_origin], axis=1
         )
-        ax[0, 1].set_ylabel("")
-        ax[0, 0].set_ylabel("Mean Squared Log Error")
-        ax[0, 2].set_xlabel("Ancient Sample Size")
-        ax[0, 3].set_ylabel("")
-        ax[0, 1].tick_params(left="off")
-        ax[0, 2].tick_params(left="off")
-        ax[0, 3].tick_params(left="off")
-        ax[0, 0].set_title("i")
-        ax[0, 1].set_title("ii")
-        ax[0, 2].set_title("iii")
-        ax[0, 3].set_title("iv")
+        mask = np.zeros_like(mergedg, dtype=np.bool)
+        mask[np.tril_indices_from(mask, k=-1)] = True
+        cg = sns.clustermap(mergedg, mask=mask, method="average")
+        mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
+        mask = mask[:, np.argsort(cg.dendrogram_col.reordered_ind)]
+        cg = sns.clustermap(
+            mergedg,
+            mask=mask,
+            method="average",
+            xticklabels=True,
+            yticklabels=True,
+            figsize=(30, 30),
+            rasterized=True,
+            row_colors=row_colors,
+            col_colors=col_colors,
+            cbar_pos=(0.04, 0.28, 0.04, 0.2),
+            cmap=plt.cm.inferno_r,
+            dendrogram_ratio=0.18,
+            cbar_kws=dict(orientation="vertical"),
+        )
+        cg.ax_heatmap.invert_xaxis()
+        cg.ax_heatmap.xaxis.tick_top()
+        cg.cax.tick_params(labelsize=20)
+        cg.cax.set_xlabel("Average TMRCA\n(generations)", size=20)
 
-        for row, df in enumerate([spearman, muts]):
-            if row == 1:
-                sns.boxplot(x=df["tsdate_inferred"], orient="v", ax=ax[row, 0])
-            else:
-                sns.boxplot(x=df["inferred"], orient="v", ax=ax[row, 0])
-            if row == 1:
-                sns.boxplot(
-                    x=df["iter_dated_inferred"],
-                    orient="v",
-                    ax=ax[row, 1],
-                )
-            else:
-                sns.boxplot(
-                    x=df["reinferred"],
-                    orient="v",
-                    ax=ax[row, 1],
-                )
+        cg.ax_heatmap.set_xticklabels(
+            [
+                label.get_text().rsplit("_", 1)[0]
+                for label in cg.ax_heatmap.get_xmajorticklabels()
+            ],
+            fontsize=7,
+            rotation=90,
+        )
+        cg.ax_heatmap.set_yticks([])
 
-            cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
-            df_melt = df.melt(value_vars=cols)
-            df_melt["variable"] = df_melt["variable"].str.split().str[-1]
-            sns.lineplot(
-                x="variable",
-                y="value",
-                data=df_melt,
-                ax=ax[row, 2],
-            )
-        plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
+        for region, col in region_colors.items():
+            cg.ax_col_dendrogram.bar(0, 0, color=col, label=region, linewidth=0)
+
+        cg.ax_col_dendrogram.set_xlim([0, 0])
+
+        # Uncomment to Log Scale the Row Dendrogram
+        # coord = np.array(cg.dendrogram_row.dependent_coord)
+        # coord += 1
+        # coord[coord!= 0] = np.log(coord[coord!= 0] )
+        # cg.dendrogram_row.dependent_coord = coord.tolist()
+        # cg.ax_row_dendrogram.clear()
+        # cg.dendrogram_row.plot(cg.ax_row_dendrogram, {})
+
+        pos = cg.ax_col_colors.get_position()
+        cg.ax_col_colors.set_position(
+            [pos.bounds[0], pos.bounds[1], pos.bounds[2], pos.bounds[3] / 5]
+        )
+
+        pos = cg.ax_col_colors.get_position()
+        points = pos.get_points()
+        points[0][1] = points[0][1] + 0.03  # - 0.72
+        points[1][1] = points[1][1] + 0.03  # - 0.72
+        cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points))
+        handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
+        labels, handles = zip(*sorted(zip(labels, handles)))
+        labels = np.array(labels)
+        remove_bool = ~np.isin(labels, ["West Eurasia", "South Asia"])
+        labels[labels == "Europe"] = "Europe/West Eurasia"
+        handles = [handles[i] for i in np.where(remove_bool)[0]]
+        labels = list(np.array(labels)[remove_bool])
+        cg.ax_col_dendrogram.legend(
+            handles,
+            labels,
+            loc="lower left",
+            ncol=1,
+            fontsize=20,
+            frameon=True,
+            bbox_to_anchor=(-0.25, -4.6),
+            title="Region",
+            title_fontsize=25,
+        )
+
+        # Remove box around the legend
+        cg.ax_col_dendrogram.get_legend().get_frame().set_linewidth(0.0)
+
         self.save(self.name)
 
 
-class IterateAncientsVanillaMsle(Figure):
+class InsetTmrcaHistograms(Figure):
     """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots MSLE results.
+    Figure 2 inset: Plot the three inset histograms to the clustermap
     """
 
-    name = "iterate_ancients_vanilla_msle"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.msle"]
-    plt_title = "Vanilla Simulations MSLE"
+    name = "inset_tmrca_histograms"
+    data_path = "all-data"
+    filename = [
+        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes_all.tmrcas"
+    ]
 
     def __init__(self):
-        super().__init__()
-        self.data = self.data[0]
-
-    def plot(self):
-        muts = self.data
-        widths = [0.5, 0.5, 3, 0.5]
-        heights = [3]
-        gs_kw = dict(width_ratios=widths, height_ratios=heights)
-        gs_kw.update(wspace=0.03)
-        fig, ax = plt.subplots(
-            ncols=4, nrows=1, constrained_layout=True, gridspec_kw=gs_kw, sharey=True
-        )
-        sns.boxplot(x=muts["tsdateTime"], orient="v", ax=ax[0])
-
-        sns.boxplot(
-            x=muts[muts["ancient_sample_size"] == 0]["IterationTime"],
-            orient="v",
-            ax=ax[1],
-        )
-        sns.lineplot(
-            x="ancient_sample_size",
-            y="IterationTime",
-            data=muts[muts["ancient_sample_size"] != 0],
-            ax=ax[2],
-        )
-        # ax = sns.violinplot(x="ancient_sample_size", y="tsinfer_keep_time", data=muts)
-        sns.boxplot(x=muts["tsinfer_keep_time"], orient="v", ax=ax[3])
-        # ax[0].set_xlabel("Date \nTree Seq")
-        # ax[0].set_xticklabels(["Date \nTree Sequence"])
-        ax[1].set_ylabel("")
-        ax[2].set_xlim(0, 100)
-        ax[0].set_ylabel("Mean Squared Log Error")
-        ax[2].set_xlabel("Ancient Sample Size")
-        ax[3].set_ylabel("")
-        ax[1].tick_params(left="off")
-        ax[2].tick_params(left="off")
-        ax[3].tick_params(left="off")
-        ax[0].set_title("i")
-        ax[1].set_title("ii")
-        ax[2].set_title("iii")
-        ax[3].set_title("iv")
-        plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
-        self.save(self.name)
-
-
-class IterateAncientsVanillaPearsonR(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots MSLE results.
-    """
-
-    name = "iterate_ancients_vanilla_pearsonr"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.pearsonr"]
-    plt_title = "Vanilla Simulations Pearson R"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsVanillaSpearmanR(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots MSLE results.
-    """
-
-    name = "iterate_ancients_vanilla_spearmanr"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.spearmanr"]
-    plt_title = "Vanilla Simulations Spearman R"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsVanillaMsleError(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots MSLE results with empirical error.
-    """
-
-    name = "iterate_ancients_vanilla_msle_error"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.msle.empiricalerror"]
-    plt_title = "Vanilla Simulations MSLE Empirical Error"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsVanillaPearsonRError(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots Pearson R results with empirical error.
-    """
-
-    name = "iterate_ancients_vanilla_pearsonr_error"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.pearsonr.empiricalerror"]
-    plt_title = "Vanilla Simulations Pearson R Empirical Error"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsVanillaSpearmanRError(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model. Plots Spearman R results with empirical error.
-    """
-
-    name = "iterate_ancients_vanilla_spearmanr_error"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_mutations.spearmanr.empiricalerror"]
-    plt_title = "Vanilla Simulations Spearman R Empirical Error"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsOOA(IterateAncientsVanillaMsle):
-    """
-    Figure to show accuracy of iterative approach on Chromosome 20.
-    Using the Out of Africa Model
-    """
-
-    name = "iterate_ancients_ooa"
-    data_path = "simulated-data"
-    filename = ["ooa_chr20_mutations"]
-    plt_title = "Chromosome 20 Out of Africa"
-
-    def __init__(self):
-        super().__init__()
-
-
-class IterateAncientsVanillaKC(Figure):
-    """
-    Figure to show accuracy of iterative approach with ancient samples
-    and vanilla demographic model.
-    """
-
-    name = "iterate_ancients_vanilla_kc"
-    data_path = "simulated-data"
-    filename = ["simulate_vanilla_ancient_kc_distances"]
-    plt_title = "KC Distances between Simulated and Inferred Tree Sequences"
-
-    def __init__(self):
+        base_name = self.filename[0]
+        hist_data = np.load(os.path.join(self.data_path, base_name + ".npz"))
+        raw_data = np.load(os.path.join(self.data_path, base_name + "_RAW.npz"))
+        raw_logtimes = raw_data[list(raw_data.keys())[0]]
+        # Make data accessible to plot code: everything under 1 generation get put at 1
+        self.raw_logtimes = np.where(np.exp(raw_logtimes) < 1, np.log(1), raw_logtimes)
+        self.raw_weights = raw_data[list(raw_data.keys())[1]]
+        self.data_rownames = hist_data["combos"]
         super().__init__()
 
     def plot(self):
-        kc_distances = self.data[0]
-        widths = [0.5, 0.5, 3, 0.5]
-        heights = [3, 3]
-        gs_kw = dict(width_ratios=widths, height_ratios=heights)
-        gs_kw.update(wspace=0.03)
-        fig, ax = plt.subplots(
-            ncols=4, nrows=2, constrained_layout=True, gridspec_kw=gs_kw, sharey="row"
+        df = self.data[0]
+        df = df.set_index(df.columns[0])
+        # region_colors = get_tgp_hgdp_sgdp_region_colors()
+        pop_names = df.columns
+        pop_names = [pop.split(".")[0] for pop in pop_names]
+        pop_names = np.array([pop.split(" ")[0] for pop in pop_names])
+
+        regions = list()
+        for pop in pop_names[0:54]:
+            regions.append(hgdp_region_map[pop])
+        for pop in pop_names[54:80]:
+            regions.append(tgp_region_map[pop])
+        for pop in pop_names[80:210]:
+            regions.append(sgdp_region_map[pop])
+        for _ in pop_names[210:]:
+            regions.append("Ancients")
+        regions = np.array(regions)
+
+        def plot_hist(rows, label, color, num_bins, min_bin, ax, fill=False, alpha=1):
+            ax.set_facecolor("lightgrey")
+            av_weight = np.mean(self.raw_weights[rows, :], axis=0)
+            assert av_weight.shape[0] == len(self.raw_logtimes)
+            keep = av_weight != 0
+            _, bins = np.histogram(
+                self.raw_logtimes[keep],
+                weights=av_weight[keep],
+                bins=num_bins,
+                range=[np.log(1), max(self.raw_logtimes)],
+            )
+            # If any bins are < 20 generations, merge them into the lowest bin
+            bins = np.concatenate((bins[:1], bins[np.exp(bins) >= 20]))
+            values, bins = np.histogram(
+                self.raw_logtimes[keep],
+                weights=av_weight[keep],
+                bins=bins,
+                density=True,
+            )
+            x1, y1 = (
+                np.append(bins, bins[-1]),
+                np.zeros(values.shape[0] + 2),
+            )
+            y1[1:-1] = values
+            ax.step(x1, y1, "-", color=color, label=label)
+            if fill:
+                ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
+            ax.legend(fancybox=True, fontsize=18, facecolor="white")
+
+        #############
+        xticks = np.array([10, 20, 50, 1e2, 2e2, 5e2, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4])
+        minor_xticks = np.outer(10 ** np.arange(1, 5), np.arange(1, 10)).flatten()
+        xmax = np.log(1e5)
+        archaic_names = ["Altai", "Chagyrskaya", "Denisovan", "Vindija"]
+        #############
+
+        fig, axes = plt.subplots(
+            3, 1, constrained_layout=True, figsize=(15, 10), sharex=True
         )
-        lambda_0 = kc_distances[kc_distances["lambda_param"] == 0]
-        lambda_1 = kc_distances[kc_distances["lambda_param"] == 1]
-        for ax_index, lambda_results in zip([0, 1], [lambda_0, lambda_1]):
-            sns.boxplot(
-                x=lambda_results[lambda_results["ancient_sample_size"] == 0][
-                    "tsdateTime"
-                ],
-                orient="v",
-                ax=ax[ax_index, 0],
-            )
 
-            sns.boxplot(
-                x=lambda_results[lambda_results["ancient_sample_size"] == 0][
-                    "IterationTime"
-                ],
-                orient="v",
-                ax=ax[ax_index, 1],
-            )
-            sns.lineplot(
-                x="ancient_sample_size",
-                y="IterationTime",
-                data=lambda_results[lambda_results["ancient_sample_size"] != 0],
-                ax=ax[ax_index, 2],
-            )
-            sns.boxplot(
-                x=lambda_results["tsinfer_keep_time"], orient="v", ax=ax[ax_index, 3]
-            )
-            ax[ax_index, 1].set_ylabel("")
-            ax[ax_index, 2].set_xlim(0, 100)
-            ax[ax_index, 2].set_xlabel("Ancient Sample Size")
-            ax[ax_index, 3].set_ylabel("")
-            ax[ax_index, 1].tick_params(left="off")
-            ax[ax_index, 2].tick_params(left="off")
-            ax[ax_index, 3].tick_params(left="off")
-            ax[ax_index, 0].set_title("i")
-            ax[ax_index, 1].set_title("ii")
-            ax[ax_index, 2].set_title("iii")
-            ax[ax_index, 3].set_title("iv")
+        # Bottom Plot:
+        # Samaritan/Samaritan and Samaritan/Others
+        xmin = np.log(10)
+        ax2 = axes[2]
+        params = {"num_bins": 60, "min_bin": 10, "ax": ax2}
+        exsamaritan = np.logical_and(
+            np.any(self.data_rownames == "Samaritan (SGDP)", axis=1),
+            ~np.all(self.data_rownames == "Samaritan (SGDP)", axis=1),
+        )
+        exarchaic_exsamaritan = np.logical_and(
+            exsamaritan, np.all(~np.isin(self.data_rownames, archaic_names), axis=1)
+        )
+        label, col = "Samaritan/Modern Humans \n(ex Samaritan)", "white"
+        plot_hist(exarchaic_exsamaritan, label, col, fill=True, **params)
+        samaritan = np.all(self.data_rownames == "Samaritan (SGDP)", axis=1)
+        label, col = "Samaritan/Samaritan", region_colors["West Eurasia"]
+        plot_hist(samaritan, label, col, **params)
 
-        ax[0, 0].set_ylabel("KC Distance, Lambda=0")
-        ax[1, 0].set_ylabel("KC Distance, Lambda=1")
-        plt.suptitle(self.plt_title)
+        ax2.set_yticks([])
+        ax2.set_xlim(xmin, xmax)
+        ax2.set_xticks(np.log(xticks))
+        ax2.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax2.set_xticklabels([str(int(x)) for x in xticks])
+
+        # Middle Plot:
+        # Papuan+Australian/Denisovan & Denisovan/modern humans (ex papuan + australian)
+        xmin = np.log(100)
+        ylim = axes[1].get_ylim()
+        ax1 = axes[1].inset_axes(
+            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]],
+            transform=axes[1].transData,
+        )
+        params = {"num_bins": 60, "min_bin": 1000, "ax": ax1}
+        sahul_names = [
+            "Bougainville",
+            "Bougainville (SGDP)",
+            "PapuanHighlands",
+            "PapuanSepik",
+            "Australian",
+        ]
+        exsahul_denisovan = np.logical_and(
+            np.any(self.data_rownames == "Denisovan", axis=1),
+            np.all(~np.isin(self.data_rownames, sahul_names), axis=1),
+        )
+        neanderthal_names = ["Altai", "Vindija", "Chagyrskaya"]
+        exarchaic_exsahul_denisovan = np.logical_and(
+            exsahul_denisovan,
+            np.all(~np.isin(self.data_rownames, neanderthal_names), axis=1),
+        )
+        exarchaic_exsahul_denisovan = np.logical_and(
+            exarchaic_exsahul_denisovan,
+            ~np.all(self.data_rownames == "Denisovan", axis=1),
+        )
+        label, col = "Denisovan/Modern Humans \n(ex Papauans, Australians)", "white"
+        plot_hist(exarchaic_exsahul_denisovan, label, col, fill=True, **params)
+        sahul = np.logical_and(
+            np.any(self.data_rownames == "Denisovan", axis=1),
+            np.any(np.isin(self.data_rownames, sahul_names), axis=1),
+        )
+        label, col = "Denisovan/Papuans+Australians", region_colors["Oceania"]
+        plot_hist(sahul, label, col, **params)
+
+        axes[1].axis("off")  # Hide the encapsulating axis
+        ax1.set_yticks([])
+        ax1.set_xlim([xmin, xmax])
+        ax1.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
+        ax1.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax1.set_xticklabels([])
+
+        # Top Plot:
+        # African/African and Non-African/Non-African
+        xmin = np.log(1000)
+        ylim = axes[0].get_ylim()
+        ax0 = axes[0].inset_axes(
+            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]], transform=axes[0].transData
+        )
+        params = {"num_bins": 60, "min_bin": 1000, "ax": ax0}
+        african_names = pop_names[regions == "Africa"]
+        african = np.all(np.isin(self.data_rownames, african_names), axis=1)
+        label, col = "African/African", region_colors["Africa"]
+        plot_hist(african, label, col, fill=True, alpha=0.4, **params)
+        nonafrican_names = pop_names[
+            np.logical_and(regions != "Africa", ~np.isin(pop_names, archaic_names))
+        ]
+        nonafricans = np.all(np.isin(self.data_rownames, nonafrican_names), axis=1)
+        label, col = "Non-African/Non-African \n(ex Archaics)", "black"
+        plot_hist(nonafricans, label, col, **params)
+
+        axes[0].axis("off")  # Hide the encapsulating axis
+        ax0.set_yticks([])
+        ax0.set_xlim([xmin, xmax])
+        ax0.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
+        ax0.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
+        ax0.set_xticklabels([])
+        plt.xlabel("Time to Most Recent Common Ancestor (generations)", fontsize=16)
+
         self.save(self.name)
 
 
@@ -1216,7 +1275,7 @@ class AncientConstraints(Figure):
 
 class ScalingFigure(Figure):
     """
-    Figure showing CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
+    Extended Data Figure 5: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
     With both samples and length of sequence.
     """
 
@@ -1483,7 +1542,8 @@ class ScalingFigure(Figure):
 
 class TgpMutEstsFrequency(Figure):
     """
-    Figure showing TGP mutation age estimates from tsdate, Relate, GEVA vs. frequency.
+    Supplementary Figure 5: Figure showing TGP mutation age estimates from tsdate,
+    Relate, GEVA vs. frequency.
     """
 
     name = "tgp_muts_frequency"
@@ -1550,7 +1610,8 @@ class TgpMutEstsFrequency(Figure):
 
 class TgpMutationAgeComparisons(Figure):
     """
-    Figure comparing TGP mutation age estimates from tsdate, Relate, and GEVA.
+    Supplementary Figure 7: Comparing TGP mutation age estimates from tsdate, Relate,
+    and GEVA.
     """
 
     name = "tgp_dates_comparison"
@@ -1617,7 +1678,8 @@ class TgpMutationAgeComparisons(Figure):
 
 class TgpMutationAverageAge(Figure):
     """
-    Compare mutation age estimates from tsdate, Relate, and GEVA for tgp chromosome 20.
+    Supplementary Figure 6: Compare mutation age estimates from tsdate, Relate, and
+    GEVA for tgp chromosome 20.
     """
 
     name = "mutation_average_age"
@@ -1652,65 +1714,6 @@ class TgpMutationAverageAge(Figure):
             )
         )
         self.save(self.name)
-
-
-class RecurrentMutations(Figure):
-    """
-    Figure showing number of recurrent mutations in 1000G tree sequence inferred by
-    tsinfer.
-    """
-
-    name = "recurrent_mutations"
-    data_path = "data"
-    filename = [
-        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts",
-        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples",
-        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nodouble",
-        "1kg_chr20_ma0.1_ms0.1_p16.recurrent_counts_nosamples_two_muts",
-    ]
-    plt_title = "recurrent_mutations_fig"
-
-    def plot(self):
-        fig, ax = plt.subplots(
-            nrows=3, ncols=1, figsize=(18, 12), sharex=True, sharey=True
-        )
-        plt.subplots_adjust(bottom=0.05)
-        self.data[0] = self.data[0].set_index(self.data[0].columns[0])
-        self.data[1] = self.data[1].set_index(self.data[1].columns[0])
-        ax[0].bar(self.data[0].index + 1, self.data[0]["recurrent_counts"])
-        ax[1].bar(self.data[1].index + 1, self.data[1]["recurrent_counts_nosamples"])
-        ax[2].bar(self.data[2].index + 1, self.data[2]["recurrent_counts_nodouble"])
-        ax[0].set_title("Number of Mutations per site", size=15)
-        ax[1].set_title(
-            "Number of Mutations per Site, removing mutations on sample edges", size=15
-        )
-        ax[2].set_title(
-            "Number of Mutations per Site, removing mutations with one or two samples",
-            size=15,
-        )
-        ax[2].set_xlabel("Mutations per site", size=20)
-        fig.text(0.085, 0.5, "Frequency", va="center", rotation="vertical", size=20)
-
-        ax[0].set_yscale("log")
-        self.save(self.name)
-
-
-class HgdpRecurrentMutations(RecurrentMutations):
-    """
-    Figure showing number of recurrent mutations in HGDP tree sequence inferred by
-    tsinfer.
-    """
-
-    name = "hgdp_recurrent_mutations"
-    data_path = "data"
-    filename = [
-        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts",
-        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts_nosamples",
-        "hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.recurrent_counts_nodouble",
-        """hgdp_missing_data_chr20_ma0.5_ms0.05_p15.simplify.
-        recurrent_counts_nosamples_two_muts""",
-    ]
-    plt_title = "hgdp_recurrent_mutations_fig"
 
 
 class PriorEvaluation(Figure):
@@ -2013,17 +2016,17 @@ class TsdateAccuracy(Figure):
         self.save(self.name)
 
 
-class NeutralSimulatedMutationAccuracy(Figure):
+class NeutralSims(Figure):
     """
-    Supplementary Figure 4: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
+    Supplementary Figure 3: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
     on a neutral coalescent simulation.
     """
 
-    name = "neutral_simulated_mutation_accuracy"
+    name = "neutral_sims"
     data_path = "simulated-data"
     filename = [
-        "neutral_simulated_mutation_accuracy_mutations",
-        "neutral_simulated_mutation_accuracy_kc_distances",
+        "neutral_sims_mutations",
+        "neutral_sims_kc_distances",
     ]
 
     def plot(self):
@@ -2052,15 +2055,16 @@ class NeutralSimulatedMutationAccuracy(Figure):
         # df = df.replace([0, -np.inf], np.nan)
         # df = df.dropna()
         df = df[df["simulated_ts"] > 0]
-        df = df[df["relate"] > 0]
-        df = df[df["tsdate"] > 0]
-        df = df[df["tsdate_inferred"] > 0]
+        df = df[np.all(df > 0, axis=1)]
+        # df = df[df["relate"] > 0]
+        # df = df[df["tsdate"] > 0]
+        # df = df[df["tsdate_inferred"] > 0]
 
         # tsdate on true tree
         self.mutation_accuracy(
             ax[0, 0],
-            df["simulated_ts"],
-            df["tsdate"],
+            df["simulated_ts"][df["tsdate"] > 0],
+            df["tsdate"][df["tsdate"] > 0],
             "tsdate (using true topology)",
             kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
         )
@@ -2068,13 +2072,14 @@ class NeutralSimulatedMutationAccuracy(Figure):
         # tsdate on inferred tree
         self.mutation_accuracy(
             ax[0, 1],
-            df["simulated_ts"],
-            df["tsdate_inferred"],
+            df["simulated_ts"][df["tsdate_iterate"] > 0],
+            df["tsdate_iterate"][df["tsdate_iterate"] > 0],
             "tsinfer + tsdate",
-            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_inferred"]),
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_inferred"]),
+            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_iterate"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_iterate"]),
         )
 
+        df = df[df["relate"] > 0]
         # Relate accuracy
         self.mutation_accuracy(
             ax[1, 1],
@@ -2214,21 +2219,21 @@ class TsdateChr20Accuracy(Figure):
         self.save(self.name)
 
 
-class Chr20SimulatedMutationAccuracy(Figure):
+class Chr20Sims(Figure):
     """
-    Supplementary Figure 7: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
+    Extended Data Figure 4: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
     Chromosome 20 snippets
     """
 
-    name = "simulated_accuracy_chr20"
+    name = "chr20_sims"
     data_path = "simulated-data"
     filename = [
-        "chr20_simulated_mutation_accuracy_mutations",
-        "chr20_simulated_mutation_accuracy_error_mutations",
-        "chr20_simulated_mutation_accuracy_anc_error_mutations",
-        "chr20_simulated_mutation_accuracy_kc_distances",
-        "chr20_simulated_mutation_accuracy_error_kc_distances",
-        "chr20_simulated_mutation_accuracy_anc_error_kc_distances",
+        "chr20_sims_mutations",
+        "chr20_sims_error_mutations",
+        "chr20_sims_anc_error_mutations",
+        "chr20_sims_kc_distances",
+        "chr20_sims_error_kc_distances",
+        "chr20_sims_anc_error_kc_distances",
     ]
     plt_title = "simulated_accuracy_chr20"
 
@@ -2284,20 +2289,23 @@ class Chr20SimulatedMutationAccuracy(Figure):
                 constants.colors["tsdate"],
                 "",
                 constants.colors["tsdate"],
-                constants.colors["Relate"],
-                constants.colors["GEVA"],
+                constants.colors["relate"],
+                constants.colors["geva"],
             ],
         ):
             axes[i, j].set_ylabel(name, rotation=90, color=color, size=20)
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
-        methods = ["tsdate_inferred", "relate", "geva"]
+        methods = ["tsdate_inferred", "relate_iterate", "geva"]
         comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
+        df = df[np.all(df > 0, axis=1)]
         self.mutation_accuracy(
             axes[0, 1],
-            sim[comparable_sites],
-            df["tsdate"][comparable_sites],
+            df["simulated_ts"],
+            df["tsdate"],
+            # sim[comparable_sites],
+            # df["tsdate"][comparable_sites],
             "",
             kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
         )
@@ -2314,8 +2322,11 @@ class Chr20SimulatedMutationAccuracy(Figure):
             ):
                 result = mut_df[method]
                 comparable_sites = np.logical_and(sim > 0, result > 0)
-                cur_true_ages = sim[comparable_sites]
-                cur_results = result[comparable_sites]
+                mut_df = mut_df[np.all(mut_df > 0, axis=1)]
+                # cur_true_ages = sim[comparable_sites]
+                # cur_results = result[comparable_sites]
+                cur_true_ages = mut_df["simulated_ts"]
+                cur_results = mut_df[method]
                 kc_0 = np.mean(kc_df.loc[0][method])
                 kc_1 = np.mean(kc_df.loc[1][method])
                 if np.isnan(kc_0) or np.isnan(kc_1):
@@ -2345,532 +2356,9 @@ class Chr20SimulatedMutationAccuracy(Figure):
         self.save(self.name)
 
 
-class TsdateIterationAccuracy(NeutralSimulatedMutationAccuracy):
-    """
-    Plot figure showing accuracy of tsdate iteration
-    """
-
-    name = "tsdate_iter_neutral_simulated_mutation_accuracy"
-    data_path = "simulated-data"
-    filename = ["tsdate_iteration_neutral_simulated_mutation_accuracy_mutations"]
-
-    def plot(self):
-        df = self.data[0]
-        with sns.axes_style("white"):
-            fig, ax = plt.subplots(
-                nrows=3, ncols=2, figsize=(12, 12), sharex=True, sharey=True
-            )
-            # We can only plot comparable mutations, so remove all rows where NaNs exist
-            df = df.dropna()
-
-            ax[0, 0].set_xscale("log")
-            ax[0, 0].set_yscale("log")
-            ax[0, 0].set_xlim(1, 2e5)
-            ax[0, 0].set_ylim(1, 2e5)
-
-            # tsdate on true tree
-            self.mutation_accuracy(
-                ax[0, 0],
-                df["simulated_ts"],
-                df["tsdate"],
-                "tsdate (using true topology)",
-            )
-            # tsdate on true tree
-            self.mutation_accuracy(
-                ax[0, 1],
-                df["simulated_ts"],
-                df["tsdate_1stiter"],
-                "tsdate (using true topology) 1 iteration",
-            )
-            # tsdate on true tree
-            self.mutation_accuracy(
-                ax[1, 0],
-                df["simulated_ts"],
-                df["tsdate_2nditer"],
-                "tsdate (using true topology) 2 iteration",
-            )
-
-            # tsdate on inferred tree
-            self.mutation_accuracy(
-                ax[1, 1], df["simulated_ts"], df["tsdate_inferred"], "tsinfer + tsdate"
-            )
-            # tsdate on inferred tree
-            self.mutation_accuracy(
-                ax[2, 0],
-                df["simulated_ts"],
-                df["tsdate_inferred_1stiter"],
-                "tsinfer + tsdate",
-            )
-            # tsdate on inferred tree
-            self.mutation_accuracy(
-                ax[2, 1],
-                df["simulated_ts"],
-                df["tsdate_inferred_2nditer"],
-                "tsinfer + tsdate",
-            )
-
-            self.save(self.name)
-
-
-class OoaChr20SimulatedMutationAccuracy(NeutralSimulatedMutationAccuracy):
-    """"""
-
-    name = "ooa_chr20_simulated_mutation_accuracy"
-    data_path = "simulated-data"
-    filename = [
-        "chr20_simulated_mutation_accuracy_mutations",
-        "chr20_simulated_mutation_accuracy_kc_distances",
-        "chr20_simulated_mutation_accuracy_error_mutations",
-        "chr20_simulated_mutation_accuracy_error_kc_distances",
-        "chr20_simulated_mutation_accuracy_anc_error_mutations",
-        "chr20_simulated_mutation_accuracy_anc_error_kc_distances",
-    ]
-
-    def plot(self):
-        df = self.data[0]
-        kc_distances = self.data[1]
-        kc_distances = kc_distances.set_index(kc_distances.columns[0])
-        error_df = self.data[2]
-        error_kc = self.data[3]
-        error_kc = error_kc.set_index(error_kc.columns[0])
-        anc_error_df = self.data[4]
-        anc_error_kc = self.data[5]
-        anc_error_kc = anc_error_kc.set_index(anc_error_kc.columns[0])
-
-        f, axes = plt.subplots(
-            ncols=3,
-            nrows=5,
-            sharex=True,
-            sharey=True,
-            gridspec_kw={
-                "wspace": 0.1,
-                "hspace": 0.1,
-                "width_ratios": [1, 1, 1],
-                "height_ratios": [1, 0.1, 1, 1, 1],
-            },
-            figsize=(15, 20),
-        )
-        axes[0, 0].axis("off")
-        axes[0, 2].axis("off")
-        for i in range(0, 3):
-            axes[1, i].axis("off")
-
-        axes[0, 0].set_xscale("log")
-        axes[0, 0].set_yscale("log")
-        axes[0, 0].set_xlim(1, 2e5)
-        axes[0, 0].set_ylim(1, 2e5)
-        x0, x1 = axes[0, 0].get_xlim()
-        y0, y1 = axes[0, 0].get_ylim()
-        axes[0, 1].set_title("tsdate using Simulated Topology")
-        axes[2, 0].set_title("No Error")
-        axes[2, 1].set_title("Empirical Error")
-        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
-        row_labels = ["tsdate", "", "tsinfer + tsdate", "Relate", "GEVA"]
-        for (i, name), j, color in zip(
-            enumerate(row_labels), [1, 2, 2, 2, 2], ["Blue", "", "Blue", "Green", "Red"]
-        ):
-            axes[i, j].set_ylabel(name, rotation=90, color=color, size=20)
-            axes[i, j].yaxis.set_label_position("right")
-
-        self.mutation_accuracy(
-            axes[0, 1],
-            df["simulated_ts"][df["tsdate"] > 0],
-            df["tsdate"][df["tsdate"] > 0],
-            "",
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
-        )
-        for col, (df, kc) in enumerate(
-            zip([df, error_df, anc_error_df], [kc_distances, error_kc, anc_error_kc])
-        ):
-            # tsdate on inferred tree
-            tsdate_inferred_viable = np.logical_and(
-                df["tsdate_inferred"] > 0, df["simulated_ts"] > 0
-            )
-            self.mutation_accuracy(
-                axes[2, col],
-                df["simulated_ts"][tsdate_inferred_viable],
-                df["tsdate_inferred"][tsdate_inferred_viable],
-                "",
-                kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_inferred"]),
-                kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_inferred"]),
-            )
-
-            # Relate accuracy
-            relate_ages_viable = np.logical_and(
-                df["simulated_ts"] > 0,
-                np.logical_and(~np.isnan(df["relate_reage"]), df["relate_reage"] > 0),
-            )
-            self.mutation_accuracy(
-                axes[3, col],
-                df["simulated_ts"][relate_ages_viable],
-                df["relate_reage"][relate_ages_viable],
-                "",
-                kc_distance_0=np.mean(kc_distances.loc[0]["relate"]),
-                kc_distance_1=np.mean(kc_distances.loc[1]["relate"]),
-            )
-
-            # GEVA accuracy
-            self.mutation_accuracy(
-                axes[4, col],
-                df["simulated_ts"][~np.isnan(df["geva"])],
-                df["geva"][~np.isnan(df["geva"])],
-                "",
-            )
-
-        f.text(0.5, 0.05, "True Time", ha="center", size=25)
-        f.text(0.08, 0.5, "Estimated Time", va="center", rotation="vertical", size=25)
-
-        self.save(self.name)
-
-
-class TmrcaClustermap(Figure):
-    """
-    Plot the TMRCA clustermap (Figure 2)
-    """
-
-    name = "tmrca_clustermap"
-    data_path = "all-data"
-    filename = [
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
-    ]
-
-    def make_symmetric(self, df):
-        """
-        Make TMRCA dataframe symmetric
-        """
-        df_arr = df.values
-        i_upper = np.tril_indices(df.shape[0], 0)
-        df_arr[i_upper] = df_arr.T[i_upper]
-        return df
-
-    def plot(self):
-        df = self.data[0]
-        df = df.set_index(df.columns[0])
-        tmrcas = self.make_symmetric(df)
-
-        pop_names = tmrcas.columns
-        pop_names = [pop.split(".")[0] for pop in pop_names]
-        pop_names = [pop.split(" ")[0] for pop in pop_names]
-        regions = list()
-        pop_name_suffixes = list()
-        for pop in pop_names[0:54]:
-            pop_name_suffixes.append(pop + "_HGDP")
-            regions.append(hgdp_region_map[pop])
-        for pop in pop_names[54:80]:
-            pop_name_suffixes.append(pop + "_TGP")
-            regions.append(tgp_region_map[pop])
-        for pop in pop_names[80:210]:
-            pop_name_suffixes.append(pop + "_SGDP")
-            regions.append(sgdp_region_map[pop])
-        for pop in pop_names[210:]:
-            pop_name_suffixes.append(pop)
-            regions.append("Ancients")
-        pop_names = pop_name_suffixes
-        tmrcas.columns = pop_names
-        tmrcas["region"] = regions
-        tgp_origin = {pop: "white" for pop in tmrcas.columns}
-        sgdp_origin = {pop: "white" for pop in tmrcas.columns}
-        hgdp_origin = {pop: "white" for pop in tmrcas.columns}
-        ancient_origin = {pop: "white" for pop in tmrcas.columns}
-        for pop in tmrcas.columns:
-            if "TGP" in pop:
-                tgp_origin[pop] = "black"
-            elif "SGDP" in pop:
-                sgdp_origin[pop] = "black"
-            elif "HGDP" in pop:
-                hgdp_origin[pop] = "black"
-            else:
-                ancient_origin[pop] = "black"
-
-        row_colors = {}
-        region_colors["Ancients"] = "orange"
-
-        for pop_suffix, region in zip(tmrcas.columns, tmrcas["region"]):
-            row_colors[pop_suffix] = region_colors[region]
-
-        tmrcas = tmrcas.drop(columns="region")
-        tmrcas.index = tmrcas.columns
-        mergedg = tmrcas
-
-        row_colors = pd.Series(row_colors)
-        row_colors.name = "Region"
-        tgp_origin = pd.Series(tgp_origin)
-        tgp_origin.name = "TGP"
-        hgdp_origin = pd.Series(hgdp_origin)
-        hgdp_origin.name = "HGDP"
-        sgdp_origin = pd.Series(sgdp_origin)
-        sgdp_origin.name = "SGDP"
-        ancient_origin = pd.Series(ancient_origin)
-        ancient_origin.name = "Ancient"
-        col_colors = pd.concat(
-            [tgp_origin, hgdp_origin, sgdp_origin, ancient_origin], axis=1
-        )
-        mask = np.zeros_like(mergedg, dtype=np.bool)
-        mask[np.tril_indices_from(mask, k=-1)] = True
-        cg = sns.clustermap(mergedg, mask=mask, method="average")
-        mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
-        mask = mask[:, np.argsort(cg.dendrogram_col.reordered_ind)]
-        cg = sns.clustermap(
-            mergedg,
-            mask=mask,
-            method="average",
-            xticklabels=True,
-            yticklabels=True,
-            figsize=(30, 30),
-            rasterized=True,
-            row_colors=row_colors,
-            col_colors=col_colors,
-            cbar_pos=(0.04, 0.28, 0.04, 0.2),
-            cmap=plt.cm.inferno_r,
-            dendrogram_ratio=0.18,
-            cbar_kws=dict(orientation="vertical"),
-        )
-        cg.ax_heatmap.invert_xaxis()
-        cg.ax_heatmap.xaxis.tick_top()
-        cg.cax.tick_params(labelsize=20)
-        cg.cax.set_xlabel("Average TMRCA\n(generations)", size=20)
-
-        cg.ax_heatmap.set_xticklabels(
-            [
-                label.get_text().rsplit("_", 1)[0]
-                for label in cg.ax_heatmap.get_xmajorticklabels()
-            ],
-            fontsize=7,
-            rotation=90,
-        )
-        cg.ax_heatmap.set_yticks([])
-
-        for region, col in region_colors.items():
-            cg.ax_col_dendrogram.bar(0, 0, color=col, label=region, linewidth=0)
-
-        cg.ax_col_dendrogram.set_xlim([0, 0])
-
-        # Uncomment to Log Scale the Row Dendrogram
-        # coord = np.array(cg.dendrogram_row.dependent_coord)
-        # coord += 1
-        # coord[coord!= 0] = np.log(coord[coord!= 0] )
-        # cg.dendrogram_row.dependent_coord = coord.tolist()
-        # cg.ax_row_dendrogram.clear()
-        # cg.dendrogram_row.plot(cg.ax_row_dendrogram, {})
-
-        pos = cg.ax_col_colors.get_position()
-        cg.ax_col_colors.set_position(
-            [pos.bounds[0], pos.bounds[1], pos.bounds[2], pos.bounds[3] / 5]
-        )
-
-        pos = cg.ax_col_colors.get_position()
-        points = pos.get_points()
-        points[0][1] = points[0][1] + 0.03  # - 0.72
-        points[1][1] = points[1][1] + 0.03  # - 0.72
-        cg.ax_col_colors.set_position(matplotlib.transforms.Bbox.from_extents(points))
-        handles, labels = cg.ax_col_dendrogram.get_legend_handles_labels()
-        labels, handles = zip(*sorted(zip(labels, handles)))
-        labels = np.array(labels)
-        remove_bool = ~np.isin(labels, ["West Eurasia", "South Asia"])
-        labels[labels == "Europe"] = "Europe/West Eurasia"
-        handles = [handles[i] for i in np.where(remove_bool)[0]]
-        labels = list(np.array(labels)[remove_bool])
-        cg.ax_col_dendrogram.legend(
-            handles,
-            labels,
-            loc="lower left",
-            ncol=1,
-            fontsize=20,
-            frameon=True,
-            bbox_to_anchor=(-0.25, -4.6),
-            title="Region",
-            title_fontsize=25,
-        )
-
-        # Remove box around the legend
-        cg.ax_col_dendrogram.get_legend().get_frame().set_linewidth(0.0)
-
-        self.save(self.name)
-
-
-class InsetTmrcaHistograms(Figure):
-    """
-    Plot the three inset histograms to the clustermap in Figure 2.
-    """
-
-    name = "inset_tmrca_histograms"
-    data_path = "all-data"
-    filename = [
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes_all.tmrcas"
-    ]
-
-    def __init__(self):
-        base_name = self.filename[0]
-        hist_data = np.load(os.path.join(self.data_path, base_name + ".npz"))
-        raw_data = np.load(os.path.join(self.data_path, base_name + "_RAW.npz"))
-        raw_logtimes = raw_data[list(raw_data.keys())[0]]
-        # Make data accessible to plot code: everything under 1 generation get put at 1
-        self.raw_logtimes = np.where(np.exp(raw_logtimes) < 1, np.log(1), raw_logtimes)
-        self.raw_weights = raw_data[list(raw_data.keys())[1]]
-        self.data_rownames = hist_data["combos"]
-        super().__init__()
-
-    def plot(self):
-        df = self.data[0]
-        df = df.set_index(df.columns[0])
-        # region_colors = get_tgp_hgdp_sgdp_region_colors()
-        pop_names = df.columns
-        pop_names = [pop.split(".")[0] for pop in pop_names]
-        pop_names = np.array([pop.split(" ")[0] for pop in pop_names])
-
-        regions = list()
-        for pop in pop_names[0:54]:
-            regions.append(hgdp_region_map[pop])
-        for pop in pop_names[54:80]:
-            regions.append(tgp_region_map[pop])
-        for pop in pop_names[80:210]:
-            regions.append(sgdp_region_map[pop])
-        for _ in pop_names[210:]:
-            regions.append("Ancients")
-        regions = np.array(regions)
-
-        def plot_hist(rows, label, color, num_bins, min_bin, ax, fill=False, alpha=1):
-            ax.set_facecolor("lightgrey")
-            av_weight = np.mean(self.raw_weights[rows, :], axis=0)
-            assert av_weight.shape[0] == len(self.raw_logtimes)
-            keep = av_weight != 0
-            _, bins = np.histogram(
-                self.raw_logtimes[keep],
-                weights=av_weight[keep],
-                bins=num_bins,
-                range=[np.log(1), max(self.raw_logtimes)],
-            )
-            # If any bins are < 20 generations, merge them into the lowest bin
-            bins = np.concatenate((bins[:1], bins[np.exp(bins) >= 20]))
-            values, bins = np.histogram(
-                self.raw_logtimes[keep],
-                weights=av_weight[keep],
-                bins=bins,
-                density=True,
-            )
-            x1, y1 = (
-                np.append(bins, bins[-1]),
-                np.zeros(values.shape[0] + 2),
-            )
-            y1[1:-1] = values
-            ax.step(x1, y1, "-", color=color, label=label)
-            if fill:
-                ax.fill_between(x1, y1, step="pre", color=color, alpha=alpha)
-            ax.legend(fancybox=True, fontsize=18, facecolor="white")
-
-        #############
-        xticks = np.array([10, 20, 50, 1e2, 2e2, 5e2, 1e3, 2e3, 5e3, 1e4, 2e4, 5e4])
-        minor_xticks = np.outer(10 ** np.arange(1, 5), np.arange(1, 10)).flatten()
-        xmax = np.log(1e5)
-        archaic_names = ["Altai", "Chagyrskaya", "Denisovan", "Vindija"]
-        #############
-
-        fig, axes = plt.subplots(
-            3, 1, constrained_layout=True, figsize=(15, 10), sharex=True
-        )
-
-        # Bottom Plot:
-        # Samaritan/Samaritan and Samaritan/Others
-        xmin = np.log(10)
-        ax2 = axes[2]
-        params = {"num_bins": 60, "min_bin": 10, "ax": ax2}
-        exsamaritan = np.logical_and(
-            np.any(self.data_rownames == "Samaritan (SGDP)", axis=1),
-            ~np.all(self.data_rownames == "Samaritan (SGDP)", axis=1),
-        )
-        exarchaic_exsamaritan = np.logical_and(
-            exsamaritan, np.all(~np.isin(self.data_rownames, archaic_names), axis=1)
-        )
-        label, col = "Samaritan/Modern Humans \n(ex Samaritan)", "white"
-        plot_hist(exarchaic_exsamaritan, label, col, fill=True, **params)
-        samaritan = np.all(self.data_rownames == "Samaritan (SGDP)", axis=1)
-        label, col = "Samaritan/Samaritan", region_colors["West Eurasia"]
-        plot_hist(samaritan, label, col, **params)
-
-        ax2.set_yticks([])
-        ax2.set_xlim(xmin, xmax)
-        ax2.set_xticks(np.log(xticks))
-        ax2.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
-        ax2.set_xticklabels([str(int(x)) for x in xticks])
-
-        # Middle Plot:
-        # Papuan+Australian/Denisovan & Denisovan/modern humans (ex papuan + australian)
-        xmin = np.log(100)
-        ylim = axes[1].get_ylim()
-        ax1 = axes[1].inset_axes(
-            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]],
-            transform=axes[1].transData,
-        )
-        params = {"num_bins": 60, "min_bin": 1000, "ax": ax1}
-        sahul_names = [
-            "Bougainville",
-            "Bougainville (SGDP)",
-            "PapuanHighlands",
-            "PapuanSepik",
-            "Australian",
-        ]
-        exsahul_denisovan = np.logical_and(
-            np.any(self.data_rownames == "Denisovan", axis=1),
-            np.all(~np.isin(self.data_rownames, sahul_names), axis=1),
-        )
-        neanderthal_names = ["Altai", "Vindija", "Chagyrskaya"]
-        exarchaic_exsahul_denisovan = np.logical_and(
-            exsahul_denisovan,
-            np.all(~np.isin(self.data_rownames, neanderthal_names), axis=1),
-        )
-        exarchaic_exsahul_denisovan = np.logical_and(
-            exarchaic_exsahul_denisovan,
-            ~np.all(self.data_rownames == "Denisovan", axis=1),
-        )
-        label, col = "Denisovan/Modern Humans \n(ex Papauans, Australians)", "white"
-        plot_hist(exarchaic_exsahul_denisovan, label, col, fill=True, **params)
-        sahul = np.logical_and(
-            np.any(self.data_rownames == "Denisovan", axis=1),
-            np.any(np.isin(self.data_rownames, sahul_names), axis=1),
-        )
-        label, col = "Denisovan/Papuans+Australians", region_colors["Oceania"]
-        plot_hist(sahul, label, col, **params)
-
-        axes[1].axis("off")  # Hide the encapsulating axis
-        ax1.set_yticks([])
-        ax1.set_xlim([xmin, xmax])
-        ax1.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
-        ax1.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
-        ax1.set_xticklabels([])
-
-        # Top Plot:
-        # African/African and Non-African/Non-African
-        xmin = np.log(1000)
-        ylim = axes[0].get_ylim()
-        ax0 = axes[0].inset_axes(
-            [xmin, ylim[0], xmax - xmin, ylim[1] - ylim[0]], transform=axes[0].transData
-        )
-        params = {"num_bins": 60, "min_bin": 1000, "ax": ax0}
-        african_names = pop_names[regions == "Africa"]
-        african = np.all(np.isin(self.data_rownames, african_names), axis=1)
-        label, col = "African/African", region_colors["Africa"]
-        plot_hist(african, label, col, fill=True, alpha=0.4, **params)
-        nonafrican_names = pop_names[
-            np.logical_and(regions != "Africa", ~np.isin(pop_names, archaic_names))
-        ]
-        nonafricans = np.all(np.isin(self.data_rownames, nonafrican_names), axis=1)
-        label, col = "Non-African/Non-African \n(ex Archaics)", "black"
-        plot_hist(nonafricans, label, col, **params)
-
-        axes[0].axis("off")  # Hide the encapsulating axis
-        ax0.set_yticks([])
-        ax0.set_xlim([xmin, xmax])
-        ax0.set_xticks(np.log(xticks[xticks > np.exp(xmin)]))
-        ax0.set_xticks(np.log(minor_xticks[minor_xticks > np.exp(xmin)]), minor=True)
-        ax0.set_xticklabels([])
-        plt.xlabel("Time to Most Recent Common Ancestor (generations)", fontsize=16)
-
-        self.save(self.name)
-
-
 class plot_sample_locations(Figure):
     """
-    Plot the locations of samples used in Figure 5.
+    Figure 4a: Plot the locations of samples
     """
 
     name = "sample_locations"
@@ -3076,7 +2564,7 @@ class PopulationAncestors(Figure):
 
 class WorldDensity(Figure):
     """
-    Figure 4c, world map with all ancestors plotted at six timepoints
+    Figure 4c: World map with all ancestors plotted at six timepoints
     """
 
     name = "world_density"

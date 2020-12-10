@@ -136,6 +136,17 @@ ${ANCESTRAL_STATES_PREFIX_37}/README: ${ANCESTRAL_STATES_TARBALL_37}
 chr%_ancestral_states_37.fa: ${ANCESTRAL_STATES_PREFIX_37}/README
 		ln -sf ${ANCESTRAL_STATES_PREFIX_37}/homo_sapiens_ancestor_$*.fa $@
 
+###########################
+# GRCh38 Recombination Maps
+###########################
+
+recomb-hg38/:
+	wget http://csg.sph.umich.edu/locuszoom/download/recomb-hg38.tar.gz
+	tar -xvzf recomb-hg38.tar.gz
+	./modify_genetic_map.sh
+
+genetic_map_GRCh38_%.txt: recomb-hg38/
+
 chr%_ancestral_states_37.fa.fai: chr%_ancestral_states_37.fa
 		samtools faidx $^
 
@@ -626,6 +637,9 @@ hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples 
 
 all_ancients_chr20.samples: reich_ancients_chr20.samples afanasievo_chr20.samples denisovan_chr20.samples vindija_chr20.samples chagyrskaya_chr20.samples altai_chr20.samples ust_ishim_chr20.samples loshbour_chr20.samples lbk_chr20.samples
 		python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
+
+all_ancients_chr20.samples: reich_ancients_chr20.samples afanasievo_chr20.samples denisovan_chr20.samples vindija_chr20.samples chagyrskaya_chr20.samples altai_chr20.samples ust_ishim_chr20.samples loshbour_chr20.samples lbk_chr20.samples
+	python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
 
 hgdp_1kg_sgdp_high_cov_ancients_dated_%.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples hgdp_1kg_sgdp_all_ancients_%.samples
 		python3 tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples --all-samples hgdp_1kg_sgdp_all_ancients_$*.samples --dated-ts hgdp_1kg_sgdp_$*.missing_binned.dated.trees --output $@ > hgdp_1kg_sgdp_high_cov_ancients_dated_$*_constrained_variants.txt

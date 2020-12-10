@@ -649,14 +649,10 @@ def main():
 
     subparser = subparsers.add_parser("output-indiv-times")
     subparser.add_argument(
-        "input",
-        type=str,
-        help="Add individuals times to sampledata file.",
+        "input", type=str, help="Add individuals times to sampledata file.",
     )
     subparser.add_argument(
-        "output",
-        type=str,
-        help="Add individuals times to sampledata file.",
+        "output", type=str, help="Add individuals times to sampledata file.",
     )
     subparser.set_defaults(func=add_indiv_times)
 
@@ -682,19 +678,13 @@ def main():
 
     subparser = subparsers.add_parser("combined-ts-dated-samples")
     subparser.add_argument(
-        "--high-cov",
-        type=str,
-        help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
+        "--high-cov", type=str, help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
     )
     subparser.add_argument(
-        "--all-samples",
-        type=str,
-        help="HGDP + 1kg + SGDP + All Ancients.",
+        "--all-samples", type=str, help="HGDP + 1kg + SGDP + All Ancients.",
     )
     subparser.add_argument(
-        "--dated-ts",
-        type=str,
-        help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+        "--dated-ts", type=str, help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)

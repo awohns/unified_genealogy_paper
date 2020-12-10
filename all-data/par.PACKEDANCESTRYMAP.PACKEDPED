@@ -1,0 +1,7 @@
+genotypename:    v42.4.1240K.geno
+snpname:         v42.4.1240K.snp
+indivname:       v42.4.1240K.ind
+outputformat:    PACKEDPED
+genotypeoutname: v42.4.1240K.bed
+snpoutname:      v42.4.1240K.pedsnp
+indivoutname:    v42.4.1240K.pedind
