@@ -112,27 +112,28 @@ def get_tsdate_tgp_age_df():
     else:
         tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.trees")
         posterior_mut_ages, posterior_upper_bound, oldest_mut_nodes = get_mut_ages(
-            tgp_chr20, unconstrained=False
+            tgp_chr20, unconstrained=False, geometric=False
         )
-        site_frequencies = get_site_frequencies(tgp_chr20)
+        keep_sites = ~np.isnan(posterior_mut_ages)
+        site_frequencies = get_site_frequencies(tgp_chr20)[keep_sites]
         tsdate_ages = pd.DataFrame(
             {
-                "Position": tgp_chr20.tables.sites.position,
-                "tsdate_age": posterior_mut_ages,
-                "tsdate_upper_bound": posterior_upper_bound,
+                "Position": tgp_chr20.tables.sites.position[keep_sites],
+                "tsdate_age": posterior_mut_ages[keep_sites],
+                "tsdate_upper_bound": posterior_upper_bound[keep_sites],
                 "tsdate_frequency": site_frequencies,
                 "tsdate_ancestral_allele": np.array(
                     tskit.unpack_strings(
                         tgp_chr20.tables.sites.ancestral_state,
                         tgp_chr20.tables.sites.ancestral_state_offset,
                     )
-                ),
+                )[keep_sites],
                 "tsdate_derived_allele": np.array(
                     tskit.unpack_strings(
                         tgp_chr20.tables.mutations.derived_state,
                         tgp_chr20.tables.mutations.derived_state_offset,
                     )
-                )[oldest_mut_nodes],
+                )[oldest_mut_nodes[keep_sites]],
             }
         )
         tsdate_ages.to_csv("data/1kg_chr20_tsdate_mutation_ages.csv")
@@ -180,6 +181,7 @@ def get_site_frequencies(ts):
 
 
 def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=True):
+    # Get age of oldest mutations associated with a site, ignoring mutations below oldest root
     mut_ages = np.zeros(ts.num_sites)
     mut_upper_bounds = np.zeros(ts.num_sites)
     node_ages = ts.tables.nodes.time
@@ -198,6 +200,7 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
             np.isin(mutations_table.site, unique_sites),
             np.isin(mutations_table.node, ts.samples()),
         )
+    samples = set(ts.samples())
     for tree in tqdm(ts.trees(), total=ts.num_trees, desc="Finding mutation ages"):
         for site in tree.sites():
             for mut in site.mutations:
@@ -207,9 +210,14 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
                 else:
                     age = (node_ages[mut.node] + parent_age) / 2
                 if mut_ages[site.id] < age:
-                    mut_upper_bounds[site.id] = parent_age
-                    mut_ages[site.id] = age
-                    oldest_mut_ids[site.id] = mut.id
+                    if tree.parent(mut.node) == ts.num_nodes - 1:
+                        mut_upper_bounds[site.id] = np.nan
+                        mut_ages[site.id] = np.nan
+                        oldest_mut_ids[site.id] = np.nan
+                    else:
+                        mut_upper_bounds[site.id] = parent_age
+                        mut_ages[site.id] = age
+                        oldest_mut_ids[site.id] = mut.id
     return mut_ages, mut_upper_bounds, oldest_mut_ids.astype(int)
 
 
@@ -1019,10 +1027,10 @@ def find_archaic_relationships(args):
 def get_tmrcas(args):
     ts_fn = os.path.join(
         data_prefix,
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.trees",
+        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
     )
     tmrcas.save_tmrcas(
-        ts_fn, max_pop_nodes=20, num_processes=args.num_processes, save_raw_data=True
+        ts_fn, max_pop_nodes=20, num_processes=args.processes, save_raw_data=True
     )
 
 
@@ -1047,7 +1055,7 @@ def main():
         "name", type=str, help="figure name", choices=list(name_map.keys()) + ["all"]
     )
     parser.add_argument(
-        "--num_processes",
+        "--processes",
         "-p",
         type=int,
         default=1,
