@@ -38,11 +38,6 @@ from matplotlib.animation import FuncAnimation
 import constants
 import utility
 
-# Unified TS used in multiple plots
-ts = tskit.load(
-    "all-data/hgdp_1kg_sgdp_ma_1_ms_1/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
-)
-
 sgdp_region_map = {
     "Abkhasian": "West Eurasia",
     "Adygei": "West Eurasia",
@@ -313,6 +308,10 @@ class Figure(object):
     filename = None
     delimiter = None
     header = "infer"
+    # Unified TS used in multiple plots
+    ts = tskit.load(
+        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
+    )
 
     def __init__(self):
         self.data = list()
@@ -441,11 +440,11 @@ class TsdateNeutralSims(Figure):
         ax[0].set_ylim(1, 2e5)
 
         # tsdate on true tree
-        self.mutation_accuracy(ax[0], true_vals, tsdate, None, cmap=None)
+        self.mutation_accuracy(ax[0], true_vals[tsdate > 0], tsdate[tsdate > 0], None, cmap="Blues")
         ax[0].set_title("tsdate (using true topology)", fontsize=24)
 
         # tsdate on inferred tree
-        hb = self.mutation_accuracy(ax[1], true_vals, tsdate_inferred, None, cmap=None)
+        hb = self.mutation_accuracy(ax[1], true_vals[tsdate_inferred > 0], tsdate_inferred[tsdate_inferred > 0], None, cmap="Blues")
         ax[1].set_title("tsinfer + tsdate", fontsize=24)
         fig.subplots_adjust(right=0.9)
         colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
@@ -676,9 +675,9 @@ class TmrcaClustermap(Figure):
     """
 
     name = "tmrca_clustermap"
-    data_path = "all-data"
+    data_path = "data"
     filename = [
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
+        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"
     ]
 
     def make_symmetric(self, df):
@@ -841,9 +840,9 @@ class InsetTmrcaHistograms(Figure):
     """
 
     name = "inset_tmrca_histograms"
-    data_path = "all-data"
+    data_path = "data"
     filename = [
-        "merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes_all.tmrcas"
+        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"
     ]
 
     def __init__(self):
@@ -1115,7 +1114,7 @@ class AncientConstraints(Figure):
                         self.jitter(np.zeros(len(cur_df.index)), log=False),
                         constants.GENERATION_TIME * cur_df[estimate],
                         c=cur_df["tsdate_frequency"],
-                        s=scatter_size,
+                        s=scatter_size / 2,
                         alpha=scatter_alpha / 6,
                         cmap="plasma_r",
                         norm=mplc.LogNorm(
@@ -1149,7 +1148,7 @@ class AncientConstraints(Figure):
                     self.jitter(np.zeros(len(df_new.index)), log=False),
                     constants.GENERATION_TIME * df_new[method[1][1]],
                     c=df_new["tsdate_frequency"],
-                    s=scatter_size,
+                    s=scatter_size / 2,
                     alpha=scatter_alpha / 6,
                     cmap="plasma_r",
                     norm=mplc.LogNorm(vmin=np.min(df_new["tsdate_frequency"]), vmax=1),
@@ -1420,12 +1419,7 @@ class ScalingFigure(Figure):
         self.samples_index = samples_means.index
         self.length_index = length_means.index / 1000000
 
-        fig, ax = plt.subplots(
-            nrows=2,
-            ncols=2,
-            figsize=(20, 9),
-            sharex=False,
-        )
+        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(20, 9), sharex=False,)
         self.plot_subplot(
             ax[0, 0],
             self.samples_index,
@@ -2022,11 +2016,11 @@ class NeutralSims(Figure):
     on a neutral coalescent simulation.
     """
 
-    name = "neutral_sims"
+    name = "neutral_simulated_mutation_accuracy"
     data_path = "simulated-data"
     filename = [
-        "neutral_sims_mutations",
-        "neutral_sims_kc_distances",
+        "neutral_simulated_mutation_accuracy_mutations",
+        "neutral_simulated_mutation_accuracy_kc_distances",
     ]
 
     def plot(self):
@@ -2072,11 +2066,11 @@ class NeutralSims(Figure):
         # tsdate on inferred tree
         self.mutation_accuracy(
             ax[0, 1],
-            df["simulated_ts"][df["tsdate_iterate"] > 0],
-            df["tsdate_iterate"][df["tsdate_iterate"] > 0],
+            df["simulated_ts"][df["tsdate_inferred"] > 0],
+            df["tsdate_inferred"][df["tsdate_inferred"] > 0],
             "tsinfer + tsdate",
-            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_iterate"]),
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_iterate"]),
+            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_inferred"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_inferred"]),
         )
 
         df = df[df["relate"] > 0]
@@ -2174,14 +2168,14 @@ class TsdateChr20Accuracy(Figure):
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
-        methods = ["inferred_dated", "mismatch_inferred_dated", "iter_dated_ts"]
-        comparable_sites = np.logical_and(sim > 0, df["dated"] > 0)
+        methods = ["tsdate_inferred", "tsdate_mismatch_inferred", "tsdate_iterate_frommismatch"]
+        comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
         self.mutation_accuracy(
             axes[0, 1],
             sim[comparable_sites],
-            df["dated"][comparable_sites],
+            df["tsdate"][comparable_sites],
             "",
-            kc_distance_1=np.mean(kc_distances.loc[1]["dated"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
         )
         for col, prefix, (mut_df, kc_df) in zip(
             range(3),
@@ -2192,13 +2186,17 @@ class TsdateChr20Accuracy(Figure):
                 (anc_error_df, anc_error_kc_distances),
             ],
         ):
+            mut_df = mut_df.dropna(axis=1, how="all")
+            mut_df = mut_df[np.all(mut_df > 0, axis=1)]
             for row, method, cmap in zip(
                 [2, 3, 4], methods, ["Blues", "Blues", "Blues"]
             ):
                 method = prefix + method
                 result = mut_df[method]
-                comparable_sites = np.logical_and(sim > 0, result > 0)
-                cur_true_ages = sim[comparable_sites]
+                #comparable_sites = np.logical_and(sim > 0, result > 0)
+                comparable_sites = np.logical_and(mut_df["simulated_ts"] > 0, result > 0)
+                #cur_true_ages = sim[comparable_sites]
+                cur_true_ages = mut_df["simulated_ts"][comparable_sites]
                 cur_results = result[comparable_sites]
                 self.mutation_accuracy(
                     axes[row, col],
@@ -2297,7 +2295,7 @@ class Chr20Sims(Figure):
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
-        methods = ["tsdate_inferred", "relate_iterate", "geva"]
+        methods = ["tsdate_iterate", "relate_iterate", "geva"]
         comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
         df = df[np.all(df > 0, axis=1)]
         self.mutation_accuracy(
@@ -2369,15 +2367,15 @@ class plot_sample_locations(Figure):
 
     def plot(self):
         # Remove samples in 1kg
-        hgdp_sgdp_ancients = ts.simplify(
+        hgdp_sgdp_ancients = self.ts.simplify(
             np.where(
-                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+                ~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54, 80))
             )[0]
         )
         tgp_hgdp_sgdp_ancestor_locations = self.data[0]
 
         _ = plt.figure(figsize=(15, 6))
-        ax = plt.axes(projection=ccrs.Robinson())
+        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
         ax.set_global()
@@ -2530,7 +2528,7 @@ class PopulationAncestors(Figure):
             )[0]
         )
         fig = plt.figure(figsize=(16, 10))
-        ax = plt.axes(projection=ccrs.Robinson())
+        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
         ax.set_global()
@@ -2576,18 +2574,19 @@ class WorldDensity(Figure):
     def plot(self):
         locations = self.data[0].to_numpy()
         # Remove samples in 1kg
-        ts = ts.simplify(
+        ts = self.ts.simplify(
             np.where(
-                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+                ~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54, 80))
             )[0]
         )
         times = ts.tables.nodes.time[:]
         for time in [100, 1000, 2240, 5600, 11200, 33600]:
             _ = plt.figure(figsize=(15, 6))
-            ax = plt.axes(projection=ccrs.Robinson())
+            ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
+            ax.coastlines(linewidth=0.1)
+            ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
             ax.set_global()
-            ax.coastlines()
-            ax.add_feature(cartopy.feature.LAND)
+            ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
             edges = np.logical_and(
                 times[ts.tables.edges.child] <= time,
                 times[ts.tables.edges.parent] > time,
@@ -2935,8 +2934,7 @@ class SiteLinkageAndQuality(Figure):
     def plot(self):
 
         client = dask.distributed.Client(
-            dashboard_address="localhost:22222",
-            processes=False,
+            dashboard_address="localhost:22222", processes=False,
         )
 
         haploid = ts.genotype_matrix()
@@ -3025,16 +3023,14 @@ class SiteLinkageAndQuality(Figure):
         no_ld = np.isnan(ld)
 
         total_hist, bin_edges = np.histogram(
-            muts_per_site,
-            bins=self.gen_log_space(1000, 50)[1:],
+            muts_per_site, bins=self.gen_log_space(1000, 50)[1:],
         )
         masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
         prop_masked_hist = masked_hist / total_hist
         ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
         prop_ld_hist = ld_hist / total_hist
         neither_hist, bins = np.histogram(
-            muts_per_site[np.logical_and(~masked, ~low_ld)],
-            bins=bin_edges,
+            muts_per_site[np.logical_and(~masked, ~low_ld)], bins=bin_edges,
         )
         prop_neither_hist = neither_hist / total_hist
 
@@ -3088,12 +3084,12 @@ class AncestryVideo(Figure):
 
     def plot(self):
         locations = self.data[0].to_numpy()
-        ts_no_tgp = ts.simplify(
+        ts_no_tgp = self.ts.simplify(
             np.where(
-                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+                ~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54, 80))
             )[0]
         )
-        tables = ts.tables
+        tables = self.ts.tables
         times = tables.nodes.time[:]
         reference_sets = []
         population_names = []
@@ -3203,7 +3199,6 @@ class AncestryVideo(Figure):
 
         fig = plt.figure(figsize=(10, 6))
         ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
-
         ax.set_global()
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
