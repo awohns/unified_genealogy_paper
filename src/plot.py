@@ -1019,7 +1019,7 @@ class AncientConstraints(Figure):
     Figure 3: Ancient Constraints on Age of Mutations from 1000 Genomes Project
     """
 
-    name = "ancient_constraints_1000g"
+    name = "ancient_constraints_tgp"
     data_path = "data"
     filename = ["tgp_muts_constraints"]
     plt_title = "ancient_constraint_1kg"
@@ -1209,7 +1209,7 @@ class AncientConstraints(Figure):
                         self.jitter(cur_df.index),
                         constants.GENERATION_TIME * cur_df[estimate],
                         c=cur_df["tsdate_frequency"],
-                        s=scatter_size,
+                        s=scatter_size / 2,
                         alpha=scatter_alpha,
                         cmap="plasma_r",
                         norm=mplc.LogNorm(
@@ -1610,17 +1610,14 @@ class TgpMutationAgeComparisons(Figure):
 
     name = "tgp_dates_comparison"
     data_path = "data"
-    # filename = ["tgp_mutations_unconstrained"]
     filename = ["tgp_mutations"]
     plt_title = "Compare Mutation Age Estimates"
 
     def plot(self):
-        comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt", "tsdate_frequency"]
-        ]
-        comparable_mutations = comparable_mutations[
-            comparable_mutations["tsdate_age"] > 0
-        ]
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[
+            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
@@ -1632,10 +1629,12 @@ class TgpMutationAgeComparisons(Figure):
             bins="log",
             mincnt=1,
         )
-
+        comparable_mutations = comparable_mutations.melt(id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"], 
+            var_name="relate_est", 
+            value_name="relate_age")
         ax[1].hexbin(
             comparable_mutations["tsdate_age"],
-            comparable_mutations["relate_avg_age"],
+            comparable_mutations["relate_age"],
             xscale="log",
             yscale="log",
             bins="log",
@@ -1643,7 +1642,7 @@ class TgpMutationAgeComparisons(Figure):
         )
 
         ax[2].hexbin(
-            comparable_mutations["relate_avg_age"],
+            comparable_mutations["relate_age"],
             comparable_mutations["AgeMean_Jnt"],
             xscale="log",
             yscale="log",
@@ -1662,9 +1661,9 @@ class TgpMutationAgeComparisons(Figure):
         ax[1].set_ylabel("Estimated Age by Relate (generations)")
         ax[2].set_xlabel("Estimated Age by Relate (generations)")
         ax[2].set_ylabel("Estimated Age by GEVA (generations)")
-        ax[0].plot([0.1, 3e5], [0.1, 3e5], c="black")
-        ax[1].plot([0.1, 3e5], [0.1, 3e5], c="black")
-        ax[2].plot([0.1, 3e5], [0.1, 3e5], c="black")
+        ax[0].plot([0.1, 4e5], [0.1, 4e5], c="black")
+        ax[1].plot([0.1, 4e5], [0.1, 4e5], c="black")
+        ax[2].plot([0.1, 4e5], [0.1, 4e5], c="black")
         plt.tight_layout()
 
         self.save(self.name)
@@ -2624,11 +2623,10 @@ class AncientDescent(Figure):
     Parent class for all ancient descent figures
     """
 
-    def __init__(self):
-        reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
-        ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
-        pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
-        regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
+    reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
+    ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
+    pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
+    regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
 
     def plot_total_median_descent(
         self,
@@ -2808,7 +2806,7 @@ class AncientDescent(Figure):
             self.plotname + "_median_descent",
         )
         self.plot_haplotype_linkage(
-            corrcoef_df, descent_arr, descendants, self.plotname + "_haplotpyes"
+            corrcoef_df, descent_arr, descendants, self.plotname + "_haplotypes"
         )
 
 
@@ -2829,7 +2827,6 @@ class AfanasievoDescent(AncientDescent):
     plotname = "afanasievo"
     proxy_time = 164.01
     exclude_pop_names = ["Afanasievo"]
-
 
 class VindijaDescent(AncientDescent):
     """

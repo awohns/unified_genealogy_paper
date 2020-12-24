@@ -101,8 +101,9 @@ def infer_with_mismatch(
     ms_mismatch=0.1,
     precision=15,
     num_threads=1,
+    progress_monitor=False
 ):
-    ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads)
+    ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads, progress_monitor=progress_monitor)
     gmap = read_hapmap(path_to_genetic_map)
     
     ancestors_ts = tsinfer.match_ancestors(
@@ -112,6 +113,7 @@ def infer_with_mismatch(
         mismatch_ratio=ma_mismatch,
         precision=precision,
         num_threads=num_threads,
+        progress_monitor=progress_monitor
     )
     return tsinfer.match_samples(
         sample_data,
@@ -120,6 +122,7 @@ def infer_with_mismatch(
         mismatch_ratio=ms_mismatch,
         precision=precision,
         num_threads=num_threads,
+        progress_monitor=progress_monitor
     )
 
 
@@ -433,9 +436,7 @@ def get_kc_distances(ts_list, method_names):
     first_ts = ts_list[0]
     results_lambda_0 = dict()
     results_lambda_1 = dict()
-    print(first_ts.first().num_roots)
     for ts, method_name in zip(ts_list[1:], method_names[1:]):
-        print(ts.first().num_roots)
         results_lambda_0[method_name] = first_ts.kc_distance(ts, lambda_=0)
         results_lambda_1[method_name] = first_ts.kc_distance(ts, lambda_=1)
     return pd.DataFrame.from_dict([results_lambda_0, results_lambda_1])
@@ -569,9 +570,7 @@ def run_relate_pop_size(ts, path_to_files, mutation_rate, output, working_dir):
     if not os.path.isdir(working_dir):
         os.mkdir(working_dir)
     os.chdir(working_dir)
-    print(ts, output)
     create_poplabels(ts, output)
-    print(ts, path_to_files, mutation_rate, output, working_dir)
     with tempfile.NamedTemporaryFile("w+") as relate_out:
         subprocess.run(
             [
