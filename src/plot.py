@@ -471,13 +471,8 @@ class TsdateNeutralSims(Figure):
         self.save(self.name)
 
 
-class MismatchSimulationWithError(Figure):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_simulated"
+class Mismatch(Figure):
     data_path = "data"
-    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
-    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
-
     focal_ma = 1
     focal_ms = 1
     cmap='viridis_r'
@@ -485,75 +480,57 @@ class MismatchSimulationWithError(Figure):
         "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
         "ms_mis_ratio": dict(linestyle=":"),
     }
-    
+    mut_label_rel_pos = 0.32
+    def __init__(self):
+        super().__init__()
+        self.d = self.data[0].sort_values(["ma_mis_ratio", "ms_mis_ratio"])
+
+        self.d['edges1000'] = self.d['edges'] / 1000
+        self.d['muts1000'] = self.d['muts'] / 1000
+        self.d['edges_muts_1000'] = (self.d['edges1000'] + self.d['muts1000'])
+        assert np.allclose(np.diff(self.d['num_sites']), 0)
+        self.num_sites = np.mean(self.d['num_sites'])
+
     def plot(self):
-        sim_data = self.data[0]
-        sim_data['edges1000'] = sim_data['edges'] / 1000
-        sim_data['muts1000'] = sim_data['muts'] / 1000
-        sim_data['edges_muts_1000'] = (sim_data['edges1000'] + sim_data['muts1000'])
-
-        assert np.allclose(np.diff(sim_data['kc_max'][np.isfinite(sim_data['kc_max'])]), 0)
-        kc_max = np.mean(sim_data['kc_max'][np.isfinite(sim_data['kc_max'])])
-        assert np.allclose(np.diff(sim_data['kc_max_split'][np.isfinite(sim_data['kc_max_split'])]), 0)
-        kc_max_split = np.mean(sim_data['kc_max_split'][np.isfinite(sim_data['kc_max_split'])])
-        assert np.allclose(np.diff(sim_data['num_sites']), 0)
-        num_sites = np.mean(sim_data['num_sites'])
-
-        sim_data['rel_ts_size'] = sim_data['ts_bytes']/sim_data['sim_ts_min_bytes']
-        sim_data['KCpoly'] = sim_data['kc_poly']/kc_max
-        sim_data['KCsplit'] = sim_data['kc_split']/kc_max_split
-        # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
-        #sim_data['RFsplit'] = sim_data['RFsplit'] / (2 * sim_data['n'] - 4)
-
-        sim_data=sim_data.sort_values(["ma_mis_ratio", "ms_mis_ratio"])
         unique_vals = {
-            "ma_mis_ratio": np.unique(sim_data["ma_mis_ratio"]),
-            "ms_mis_ratio": np.unique(sim_data["ms_mis_ratio"]),
+            "ma_mis_ratio": np.unique(self.d["ma_mis_ratio"]),
+            "ms_mis_ratio": np.unique(self.d["ms_mis_ratio"]),
         }
 
         ma_map = {v:i for i, v in enumerate(unique_vals['ma_mis_ratio'])}
         ms_map = {v:i for i, v in enumerate(unique_vals['ms_mis_ratio'])}
         
-        metrics = {
-            "edges_muts_1000": "# edges + mutations (1000's)",
-            "rel_ts_size": "Relative filesize",
-            "KCpoly": "Normalised KC distance",
-            "KCsplit": "Normalised KC distance (polytomies split)",
-            #"RFsplit": "Normalised RF distance (polytomies split)",
-            #"arity_mean": "Mean arity",
-        }
-
-        fig, axs = plt.subplots(2, len(metrics), figsize=(24, 10))
-        plt.subplots_adjust(wspace=0.3)
+        fig, axs = plt.subplots(2, len(self.metrics), figsize=self.figsize)
+        plt.subplots_adjust(wspace=0.25)
 
         legend=False
-        for i, (metric, metric_lab) in enumerate(metrics.items()):
+        for i, (metric, metric_lab) in enumerate(self.metrics.items()):
             # Top (heatmap) plot
             Z = np.zeros((len(ms_map), len(ma_map)))
-            for _, row in sim_data.iterrows():
+            for _, row in self.d.iterrows():
                 Z[ms_map[row.ms_mis_ratio], ma_map[row.ma_mis_ratio]] = row[metric]
             ax_top = axs[0, i]
             cs = ax_top.contour(
                 unique_vals['ma_mis_ratio'], unique_vals['ms_mis_ratio'], Z, colors='gray')
             ax_top.contourf(cs, cmap=self.cmap)
-            ax_top.clabel(cs, inline=0, colors=["k"])
+            ax_top.clabel(cs, inline=0, colors=["k"], fmt='%g')
             ax_top.axvline(self.focal_ma, c="k", **self.linestyles['ms_mis_ratio'])
             ax_top.axhline(self.focal_ms, c="k", **self.linestyles['ma_mis_ratio'])
             if i==0:
-                ax_top.set_ylabel(r"Sample mismatch rate (relative to $\tilde{\rho}$)")
-            ax_top.set_xlabel(r"Ancestor mismatch rate (relative to $\tilde{\rho}$)")
-            ax_top.set_title(metric_lab, pad=15, fontsize="x-large")
+                ax_top.set_ylabel(r"Sample mismatch ratio")
+            ax_top.set_xlabel(r"Ancestor mismatch ratio")
+            ax_top.set_title(metric_lab[0], pad=15, fontsize="x-large")
             ax_top.set_xscale("log")
             ax_top.set_yscale("log")
 
             # Bottom (line) plot(s)
-            ma_mask = sim_data["ma_mis_ratio"]==self.focal_ma
-            ms_mask = sim_data["ms_mis_ratio"]==self.focal_ms
+            ma_mask = self.d["ma_mis_ratio"]==self.focal_ma
+            ms_mask = self.d["ms_mis_ratio"]==self.focal_ms
             ax_bottom = axs[1, i]
             if metric == "edges_muts_1000":
                 # Edges vs muts plot is different
                 gs = ax_bottom.get_gridspec()
-                ax_bottom.set_ylabel(metric_lab, labelpad=35)
+                ax_bottom.set_ylabel(metric_lab[-1], labelpad=35)
                 ax_bottom.xaxis.set_visible(False) # make this subplot x axis invisible
                 plt.setp(ax_bottom.spines.values(), visible=False) # make box invisible
                 ax_bottom.tick_params(left=False, labelleft=False) # remove ticks+labels 
@@ -563,21 +540,22 @@ class MismatchSimulationWithError(Figure):
                     ('ms_mis_ratio', ma_mask, 'Sample')]
                 ):
                     ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
-                    mm = sim_data[mm_lab][mask]
+                    mm = self.d[mm_lab][mask]
                     ax_sub_bottom.fill_between(
-                        mm, 0, sim_data['muts1000'][mask], color="orange")
+                        mm, 0, self.d['muts1000'][mask], color="orange")
                     ax_sub_bottom.fill_between(
-                        mm, sim_data['muts1000'][mask],
-                        sim_data['muts1000'][mask] + sim_data['edges1000'][mask],
+                        mm, self.d['muts1000'][mask],
+                        self.d['muts1000'][mask] + self.d['edges1000'][mask],
                         color="tab:brown"
                     )
                     ax_sub_bottom.plot(
-                        sim_data[mm_lab][mask],
-                        sim_data[metric][mask],
+                        self.d[mm_lab][mask],
+                        self.d[metric][mask],
                         c="k", **self.linestyles[mm_lab])
                     ax_sub_bottom.text(
                         unique_vals[mm_lab][-2],
-                        np.mean(sim_data['muts1000'][mask]/2),
+                        #np.mean(self.d['muts1000'][mask]/1.5),
+                        (self.num_sites / 1000) * self.mut_label_rel_pos,
                         "Mutations",
                         ha="right",
                         va="bottom",
@@ -587,8 +565,8 @@ class MismatchSimulationWithError(Figure):
                         unique_vals[mm_lab][-2],
                         np.mean(
                             (
-                                sim_data['muts1000'][ma_mask] * 2 +
-                                sim_data['edges1000'][ma_mask]
+                                self.d['muts1000'][ma_mask] * 2 +
+                                self.d['edges1000'][ma_mask]
                             ) / 2),
                         "Edges",
                         ha="right",
@@ -596,13 +574,13 @@ class MismatchSimulationWithError(Figure):
                         bbox=dict(facecolor='w', alpha=0.9, ec='none')
                     )
                     ax_sub_bottom.set_xlabel(
-                        title + r" mismatch rate (relative to $\tilde{\rho}$)")
+                        title + r" mismatch ratio")
                     ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
                     ax_sub_bottom.set_ylim(0)
                     ax_sub_bottom.set_xscale("log")
-                    ax_sub_bottom.axhline(num_sites / 1000, c="grey")
+                    ax_sub_bottom.axhline(self.num_sites / 1000, c="grey")
                     ax_sub_bottom.text(
-                        unique_vals[mm_lab][2], (num_sites / 1000) * 0.95, "Min # mutations",
+                        unique_vals[mm_lab][2], (self.num_sites / 1000) * 0.95, "Number of sites",
                         va="center", color="k",
                         bbox=dict(boxstyle='square,pad=0', facecolor='orange', alpha=0.9, ec='none'))
             else:
@@ -611,184 +589,94 @@ class MismatchSimulationWithError(Figure):
                     ('ms_mis_ratio', ma_mask, 'Sample')]
                 ):
                     ax_bottom.plot(
-                        sim_data[mm_lab][mask],
-                        sim_data[metric][mask],
+                        self.d[mm_lab][mask],
+                        self.d[metric][mask],
                         c="k", label=title + " mismatch",
                         **self.linestyles[mm_lab]
                     )
                 if not legend:
-                    ax_bottom.legend(loc='upper left')
+                    ax_bottom.legend(loc='upper center')
                     legend = True
-                ax_bottom.set_xlabel(r"Mismatch rate (relative to $\tilde{\rho}$)")
+                ax_bottom.set_xlabel(r"Mismatch ratio")
                 ax_bottom.set_xlim(
                     np.min(np.concatenate(list(unique_vals.values()))),
                     np.max(np.concatenate(list(unique_vals.values()))))
-                ax_bottom.set_ylabel(metric_lab)
+                ax_bottom.set_ylabel(metric_lab[-1])
                 ax_bottom.set_xscale("log")
+            if metric == "rel_ts_size":
+                ax_bottom.set_ylim(ax_bottom.get_ylim()[0] - 0.002)
+                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(7))
+            else:
+                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(6))
+            
+            for tick in ax_bottom.get_yticklabels():
+                tick.set_rotation(90)
+                tick.set_verticalalignment('center')
 
         self.save(self.name)
 
-class MismatchRealDataWithError(Figure):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_tgp_hgdp"
-    data_path = "data"
-    filename = [
-        "1kg_chr20_1000000-1100000_results",
-        "hgdp_chr20_1000000-1100000_results",
-    ]
-    plt_title = "Effect of mismatch parameters on inference of real data"
 
-    focal_ma = 1
-    focal_ms = 1
-    cmap='viridis_r'
-    linestyles = {
-        "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
-        "ms_mis_ratio": dict(linestyle=":"),
+class MismatchSimulation(Mismatch):
+    figsize = (28, 10)
+    metrics = {
+        "edges_muts_1000": ["Edge + mutation count (1000's)"],
+        "rel_ts_size": ["Filesize", "Filesize (relative to simulated tree sequence)"],
+        "KCpoly": ["Accuracy (KC metric)", "Relative Kendall-Colijn distance"],
+        "KCsplit": ["Accuracy (KC, no polytomies)", "Relative KC distance, polytomies randomly split"],
+        "RFsplit": ["Accuracy (RF, no polytomies)", "Relative RF distance, polytomies randomly split"],
+        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
     }
 
-    def plot(self):
-        metrics = {
-            "edges_muts_1000": "# edges + mutations (1000's)",
-            "ts_size_Mb": "Filesize (Mb)",
-            #"arity_mean": "Mean arity",
-        }
-        fig, axs = plt.subplots(2, 5, figsize=(24, 10))
-        plt.subplots_adjust(wspace=0.3)
-        axs[0,2].remove()
-        axs[1,2].remove()
-        fig.text(
-            0.55, 0.5, 'Human Genome Diversity Project',
-            ha='center', va='center', rotation=90, size=30)
+    def __init__(self):
+        super().__init__()
+        self.d['rel_ts_size'] = self.d['ts_bytes']/self.d['sim_ts_min_bytes']
+        assert np.allclose(np.diff(self.d['kc_max'][np.isfinite(self.d['kc_max'])]), 0)
+        kc_max = np.mean(self.d['kc_max'][np.isfinite(self.d['kc_max'])])
+        assert np.allclose(np.diff(self.d['kc_max_split'][np.isfinite(self.d['kc_max_split'])]), 0)
+        kc_max_split = np.mean(self.d['kc_max_split'][np.isfinite(self.d['kc_max_split'])])
 
-        for label, rot, lab_x, data, start_subplot_col in [
-            ('Thousand Genomes Project', -90, 0.45, self.data[0], 0),
-            ('Human Genome Diversity Project', 90, 0.55, self.data[1], 3),
-        ]:
-            data['ts_size_Mb'] = data['ts_bytes'] / 1e6
-            data['edges1000'] = data['edges'] / 1000
-            data['muts1000'] = data['muts'] / 1000
-            data['edges_muts_1000'] = (data['edges1000'] + data['muts1000'])
-            data=data.sort_values(["ma_mis_ratio", "ms_mis_ratio"])
-            assert np.allclose(np.diff(data['num_sites']), 0)
-            num_sites = np.mean(data['num_sites'])
+        self.d['KCpoly'] = self.d['kc_poly']/kc_max
+        self.d['KCsplit'] = self.d['kc_split']/kc_max_split
+        # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
+        self.d['RFsplit'] = self.d['RFsplit'] / (2 * self.d['n'] - 4)
 
-            fig.text(lab_x, 0.5, label, ha='center', va='center', rotation=rot, size=30)
-            unique_vals = {
-                "ma_mis_ratio": np.unique(data["ma_mis_ratio"]),
-                "ms_mis_ratio": np.unique(data["ms_mis_ratio"]),
-            }
-            ms_map = {v:i for i, v in enumerate(unique_vals['ms_mis_ratio'])}
-            ma_map = {v:i for i, v in enumerate(unique_vals['ma_mis_ratio'])}
-            legend = False
-            for i, (metric, metric_lab) in enumerate(metrics.items()):
-                Z = np.zeros((len(ma_map), len(ms_map)))
-                for _, row in data.iterrows():
-                    Z[ma_map[row.ma_mis_ratio], ms_map[row.ms_mis_ratio]] = row[metric]
-        
-                ax_top = axs[0, i + start_subplot_col]
-                cs = ax_top.contour(
-                    unique_vals['ms_mis_ratio'],
-                    unique_vals['ma_mis_ratio'],
-                    Z,
-                    colors='gray',
-                )
-                ax_top.contourf(cs, cmap=self.cmap)
-                ax_top.clabel(cs, inline=0, colors=["k"])
-        
-                ax_top.axvline(self.focal_ma, c="k", **self.linestyles['ms_mis_ratio'])
-                ax_top.axhline(self.focal_ms, c="k", **self.linestyles['ma_mis_ratio'])
-                if i==0:
-                    ax_top.set_ylabel(
-                        r"Sample mismatch rate (relative to $\tilde{\rho}$)")
-                ax_top.set_xlabel(
-                    r"Ancestor mismatch rate (relative to $\tilde{\rho}$)")
-        
-                ax_top.set_title(metric_lab, pad=15, fontsize="x-large")
-                ax_top.set_xscale("log")
-                ax_top.set_yscale("log")
-        
-        
-                ma_mask = data["ma_mis_ratio"] == self.focal_ma
-                ms_mask = data["ms_mis_ratio"] == self.focal_ms
-        
-                ax_bottom = axs[1, i + start_subplot_col]
-                if metric == "edges_muts_1000":
-                    gs = ax_bottom.get_gridspec()
-                    ax_bottom.set_ylabel(metric_lab, labelpad=35)
-                    ax_bottom.xaxis.set_visible(False)  # subplot x axis invisible
-                    plt.setp(ax_bottom.spines.values(), visible=False)  # Box invisible
-                    ax_bottom.tick_params(left=False, labelleft=False)  # No ticks/labels 
-                    gs_sub = gs[1, i + start_subplot_col].subgridspec(2, 1, hspace=0.5)
+class MismatchSimulationNoError(MismatchSimulation):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_simulated_noerr"
+    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_results_plus_RF"]
+    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
 
-                    for i, (mm_lab, mask, title) in enumerate([
-                        ('ma_mis_ratio', ms_mask, 'Ancestor'),
-                        ('ms_mis_ratio', ma_mask, 'Sample')]
-                    ):
-                        ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
-                        mm = data[mm_lab][mask]
-                        ax_sub_bottom.fill_between(
-                            mm, 0, data['muts1000'][mask], color="orange")
-                        ax_sub_bottom.fill_between(
-                            mm, data['muts1000'][mask],
-                            data['muts1000'][mask] + data['edges1000'][mask],
-                            color="tab:brown"
-                        )
-                        ax_sub_bottom.plot(
-                            data[mm_lab][mask],
-                            data[metric][mask],
-                            c="k", **self.linestyles[mm_lab])
-                        ax_sub_bottom.text(
-                            unique_vals[mm_lab][-2],
-                            np.mean(data['muts1000'][mask]/2),
-                            "Mutations",
-                            ha="right",
-                            va="bottom",
-                            bbox=dict(facecolor='w', alpha=0.9, ec='none')
-                        )
-                        ax_sub_bottom.text(
-                            unique_vals[mm_lab][-2],
-                            np.mean((data['muts1000'][ma_mask]*2+data['edges1000'][ma_mask])/2),
-                            "Edges",
-                            ha="right",
-                            va="bottom",
-                            bbox=dict(facecolor='w', alpha=0.9, ec='none')
-                        )
-                        ax_sub_bottom.set_xlabel(
-                            title + r" mismatch rate (relative to $\tilde{\rho}$)")
-                        ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
-                        ax_sub_bottom.set_ylim(0)
-                        ax_sub_bottom.set_xscale("log")
-                        ax_sub_bottom.axhline(num_sites / 1000, c="grey")
-                        ax_sub_bottom.text(
-                            unique_vals[mm_lab][2], (num_sites / 1000) * 0.95,
-                            "Min # mutations",
-                            va="center", color="k",
-                            bbox=dict(
-                                boxstyle='square,pad=0',
-                                facecolor='orange', alpha=0.9, ec='none'))
-                else:
-                    ax_bottom.plot(
-                        data["ms_mis_ratio"][ma_mask],
-                        data[metric][ma_mask],
-                        c="k", linestyle=":", label="Samples mismatch"
-                    )
-                    ax_bottom.plot(
-                        data["m`_mis_ratio"][ms_mask],
-                        data[metric][ms_mask],
-                        c="k", linestyle="--", dashes=(10, 2), label="Ancestors mismatch"
-                    )
-                    if not legend:
-                        ax_bottom.legend(loc='upper right')
-                        legend = True
-                    ax_bottom.set_xlabel("Mismatch rate")
-                    ax_bottom.set_xlim(
-                        np.min(np.concatenate(list(unique_vals.values()))),
-                        np.max(np.concatenate(list(unique_vals.values()))),
-                    )
-                    ax_bottom.set_ylabel(metric_lab)
-                    ax_bottom.set_xscale("log")
-        
-        self.save(self.name)
+class MismatchSimulationWithError(MismatchSimulation):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_simulated_err"
+    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
+    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
+    mut_label_rel_pos = 1.7
+
+class MismatchRealData(Mismatch):
+    figsize = (14, 10)
+    metrics = {
+        "edges_muts_1000": ["Edge + mutation count (1000's)"],
+        "ts_size_Mb": ["Filesize", "Filesize (Mb)"],
+        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
+    }
+    def __init__(self):
+        super().__init__()
+        self.d["ts_size_Mb"] = self.d["ts_bytes"] / 1e6
+
+
+class MismatchRealDataTGP(MismatchRealData):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_tgp"
+    filename = ["1kg_chr20_1000000-1100000_results"]
+    plt_title = "Effect of mismatch parameters on inference of TGP data"
+
+
+class MismatchRealDataHGDP(MismatchRealData):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_hgdp"
+    filename = ["hgdp_chr20_1000000-1100000_results"]
+    plt_title = "Effect of mismatch parameters on inference of HGDP data"
 
 
 class Chr20AncientIteration(Figure):
