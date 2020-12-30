@@ -174,7 +174,7 @@ GENOTYPES_BCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/su
 
 1kg_%_genotypes.vcf.gz:
 		curl ${GENOTYPES_VCF_BASE}/ALL.$*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz -o $@
-		tabix -p vcf -f $@
+		../tools/bin tabix -p vcf -f $@
 
 1kg_%.samples: 1kg_%_genotypes.vcf.gz %_ancestral_states_37.fa.fai 1kg_samples.ped
 		python3 convert.py 1kg -p \
@@ -194,7 +194,7 @@ GENOTYPES_BASE_GRCH38=ftp://ftp.sra.ebi.ac.uk/vol1/ERZ822/ERZ822766/
 
 1kg_GRCh38_%_genotypes.vcf.gz:
 		curl ${GENOTYPES_BASE_GRCH38}ALL.$*.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz -o $@
-		tabix -p vcf $@ 
+		../tools/bin tabix -p vcf $@ 
 
 1kg_GRCh38_%.samples: 1kg_GRCh38_%_genotypes.vcf.gz %_ancestral_states.fa.fai 1kg_samples.ped
 		python3 convert.py 1kg -p \
@@ -233,9 +233,9 @@ sgdp_%_genotypes_GRCh38.vcf.gz: sgdp_%_genotypes.vcf.gz hg38.fa hg19ToHg38.over.
 		rm sgdp_$*.withchr.vcf
 		bgzip -c sgdp_GRCh38_$*.vcf > sgdp_$*_genotypes_GRCh38.all.vcf.gz 
 		rm sgdp_GRCh38_$*.vcf
-		tabix -p vcf sgdp_$*_genotypes_GRCh38.all.vcf.gz
+		../tools/bin tabix -p vcf sgdp_$*_genotypes_GRCh38.all.vcf.gz
 		bcftools view sgdp_$*_genotypes_GRCh38.all.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm sgdp_$*_genotypes_GRCh38.all.vcf.gz
 
 sgdp_%_genotypes_GRCh38.bcf: sgdp_%_genotypes_GRCh38.vcf.gz
@@ -279,8 +279,8 @@ hgdp_genotypes.vcf.gz:
 						curl ${HGDP_GENOTYPES_BASE}/hgdp_wgs.20190516.statphase.autosomes.vcf.gz.tbi -o $@.tbi
 
 hgdp_genotypes.%.phased.GRCh38.vcf.gz: hgdp_genotypes.vcf.gz
-				tabix -h $^ ${*} | bgzip -c > $@
-						tabix -p vcf $@
+				../tools/bin tabix -h $^ ${*} | bgzip -c > $@
+						../tools/bin tabix -p vcf $@
 
 hgdp_genotypes.%.phased.GRCh38.bcf: hgdp_genotypes.%.phased.GRCh38.vcf.gz
 				bcftools view $^ -O b -o hgdp_genotypes.${*}.phased.GRCh38.bcf
@@ -306,11 +306,11 @@ CHAGYRSKAYA_SUFFIX=.noRB.vcf.gz
 
 denisovan.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Denisova/${*}${FILE_SUFFIX} -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 vindija.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Vindija33.19/${*}${FILE_SUFFIX} -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 chagyrskaya.%.noRB.vcf.gz:
 		curl http://ftp.eva.mpg.de/neandertal/Chagyrskaya/VCF/${*}${CHAGYRSKAYA_SUFFIX} -o $@
@@ -318,19 +318,19 @@ chagyrskaya.%.noRB.vcf.gz:
 
 altai.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Altai/${*}${FILE_SUFFIX} -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 ust_ishim.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Ust_Ishim/${*}${FILE_SUFFIX} -o $@ 
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 lbk.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/LBK/${*}${FILE_SUFFIX} -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 loshbour.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Loschbour/${*}${FILE_SUFFIX} -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 
 altai.%_mq25_mapab100.GRCh38.vcf.gz: altai.%_mq25_mapab100.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
@@ -340,9 +340,9 @@ altai.%_mq25_mapab100.GRCh38.vcf.gz: altai.%_mq25_mapab100.vcf.gz hg38.fa hg19To
 		java -jar ../tools/picard.jar LiftoverVcf I=altai.$*_mq25_mapab100.withchr.vcf O=altai.$*_mq25_mapab100.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz REJECT=altai.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
 		rm altai.$*_mq25_mapab100.withchr.vcf
 		bgzip -c altai.$*_mq25_mapab100.GRCh38.vcf > altai.$*_mq25_mapab100.GRCh38.all.vcf.gz 
-		tabix -p vcf altai.$*_mq25_mapab100.GRCh38.all.vcf.gz
+		../tools/bin tabix -p vcf altai.$*_mq25_mapab100.GRCh38.all.vcf.gz
 		bcftools view altai.$*_mq25_mapab100.GRCh38.all.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm altai.$*_mq25_mapab100.GRCh38.vcf
 
 altai_GRCh38_%.samples: altai.%_mq25_mapab100.GRCh38.vcf.gz %_ancestral_states.fa.fai altai_metadata.txt hgdp_1kg_sgdp_%.samples
@@ -363,9 +363,9 @@ chagyrskaya.%.noRB.GRCh38.vcf.gz: chagyrskaya.%.noRB.vcf.gz hg38.fa hg19ToHg38.o
 		java -jar ../tools/picard.jar LiftoverVcf I=chagyrskaya.$*.noRB.withchr.vcf O=chagyrskaya.$*.noRB.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz REJECT=chagyrskaya.$*.noRB.GRCh38.rejected_variants.vcf R=hg38.fa
 		rm chagyrskaya.$*.noRB.withchr.vcf
 		bgzip -c chagyrskaya.$*.noRB.GRCh38.vcf > chagyrskaya.$*.noRB.GRCh38.all.vcf.gz 
-		tabix -p vcf chagyrskaya.$*.noRB.GRCh38.all.vcf.gz
+		../tools/bin tabix -p vcf chagyrskaya.$*.noRB.GRCh38.all.vcf.gz
 		bcftools view chagyrskaya.$*.noRB.GRCh38.all.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm chagyrskaya.$*.noRB.GRCh38.vcf
 
 chagyrskaya_GRCh38_%.samples: chagyrskaya.%.noRB.GRCh38.vcf.gz %_ancestral_states.fa.fai chagyrskaya_metadata.txt hgdp_1kg_sgdp_%.samples
@@ -386,9 +386,9 @@ denisovan.%_mq25_mapab100.GRCh38.vcf.gz: denisovan.%_mq25_mapab100.vcf.gz hg38.f
 		java -jar ../tools/picard.jar LiftoverVcf I=denisovan.$*_mq25_mapab100.withchr.vcf O=denisovan.$*_mq25_mapab100.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz REJECT=denisovan.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
 		rm denisovan.$*_mq25_mapab100.withchr.vcf
 		bgzip -c denisovan.$*_mq25_mapab100.GRCh38.vcf > denisovan.$*_mq25_mapab100.GRCh38.all.vcf.gz 
-		tabix -p vcf denisovan.$*_mq25_mapab100.GRCh38.all.vcf.gz
+		../tools/bin tabix -p vcf denisovan.$*_mq25_mapab100.GRCh38.all.vcf.gz
 		bcftools view denisovan.$*_mq25_mapab100.GRCh38.all.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm denisovan.$*_mq25_mapab100.GRCh38.vcf
 		rm denisovan.$*_mq25_mapab100.GRCh38.all.vcf.gz
 
@@ -411,9 +411,9 @@ vindija.%_mq25_mapab100.GRCh38.vcf.gz: vindija.%_mq25_mapab100.vcf.gz hg38.fa hg
 		java -jar ../tools/picard.jar LiftoverVcf I=vindija.$*_mq25_mapab100.withchr.vcf O=vindija.$*_mq25_mapab100.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz REJECT=vindija.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
 		rm vindija.$*_mq25_mapab100.withchr.vcf
 		bgzip -c vindija.$*_mq25_mapab100.GRCh38.vcf > vindija.$*_mq25_mapab100.GRCh38.all.vcf.gz 
-		tabix -p vcf vindija.$*_mq25_mapab100.GRCh38.all.vcf.gz
+		../tools/bin tabix -p vcf vindija.$*_mq25_mapab100.GRCh38.all.vcf.gz
 		bcftools view vindija.$*_mq25_mapab100.GRCh38.all.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm vindija.$*_mq25_mapab100.GRCh38.vcf
 
 vindija_GRCh38_%.samples: vindija.%_mq25_mapab100.GRCh38.vcf.gz %_ancestral_states.fa.fai vindija_metadata.txt hgdp_1kg_sgdp_%.samples
@@ -513,7 +513,7 @@ VCF_SUFFIX=.phased.detailed.filtered
 
 
 afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_37.fa.fai
-		tabix -p vcf $<
+		../tools/bin tabix -p vcf $<
 		python3 convert.py afanasievo -p \
 				AfanasievoFamily_$*${VCF_SUFFIX}.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -530,9 +530,9 @@ AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz: AfanasievoFamily_%${V
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.vcf
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		bgzip -c AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf > AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
-		tabix -p vcf AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
+		../tools/bin tabix -p vcf AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
 		bcftools view AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz --regions $* -O z > $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf*
 
 afanasievo_GRCh38_%.samples: AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz %_ancestral_states.fa.fai hgdp_1kg_sgdp_%.samples
@@ -568,12 +568,12 @@ v42.4.1240K.vcf.gz: v42.4.1240K.geno
 		mv ${REICH_PREFIX}.pedind ${REICH_PREFIX}.fam
 		plink --bfile ${REICH_PREFIX} --recode vcf --out ${REICH_PREFIX}
 		bgzip -c ${REICH_PREFIX}.vcf > $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm ${REICH_PREFIX}.vcf
 
 v42.4.1240K_chr%.vcf.gz: v42.4.1240K.vcf.gz
 		bcftools view ${REICH_PREFIX}.vcf.gz --regions $* -O z -o $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 
 reich_%.samples: v42.4.1240K_%.vcf.gz %_ancestral_states_37.fa.fai v42.4.1240K.anno
 		python3 convert.py 1240k -p \
@@ -600,9 +600,9 @@ v42.4.1240K_GRCh38_%.vcf.gz: v42.4.1240K_%.vcf.gz hg38.fa hg19ToHg38.over.chain.
 				RECOVER_SWAPPED_REF_ALT=true
 		bgzip -c v42.4.1240K_GRCh38_$*.vcf > v42.4.1240K_GRCh38_$*.all.vcf.gz 
 		rm v42.4.1240K_GRCh38_$*.vcf
-		tabix -p vcf v42.4.1240K_GRCh38_$*.all.vcf.gz
+		../tools/bin tabix -p vcf v42.4.1240K_GRCh38_$*.all.vcf.gz
 		bcftools view v42.4.1240K_GRCh38_$*.all.vcf.gz --regions $* -O z > $@
-		tabix -p vcf $@
+		../tools/bin tabix -p vcf $@
 		rm v42.4.1240K_GRCh38_$*.all.vcf.gz 
 
 reich_GRCh38_%.samples: v42.4.1240K_GRCh38_%.vcf.gz %_ancestral_states.fa.fai v42.4.1240K.anno
