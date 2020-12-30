@@ -343,6 +343,9 @@ class Figure(object):
             plt.savefig(
                 "figures/{}.png".format(figure_name), bbox_inches="tight", dpi=400
             )
+            plt.savefig(
+                "figures/{}.svg".format(figure_name), bbox_inches="tight", format="svg"
+            )
             plt.close()
 
     def error_label(self, error, label_for_no_error="No genotyping error"):
