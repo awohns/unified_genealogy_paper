@@ -2634,10 +2634,15 @@ class AncientDescent(Figure):
     Parent class for all ancient descent figures
     """
 
-    reference_sets = pickle.load(open("data/combined_ts_reference_sets.p", "rb"))
-    ref_set_map = np.loadtxt("data/combined_ts_reference_set_map.csv").astype(int)
-    pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
-    regions = np.loadtxt("data/combined_ts_regions.csv", delimiter=",", dtype="str")
+    def __init__(self):
+        super().__init__()
+        self.pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
+        self.reference_sets = pickle.load(
+            open("data/combined_ts_reference_sets.p", "rb"))
+        self.ref_set_map = np.loadtxt(
+            "data/combined_ts_reference_set_map.csv").astype(int)
+        self.regions = np.loadtxt(
+            "data/combined_ts_regions.csv", delimiter=",", dtype="str")
 
     def plot_total_median_descent(
         self,
