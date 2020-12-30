@@ -10,6 +10,8 @@ import numpy as np
 import tsinfer
 import stdpopsim
 
+from intervals import read_hapmap
+
 Params = collections.namedtuple(
     "Params",
     "sample_data, filename, genetic_map, ma_mut_rate, ms_mut_rate, precision,"
@@ -78,7 +80,7 @@ def run(params):
             num_threads=params.num_threads,
             precision=precision,
             recombination_rate=rec_rate,
-            mismatch_rate=base_rec_prob * params.ma_mut_rate,
+            mismatch_ratio=params.ma_mut_rate,
             path_compression=path_compression,
             progress_monitor=True
         )
@@ -96,7 +98,7 @@ def run(params):
             num_threads=params.num_threads,
             precision=precision,
             recombination_rate=rec_rate,
-            mismatch_rate=base_rec_prob * params.ms_mut_rate,
+            mismatch_ratio=params.ms_mut_rate,
             progress_monitor=True,
             force_sample_times=True,
             simplify=False
@@ -162,18 +164,15 @@ def get_rho(ancestors, filename):
             chr_map = map.get_chromosome_map(chr)
         inference_distances = physical_to_genetic(chr_map, inference_pos)
         d = np.diff(inference_distances)
-        rho = np.concatenate(([0.0], d))
+        w = np.where(d==0)
+        d[w] = 1e-8
     else:
         inference_distances = inference_pos
         d = np.diff(inference_distances)
-        rho = np.concatenate(
-            ([0.0], d/sd.sequence_length))
-
-    if np.any(d==0):
         w = np.where(d==0)
-        raise ValueError("Zero recombination rates at", w, inference_pos[w])
+        d[w] = 1e-8
 
-    return rho
+    return d
 
 
 if __name__ == "__main__":
@@ -192,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument("-S", "--match_samples_mrate", type=float, default=5e-2,
         help="The recurrent mutation probability in the match samples phase,"
             " as a fraction of the median recombination probability between sites")
-    parser.add_argument("-p", "--precision", type=int, default=None,
+    parser.add_argument("-p", "--precision", type=int, default=15,
         help="The precision, as a number of decimal places, which will affect the speed"
             " of the matching algorithm (higher precision = lower speed). If None,"
             " calculate the smallest of the recombination rates or mutation rates, and"
