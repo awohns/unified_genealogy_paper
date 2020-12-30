@@ -35,7 +35,7 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 
 %.dated.trees: %.trees
 		python3 -m tsdate preprocess $< $*.preprocessed.trees
-		python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS}
+		python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS} --ignore-oldest
 
 %.dated.samples: %.samples %.dated.trees
 		python3 tsutil.py dated_samples $^
@@ -150,17 +150,6 @@ genetic_map_GRCh38_%.txt: recomb-hg38/
 chr%_ancestral_states_37.fa.fai: chr%_ancestral_states_37.fa
 		samtools faidx $^
 
-###########################
-# GRCh38 Recombination Maps
-###########################
-
-recomb-hg38/:
-		wget http://csg.sph.umich.edu/locuszoom/download/recomb-hg38.tar.gz
-		tar -xvzf recomb-hg38.tar.gz
-		./modify_genetic_map.sh
-
-genetic_map_GRCh38_%.txt: recomb-hg38/
-
 #############################################
 # 1000 Genomes data.
 #############################################
@@ -194,9 +183,9 @@ GENOTYPES_BASE_GRCH38=ftp://ftp.sra.ebi.ac.uk/vol1/ERZ822/ERZ822766/
 
 1kg_GRCh38_%_genotypes.vcf.gz:
 		curl ${GENOTYPES_BASE_GRCH38}ALL.$*.shapeit2_integrated_snvindels_v2a_27022019.GRCh38.phased.vcf.gz -o $@
-		../tools/bin tabix -p vcf $@ 
 
 1kg_GRCh38_%.samples: 1kg_GRCh38_%_genotypes.vcf.gz %_ancestral_states.fa.fai 1kg_samples.ped
+		../tools/bin/tabix -p vcf $<
 		python3 convert.py 1kg -p \
 				1kg_GRCh38_$*_genotypes.vcf.gz \
 				$*_ancestral_states.fa \
@@ -306,11 +295,9 @@ CHAGYRSKAYA_SUFFIX=.noRB.vcf.gz
 
 denisovan.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Denisova/${*}${FILE_SUFFIX} -o $@
-		../tools/bin tabix -p vcf $@
 
 vindija.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Vindija33.19/${*}${FILE_SUFFIX} -o $@
-		../tools/bin tabix -p vcf $@
 
 chagyrskaya.%.noRB.vcf.gz:
 		curl http://ftp.eva.mpg.de/neandertal/Chagyrskaya/VCF/${*}${CHAGYRSKAYA_SUFFIX} -o $@
@@ -318,20 +305,15 @@ chagyrskaya.%.noRB.vcf.gz:
 
 altai.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Altai/${*}${FILE_SUFFIX} -o $@
-		../tools/bin tabix -p vcf $@
 
 ust_ishim.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Ust_Ishim/${*}${FILE_SUFFIX} -o $@ 
-		../tools/bin tabix -p vcf $@
 
 lbk.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/LBK/${*}${FILE_SUFFIX} -o $@
-		../tools/bin tabix -p vcf $@
 
 loshbour.%_mq25_mapab100.vcf.gz:
 		curl http://cdna.eva.mpg.de/neandertal/Vindija/VCF/Loschbour/${*}${FILE_SUFFIX} -o $@
-		../tools/bin tabix -p vcf $@
-
 
 altai.%_mq25_mapab100.GRCh38.vcf.gz: altai.%_mq25_mapab100.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c altai.$*_mq25_mapab100.vcf.gz > altai.$*_mq25_mapab100.vcf		
@@ -637,9 +619,6 @@ hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples 
 
 all_ancients_chr20.samples: reich_ancients_chr20.samples afanasievo_chr20.samples denisovan_chr20.samples vindija_chr20.samples chagyrskaya_chr20.samples altai_chr20.samples ust_ishim_chr20.samples loshbour_chr20.samples lbk_chr20.samples
 		python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
-
-all_ancients_chr20.samples: reich_ancients_chr20.samples afanasievo_chr20.samples denisovan_chr20.samples vindija_chr20.samples chagyrskaya_chr20.samples altai_chr20.samples ust_ishim_chr20.samples loshbour_chr20.samples lbk_chr20.samples
-	python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
 
 hgdp_1kg_sgdp_high_cov_ancients_dated_%.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples hgdp_1kg_sgdp_all_ancients_%.samples
 		python3 tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples --all-samples hgdp_1kg_sgdp_all_ancients_$*.samples --dated-ts hgdp_1kg_sgdp_$*.missing_binned.dated.trees --output $@ > hgdp_1kg_sgdp_high_cov_ancients_dated_$*_constrained_variants.txt
