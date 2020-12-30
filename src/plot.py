@@ -308,10 +308,16 @@ class Figure(object):
     filename = None
     delimiter = None
     header = "infer"
-    # Unified TS used in multiple plots
-    ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
-    )
+
+    def main_ts(self):
+        """Return unified TS used in multiple plots; cache if necessary"""
+        try:
+            return self._main_ts
+        except AttributeError:
+            self._main_ts = tskit.load(
+                "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
+            return self._main_ts
+
 
     def __init__(self):
         self.data = list()
@@ -2366,10 +2372,11 @@ class plot_sample_locations(Figure):
 
     def plot(self):
         # Remove samples in 1kg
-        hgdp_sgdp_ancients = self.ts.simplify(
-            np.where(
-                ~np.isin(self.ts.tables.nodes.population[self.ts.samples()], np.arange(54, 80))
-            )[0]
+        hgdp_sgdp_ancients = self.main_ts().simplify(
+            np.where(~np.isin(
+                self.main_ts().tables.nodes.population[self.main_ts().samples()],
+                np.arange(54, 80),
+            ))[0]
         )
         tgp_hgdp_sgdp_ancestor_locations = self.data[0]
 
