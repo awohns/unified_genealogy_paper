@@ -1,0 +1,5 @@
+sample population age
+AltaiNeandertal Altai 110000
+Chagyrskaya-Phalanx Chagyrskaya 80000
+Vindija33.19 Vindija 50000
+Denisova Denisovan 63900
