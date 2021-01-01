@@ -798,25 +798,31 @@ class MaxPlanckConverter(VcfConverter):
         """
         Adds the Max Planck metadata.
         """
-        with open(metadata_file, "r") as max_planck_metadata:
-            # Parse the individual metadata out of the file.
-            lines = max_planck_metadata.read().splitlines()
-            metadata = {}
-            row = lines[1].split(" ")
-            name = row[0]
-            metadata["name"] = name
-            metadata["age"] = int(row[2]) / GENERATION_TIME
-            population = row[1]
         vcf = cyvcf2.VCF(self.data_file)
         individual_names = list(vcf.samples)
         vcf.close()
         self.num_samples = len(individual_names) * 2
-        pop_id = self.samples.add_population(
-            {"name": population, "super_population": "Max Planck"}
-        )
-        self.samples.add_individual(
-            time=metadata["age"], metadata=metadata, population=pop_id, ploidy=2
-        )
+        populations = list()
+        sample_metadata = list()
+        with open(metadata_file, "r") as max_planck_metadata:
+            # Parse the individual metadata out of the file.
+            lines = max_planck_metadata.read().splitlines()
+            for line in lines[1:]:
+                metadata = {}
+                row = line.split(" ")
+                name = row[0]
+                metadata["name"] = name
+                metadata["age"] = int(row[2]) / GENERATION_TIME
+                populations.append(row[1])
+                sample_metadata.append(metadata)
+            for population in populations:
+                pop_id = self.samples.add_population(
+                    {"name": population, "super_population": "Max Planck"}
+                )
+            for metadata in sample_metadata:
+                self.samples.add_individual(
+                    time=metadata["age"], metadata=metadata, population=pop_id, ploidy=2
+                )
 
     def convert_genotypes(self, row, ancestral_state):
         def return_genotype(allele, ancestral_state):
