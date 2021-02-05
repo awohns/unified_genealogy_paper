@@ -353,7 +353,7 @@ class VcfConverter(Converter):
 
     def process_sites(self, vcf_subset=None, show_progress=False, max_sites=None):
         num_data_sites = int(
-            subprocess.check_output(["bcftools", "index", "--nrecords", self.data_file])
+            subprocess.check_output(["../tools/bin/bcftools", "index", "--nrecords", self.data_file])
         )
 
         progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)
@@ -819,7 +819,8 @@ class MaxPlanckConverter(VcfConverter):
                 pop_id = self.samples.add_population(
                     {"name": population, "super_population": "Max Planck"}
                 )
-            for metadata in sample_metadata:
+            # Assumes two samples per population
+            for pop_id, metadata in enumerate(sample_metadata):
                 self.samples.add_individual(
                     time=metadata["age"], metadata=metadata, population=pop_id, ploidy=2
                 )

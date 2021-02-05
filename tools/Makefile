@@ -1,4 +1,4 @@
-all: | relate geva htslib bcftools samtools picard.jar eigensoft
+all: | relate geva htslib bcftools samtools picard.jar eigensoft beagle
 
 geva: 
 	git clone https://github.com/pkalbers/geva.git 
@@ -33,3 +33,10 @@ picard.jar:
 eigensoft:
 	git clone https://github.com/argriffing/eigensoft.git
 	cd eigensoft/src && make eigenstrat && make convertf
+
+beagle:
+	wget https://faculty.washington.edu/browning/beagle/beagle.18May20.d20.jar
+
+plink:
+	wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20201019.zip
+	unzip plink_linux_x86_64_20201019.zip -d bin/
