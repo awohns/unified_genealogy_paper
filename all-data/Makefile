@@ -209,6 +209,10 @@ SGDP_GENOTYPES_BASE=https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/ph
 sgdp_samples.txt:
 		curl https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/SGDP_metadata.279public.21signedLetter.samples.txt -o $@
 
+sgdp_%_genotypes.vcf.gz:
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz -o $@
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz.csi -o $@.csi
+
 sgdp_%_genotypes.bcf: sgdp_%_genotypes.vcf.gz
 		# Remove the S_Naxi-2 individual because (a) it doesn't have any metadata in the 
 		# file we're using and (b) it has a massively elevated sample edge count if we 
