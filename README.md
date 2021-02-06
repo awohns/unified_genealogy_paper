@@ -28,6 +28,9 @@ $ python -m pip install -r requirements.txt
 
 if you are using pip. Conda may also be used to install these dependencies.
 
+The ``cartopy`` (required for generating figures with maps) is not included in ``requirements.txt`` as it has
+[dependencies which must be installed separately](https://scitools.org.uk/cartopy/docs/latest/installing.html#installing).
+
 ### Installing other tools for simulation-based evaluation
 
 We compare our methods with [Genealogical Estimation of Variant Age (GEVA)](https://github.com/pkalbers/geva) and

@@ -1,0 +1,18 @@
+pandas >= 0.19.2
+numpy >= 1.20
+tskit >= 0.3.4
+msprime >= 1.0.0a3
+tsinfer >= 0.2.0
+tsdate >= 0.1.2
+scikit-allel
+matplotlib
+tqdm
+daiquiri
+pysam
+numba
+dask[complete]
+cython >= 0.28
+pyreadr
+seaborn
+mpld3
+git+git://github.com/popsim-consortium/stdpopsim.git@main#e=stdpopsim

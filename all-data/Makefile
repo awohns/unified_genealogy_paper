@@ -70,9 +70,7 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 hg38.fa:
 		curl https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/latest/hg38.fa.gz -o hg38.fa.gz
 		gunzip -c hg38.fa.gz > hg38.fa
-		java -jar ../tools/picard.jar CreateSequenceDictionary \ 
-					R=hg38.fa \ 
-					O=hg38.dict
+		java -jar ../tools/picard.jar CreateSequenceDictionary R=hg38.fa O=hg38.dict
 
 
 #############################################
@@ -208,6 +206,10 @@ SGDP_GENOTYPES_BASE=https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/ph
 
 sgdp_samples.txt:
 		curl https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/SGDP_metadata.279public.21signedLetter.samples.txt -o $@
+
+sgdp_%_genotypes.vcf.gz:
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz -o $@
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz.csi -o $@.csi
 
 sgdp_%_genotypes.bcf: sgdp_%_genotypes.vcf.gz
 		# Remove the S_Naxi-2 individual because (a) it doesn't have any metadata in the 
@@ -490,7 +492,7 @@ archaics_phased_GRCh38_%.vcf.gz: altai.%_mq25_mapab100.vcf.gz chagyrskaya.%.noRB
 		rm archaics_phased_$*.GRCh38.vcf
 		rm archaics_phased_$*.GRCh38.all.vcf.gz
 
-archaics_phased_GRCh38_%.samples: archaics_phased_GRCh38_%.vcf.gz %_ancestral_states.fa.fai archaic_metadata.txt hgdp hgdp_1kg_sgdp_%.samples
+archaics_phased_GRCh38_%.samples: archaics_phased_GRCh38_%.vcf.gz %_ancestral_states.fa.fai archaic_metadata.txt hgdp_1kg_sgdp_%.samples
 		python3 convert.py max-planck -p \
 			$< \
 			$*_ancestral_states.fa \

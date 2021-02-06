@@ -1,4 +1,4 @@
-all: | relate geva htslib bcftools samtools picard.jar eigensoft beagle
+all: | relate geva htslib bcftools samtools picard.jar eigensoft beagle plink
 
 geva: 
 	git clone https://github.com/pkalbers/geva.git 
