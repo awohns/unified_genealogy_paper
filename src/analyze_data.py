@@ -42,9 +42,9 @@ def get_ancient_proxy_nodes(ts):
 
 
 def get_relate_tgp_age_df():
-    if os.path.exists("data/1kg_chr20_relate_mutation_ages.csv"):
+    if os.path.exists("data/1kg_chr20_relate_mutation_ages_all_pops.csv"):
         relate_ages = pd.read_csv(
-            "data/1kg_chr20_relate_mutation_ages.csv", index_col=0
+            "data/1kg_chr20_relate_mutation_ages_all_pops.csv", index_col=0
         )
     else:
         relate_ages = None
@@ -75,15 +75,10 @@ def get_relate_tgp_age_df():
                         on=["CHR", "BP", "ID", "ancestral/derived"],
                         suffixes=["", "_" + f[-9:-6]],
                     )
-        # age_cols = [c for c in relate_ages.columns if "mean_est" in c]
-        # relate_ages["relate_avg_age"] = relate_ages[age_cols].mean(axis=1)
-        # upper_age_cols = [c for c in relate_ages.columns if "upper_age" in c]
-        # relate_ages["relate_upper_age_avg"] = relate_ages[upper_age_cols].mean(axis=1)
         daf_cols = [c for c in relate_ages.columns if "DAF" in c]
         relate_ages["relate_daf_sum"] = relate_ages[daf_cols].sum(axis=1)
         relate_ages["relate_ancestral_allele"] = relate_ages["ancestral/derived"].str[0]
         relate_ages["relate_derived_allele"] = relate_ages["ancestral/derived"].str[2]
-        # relate_ages = relate_ages[["CHR", "BP", "ID", "relate_daf_sum", "relate_avg_age", "relate_upper_age_avg", "relate_ancestral_allele", "relate_derived_allele"]]
         relate_ages.to_csv("data/1kg_chr20_relate_mutation_ages_all_pops.csv")
     return relate_ages
 
@@ -93,7 +88,10 @@ def get_geva_tgp_age_df():
         geva_ages = pd.read_csv("data/1kg_chr20_geva_mutation_ages.csv", index_col=0)
     else:
         geva = pd.read_csv(
-            "data/geva_ages.csv.gz", delimiter=",", skipinitialspace=True, skiprows=3,
+            "data/geva_ages.csv.gz",
+            delimiter=",",
+            skipinitialspace=True,
+            skiprows=3,
         )
         geva_tgp = geva[geva["DataSource"] == "TGP"]
         geva_tgp_consistent = geva_tgp[geva_tgp["AlleleAnc"] == geva_tgp["AlleleRef"]]
@@ -164,7 +162,6 @@ def tgp_date_estimates(args):
     merged = merged[
         np.abs(merged["tsdate_frequency"] - (merged["relate_daf_sum"] / 4956)) < 0.5
     ]
-    # merged = merged.drop(columns=["Position_x", "Position_y"])
     merged.to_csv("data/tgp_mutations.csv")
 
 
@@ -419,7 +416,7 @@ class AncestralGeography:
 
 def find_ancestral_geographies(args):
     """
-    Calculate ancestral geographies for use in Figure 4 and Supplementary Video 
+    Calculate ancestral geographies for use in Figure 4 and Supplementary Video
     """
 
     tgp_hgdp_sgdp_ancients = tskit.load(
@@ -489,13 +486,13 @@ def average_population_ancestors_geography(args):
     avg_lat_lists = list()
     avg_long_lists = list()
     locations = tgp_hgdp_sgdp_ancestor_locations
-    time_windows_smaller = np.concatenate(
-        [np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)]
-    )
     times = ts.tables.nodes.time[:]
+    time_windows = np.concatenate(
+        [np.array([0]), np.logspace(3.5, np.log(np.max(times)), num=40, base=2.718)]
+    )
     time_slices_child = list()
     time_slices_parent = list()
-    for time in time_windows_smaller:
+    for time in time_windows:
         time_slices_child.append(
             ts.tables.edges.child[
                 np.where(
@@ -521,7 +518,7 @@ def average_population_ancestors_geography(args):
         avg_lat = list()
         avg_long = list()
         cur_ancestral_lineages = list()
-        for i, time in enumerate(time_windows_smaller):
+        for i, time in enumerate(time_windows):
             time_slice_child = time_slices_child[i]
             time_slice_parent = time_slices_parent[i]
             ancestral_lineages = np.logical_and(
@@ -812,14 +809,22 @@ def find_archaic_relationships(args):
     """
     ts = tskit.load("all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
     tables = ts.tables
+    inds = tskit.unpack_bytes(
+        tables.individuals.metadata, tables.individuals.metadata_offset
+    )
+    individual_map = {}
+    for index, ind in enumerate(inds):
+        ind = json.loads(ind)
+        if "name" in ind:
+            individual_map[ind["name"]] = index
+    altai = ts.individual(individual_map["AltaiNeandertal"]).nodes
+    chagyrskaya = ts.individual(individual_map["Chagyrskaya-Phalanx"]).nodes
+    denisovan = ts.individual(individual_map["Denisova"]).nodes
+    vindija = ts.individual(individual_map["Vindija33.19"]).nodes
     altai_proxy = np.where(ts.tables.nodes.time == 4400.01)[0]
     chagyrskaya_proxy = np.where(ts.tables.nodes.time == 3200.01)[0]
-    altai = np.where(tables.nodes.population == ts.num_populations - 1)[0]
-    denisovan = np.where(tables.nodes.population == ts.num_populations - 4)[0]
     denisovan_proxy = np.where(ts.tables.nodes.time == 2556.01)[0]
-    vindija = np.where(tables.nodes.population == ts.num_populations - 3)[0]
     vindija_proxy = np.where(ts.tables.nodes.time == 2000.01)[0]
-    chagyrskaya = np.where(tables.nodes.population == ts.num_populations - 2)[0]
     nonarchaic = ts.samples()[:-8]
 
     # Descent from Vindija: straightforward descent in nonarchaic samples
@@ -834,6 +839,9 @@ def find_archaic_relationships(args):
                 if len(np.intersect1d(leaves, nonarchaic)) > 0:
                     v_descent["v_m"] += tree.span
                 else:
+                    print(
+                        ts.tables.nodes.population[leaves], leaves, vindija, denisovan
+                    )
                     raise ValueError("Leaves must be younger than Vindija")
             elif len(leaves) == 1:
                 assert leaves[0] in vindija_proxy or leaves[0] in vindija
@@ -1026,8 +1034,7 @@ def find_archaic_relationships(args):
 
 def get_tmrcas(args):
     ts_fn = os.path.join(
-        data_prefix,
-        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
+        data_prefix, "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees"
     )
     tmrcas.save_tmrcas(
         ts_fn, max_pop_nodes=20, num_processes=args.processes, save_raw_data=True
@@ -1066,7 +1073,7 @@ def main():
     if args.name == "all":
         for func_name, func in name_map.items():
             print("Running: " + func_name)
-            func(args) 
+            func(args)
     else:
         name_map[args.name](args)
 

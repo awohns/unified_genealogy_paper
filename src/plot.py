@@ -449,11 +449,19 @@ class TsdateNeutralSims(Figure):
         ax[0].set_ylim(1, 2e5)
 
         # tsdate on true tree
-        self.mutation_accuracy(ax[0], true_vals[tsdate > 0], tsdate[tsdate > 0], None, cmap="Blues")
+        self.mutation_accuracy(
+            ax[0], true_vals[tsdate > 0], tsdate[tsdate > 0], None, cmap="Blues"
+        )
         ax[0].set_title("tsdate (using true topology)", fontsize=24)
 
         # tsdate on inferred tree
-        hb = self.mutation_accuracy(ax[1], true_vals[tsdate_inferred > 0], tsdate_inferred[tsdate_inferred > 0], None, cmap="Blues")
+        hb = self.mutation_accuracy(
+            ax[1],
+            true_vals[tsdate_inferred > 0],
+            tsdate_inferred[tsdate_inferred > 0],
+            None,
+            cmap="Blues",
+        )
         ax[1].set_title("tsinfer + tsdate", fontsize=24)
         fig.subplots_adjust(right=0.9)
         colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
@@ -530,7 +538,7 @@ class Chr20AncientIteration(Figure):
         plt.setp(ax[0, 1].artists, edgecolor="k", facecolor="silver")
         plt.setp(ax[0, 0].lines, color="k")
         plt.setp(ax[0, 1].lines, color="k")
-        cols = ["Subset " + str(subset) for subset in [1, 5, 10]]
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
         df_melt = df.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
 
@@ -545,7 +553,7 @@ class Chr20AncientIteration(Figure):
         )
         groupby = df_melt.groupby("variable").mean()
         ax[0, 2].scatter(
-            groupby.index, groupby["value"], s=80, color="black", zorder=3, alpha=0.8
+            groupby.index, groupby["value"], s=70, color="black", zorder=3, alpha=0.8
         )
 
         df_melt = msle_ooa.melt(value_vars=cols)
@@ -563,7 +571,7 @@ class Chr20AncientIteration(Figure):
         ax[0, 2].scatter(
             groupby.index,
             groupby["value"],
-            s=80,
+            s=70,
             marker="X",
             color="black",
             zorder=3,
@@ -584,7 +592,7 @@ class Chr20AncientIteration(Figure):
         ax[0, 2].scatter(
             groupby.index,
             groupby["value"],
-            s=80,
+            s=70,
             marker="P",
             color="black",
             zorder=3,
@@ -593,14 +601,18 @@ class Chr20AncientIteration(Figure):
 
         comb_df = pd.concat([spearman, spearman_ooa, spearman_amh])
 
-        sns.boxplot(x=comb_df["inferred"], orient="v", ax=ax[1, 0], color="silver")
-        sns.boxplot(x=comb_df["reinferred"], orient="v", ax=ax[1, 1], color="silver")
+        sns.boxplot(
+            x=comb_df["tsdate_inferred"], orient="v", ax=ax[1, 0], color="silver"
+        )
+        sns.boxplot(
+            x=comb_df["tsdate_iterate"], orient="v", ax=ax[1, 1], color="silver"
+        )
         plt.setp(ax[1, 0].artists, edgecolor="k", facecolor="silver")
         plt.setp(ax[1, 1].artists, edgecolor="k", facecolor="silver")
         plt.setp(ax[1, 0].lines, color="k")
         plt.setp(ax[1, 1].lines, color="k")
 
-        cols = ["Subset " + str(subset) for subset in [1, 5, 10]]
+        cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
 
         df_melt = spearman.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -615,7 +627,7 @@ class Chr20AncientIteration(Figure):
         )
         groupby = df_melt.groupby("variable").mean()
         ax[1, 2].scatter(
-            groupby.index, groupby["value"], s=80, color="black", zorder=3, alpha=0.8
+            groupby.index, groupby["value"], s=70, color="black", zorder=3, alpha=0.8
         )
         df_melt = spearman_ooa.melt(value_vars=cols)
         df_melt["variable"] = df_melt["variable"].str.split().str[-1]
@@ -632,7 +644,7 @@ class Chr20AncientIteration(Figure):
         ax[1, 2].scatter(
             groupby.index,
             groupby["value"],
-            s=80,
+            s=70,
             marker="X",
             color="black",
             zorder=3,
@@ -653,7 +665,7 @@ class Chr20AncientIteration(Figure):
         ax[1, 2].scatter(
             groupby.index,
             groupby["value"],
-            s=80,
+            s=70,
             marker="P",
             color="black",
             zorder=3,
@@ -685,9 +697,7 @@ class TmrcaClustermap(Figure):
 
     name = "tmrca_clustermap"
     data_path = "data"
-    filename = [
-        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"
-    ]
+    filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
 
     def make_symmetric(self, df):
         """
@@ -762,7 +772,16 @@ class TmrcaClustermap(Figure):
         )
         mask = np.zeros_like(mergedg, dtype=np.bool)
         mask[np.tril_indices_from(mask, k=-1)] = True
-        cg = sns.clustermap(mergedg, mask=mask, method="average")
+        linkage = scipy.cluster.hierarchy.linkage(
+            mergedg, method="average", optimal_ordering=True
+        )
+        cg = sns.clustermap(
+            mergedg,
+            mask=mask,
+            method="average",
+            row_linkage=linkage,
+            col_linkage=linkage,
+        )
         mask = mask[np.argsort(cg.dendrogram_row.reordered_ind), :]
         mask = mask[:, np.argsort(cg.dendrogram_col.reordered_ind)]
         cg = sns.clustermap(
@@ -775,13 +794,16 @@ class TmrcaClustermap(Figure):
             rasterized=True,
             row_colors=row_colors,
             col_colors=col_colors,
-            cbar_pos=(0.04, 0.28, 0.04, 0.2),
+            row_linkage=linkage,
+            col_linkage=linkage,
+            cbar_pos=(0.04, 0.24, 0.04, 0.2),
             cmap=plt.cm.inferno_r,
             dendrogram_ratio=0.18,
             cbar_kws=dict(orientation="vertical"),
         )
         cg.ax_heatmap.invert_xaxis()
         cg.ax_heatmap.xaxis.tick_top()
+        cg.ax_col_colors.invert_xaxis()
         cg.cax.tick_params(labelsize=20)
         cg.cax.set_xlabel("Average TMRCA\n(generations)", size=20)
 
@@ -850,9 +872,7 @@ class InsetTmrcaHistograms(Figure):
 
     name = "inset_tmrca_histograms"
     data_path = "data"
-    filename = [
-        "hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"
-    ]
+    filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
 
     def __init__(self):
         base_name = self.filename[0]
@@ -1083,11 +1103,7 @@ class AncientConstraints(Figure):
 
         # Make one column a list of all relate estimates
         relate_estimates = [c for c in df.columns if "est_" in c]
-        # df= df.melt(id_vars="position", value_vars=relate_estimates, var_name="relate_pop_est", value_name="relate_age")
-        # df["relate_age"] = list(df[relate_estimates].to_numpy())
         relate_upper_estimates = [c for c in df.columns if "upper_age_" in c]
-        # df = df.melt(id_vars="position", value_vars=relate_upper_estimates, var_name="relate_pop_upper", value_name="relate_upper_age")
-        # df["relate_upper_age"] = list(df[relate_upper_estimates].to_numpy())
 
         df["Ancient Bound"] = df["Ancient Bound"] * constants.GENERATION_TIME
         df = df[df["tsdate_frequency"] > 0]
@@ -1428,7 +1444,12 @@ class ScalingFigure(Figure):
         self.samples_index = samples_means.index
         self.length_index = length_means.index / 1000000
 
-        fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(20, 9), sharex=False,)
+        fig, ax = plt.subplots(
+            nrows=2,
+            ncols=2,
+            figsize=(20, 9),
+            sharex=False,
+        )
         self.plot_subplot(
             ax[0, 0],
             self.samples_index,
@@ -1555,9 +1576,12 @@ class TgpMutEstsFrequency(Figure):
     plt_title = "TGP Mutation Age vs Frequency"
 
     def plot(self):
-        comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt", "tsdate_frequency"]
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[
+            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
         ]
+
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
         ]
@@ -1565,6 +1589,7 @@ class TgpMutEstsFrequency(Figure):
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
+
         ax[0].hexbin(
             frequency,
             comparable_mutations["tsdate_age"],
@@ -1574,15 +1599,7 @@ class TgpMutEstsFrequency(Figure):
             cmap="Blues",
             mincnt=1,
         )
-        ax[1].hexbin(
-            frequency,
-            comparable_mutations["relate_avg_age"],
-            xscale="log",
-            yscale="log",
-            bins="log",
-            cmap="Greens",
-            mincnt=1,
-        )
+
         ax[2].hexbin(
             frequency,
             comparable_mutations["AgeMean_Jnt"],
@@ -1592,8 +1609,22 @@ class TgpMutEstsFrequency(Figure):
             cmap="Reds",
             mincnt=1,
         )
+        comparable_mutations = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
+            var_name="relate_est",
+            value_name="relate_age",
+        )
+        ax[1].hexbin(
+            comparable_mutations["tsdate_frequency"],
+            comparable_mutations["relate_age"],
+            xscale="log",
+            yscale="log",
+            bins="log",
+            cmap="Greens",
+            mincnt=1,
+        )
         plt.xlim(3e-3, 1.05)
-        plt.ylim(10, 2.4e5)
+        plt.ylim(10, 5e5)
         ax[0].set_title("Frequency vs. GEVA Estimated Allele Age")
         ax[1].set_title("Frequency vs. Relate Estimated Allele Age")
         ax[2].set_title("Frequency vs. GEVA Estimated Allele Age")
@@ -1603,9 +1634,6 @@ class TgpMutEstsFrequency(Figure):
         ax[0].set_ylabel("Estimated Age by tsdate (generations)")
         ax[1].set_ylabel("Estimated Age by Relate (generations)")
         ax[2].set_ylabel("Estimated Age by GEVA (generations)")
-        ax[0].plot([0.1, 3e5], [0.1, 3e5], c="black")
-        ax[1].plot([0.1, 3e5], [0.1, 3e5], c="black")
-        ax[2].plot([0.1, 3e5], [0.1, 3e5], c="black")
         plt.tight_layout()
 
         self.save(self.name)
@@ -1626,7 +1654,8 @@ class TgpMutationAgeComparisons(Figure):
         df = self.data[0]
         relate_estimates = [c for c in df.columns if "est_" in c]
         comparable_mutations = df[
-            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates]
+            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
+        ]
         fig, ax = plt.subplots(
             nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
@@ -1638,9 +1667,11 @@ class TgpMutationAgeComparisons(Figure):
             bins="log",
             mincnt=1,
         )
-        comparable_mutations = comparable_mutations.melt(id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"], 
-            var_name="relate_est", 
-            value_name="relate_age")
+        comparable_mutations = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
+            var_name="relate_est",
+            value_name="relate_age",
+        )
         ax[1].hexbin(
             comparable_mutations["tsdate_age"],
             comparable_mutations["relate_age"],
@@ -1659,8 +1690,8 @@ class TgpMutationAgeComparisons(Figure):
             mincnt=1,
         )
 
-        plt.xlim(1, 2e5)
-        plt.ylim(1, 2e5)
+        plt.xlim(1, 5e5)
+        plt.ylim(1, 5e5)
         ax[0].set_title("tsdate vs. GEVA Estimated Allele Age")
         ax[1].set_title("tsdate vs. Relate Estimated Allele Age")
         ax[2].set_title("Relate vs. GEVA Estimated Allele Age")
@@ -1670,9 +1701,8 @@ class TgpMutationAgeComparisons(Figure):
         ax[1].set_ylabel("Estimated Age by Relate (generations)")
         ax[2].set_xlabel("Estimated Age by Relate (generations)")
         ax[2].set_ylabel("Estimated Age by GEVA (generations)")
-        ax[0].plot([0.1, 4e5], [0.1, 4e5], c="black")
-        ax[1].plot([0.1, 4e5], [0.1, 4e5], c="black")
-        ax[2].plot([0.1, 4e5], [0.1, 4e5], c="black")
+        for i in range(3):
+            ax[i].plot(ax[i].get_xlim(), ax[i].get_ylim(), c="black")
         plt.tight_layout()
 
         self.save(self.name)
@@ -1690,25 +1720,30 @@ class TgpMutationAverageAge(Figure):
     plt_title = "Average TGP Mutation Age"
 
     def plot(self):
-        comparable_mutations = self.data[0][
-            ["tsdate_age", "relate_avg_age", "AgeMean_Jnt"]
-        ]
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[["tsdate_age", "AgeMean_Jnt"] + relate_estimates]
         comparable_mutations = comparable_mutations[
             comparable_mutations["tsdate_age"] > 0
         ]
-        ax = sns.boxplot(
-            data=comparable_mutations.rename(
-                columns={
-                    "tsdate_age": "tsdate",
-                    "relate_avg_age": "relate",
-                    "AgeMean_Jnt": "GEVA",
-                }
-            ),
+        relate_ages = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt"],
+            var_name="relate_est",
+            value_name="relate_age",
+        ).dropna()
+        ax = plt.boxplot(
+            [
+                comparable_mutations["tsdate_age"],
+                relate_ages["relate_age"],
+                comparable_mutations["AgeMean_Jnt"],
+            ],
+            patch_artist=True,
         )
-        ax.set_yscale("log")
-        ax.artists[0].set_facecolor("blue")
-        ax.artists[1].set_facecolor("green")
-        ax.artists[2].set_facecolor("red")
+        colors = ["blue", "green", "red"]
+        for patch, color in zip(ax["boxes"], colors):
+            patch.set_facecolor(color)
+
+        plt.yscale("log")
         plt.ylabel("Estimated Allele Age (generations)")
         plt.title(
             "Estimated TGP Allele Ages \n {} Variant Sites on Chr 20".format(
@@ -1934,7 +1969,7 @@ class TsdateAccuracy(Figure):
 
     name = "tsdate_accuracy"
     data_path = "simulated-data"
-    filename = "tsdate_accuracy"
+    filename = "tsdate_accuracy.mutation_ages.kc_distances"
     plt_title = "tsdate_accuracy"
 
     def __init__(self):
@@ -2053,14 +2088,8 @@ class NeutralSims(Figure):
 
         # for row, (df, kc_distance) in enumerate(zip(no_error_df, kc_distances)):
         # We can only plot comparable mutations, so remove all rows where NaNs exist
-        # df = df.drop(columns=["geva"])
-        # df = df.replace([0, -np.inf], np.nan)
-        # df = df.dropna()
         df = df[df["simulated_ts"] > 0]
         df = df[np.all(df > 0, axis=1)]
-        # df = df[df["relate"] > 0]
-        # df = df[df["tsdate"] > 0]
-        # df = df[df["tsdate_inferred"] > 0]
 
         # tsdate on true tree
         self.mutation_accuracy(
@@ -2074,11 +2103,11 @@ class NeutralSims(Figure):
         # tsdate on inferred tree
         self.mutation_accuracy(
             ax[0, 1],
-            df["simulated_ts"][df["tsdate_inferred"] > 0],
-            df["tsdate_inferred"][df["tsdate_inferred"] > 0],
-            "tsinfer + tsdate",
-            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_inferred"]),
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_inferred"]),
+            df["simulated_ts"][df["tsdate_iterate"] > 0],
+            df["tsdate_iterate"][df["tsdate_iterate"] > 0],
+            "tsinfer + tsdate \n (with one round of iteration)",
+            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_iterate"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_iterate"]),
         )
 
         df = df[df["relate"] > 0]
@@ -2176,7 +2205,11 @@ class TsdateChr20Accuracy(Figure):
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
-        methods = ["tsdate_inferred", "tsdate_mismatch_inferred", "tsdate_iterate_frommismatch"]
+        methods = [
+            "tsdate_inferred",
+            "tsdate_mismatch_inferred",
+            "tsdate_iterate_frommismatch",
+        ]
         comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
         self.mutation_accuracy(
             axes[0, 1],
@@ -2201,9 +2234,11 @@ class TsdateChr20Accuracy(Figure):
             ):
                 method = prefix + method
                 result = mut_df[method]
-                #comparable_sites = np.logical_and(sim > 0, result > 0)
-                comparable_sites = np.logical_and(mut_df["simulated_ts"] > 0, result > 0)
-                #cur_true_ages = sim[comparable_sites]
+                # comparable_sites = np.logical_and(sim > 0, result > 0)
+                comparable_sites = np.logical_and(
+                    mut_df["simulated_ts"] > 0, result > 0
+                )
+                # cur_true_ages = sim[comparable_sites]
                 cur_true_ages = mut_df["simulated_ts"][comparable_sites]
                 cur_results = result[comparable_sites]
                 self.mutation_accuracy(
@@ -2529,11 +2564,13 @@ class PopulationAncestors(Figure):
         lat_list = self.data[0].to_numpy()
         long_list = self.data[1].to_numpy()
         num_ancestral_lineages = self.data[2].to_numpy()
-        print(num_ancestral_lineages)
         # Remove samples in 1kg
-        hgdp_sgdp_ancients = ts.simplify(
+        hgdp_sgdp_ancients = self.ts.simplify(
             np.where(
-                ~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80))
+                ~np.isin(
+                    self.ts.tables.nodes.population[self.ts.samples()],
+                    np.arange(54, 80),
+                )
             )[0]
         )
         fig = plt.figure(figsize=(16, 10))
@@ -2541,10 +2578,16 @@ class PopulationAncestors(Figure):
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
         ax.set_global()
-        ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
-        time_windows_smaller = np.concatenate(
-            [np.array([0]), np.logspace(3.5, 11, num=40, base=2.718)]
+        # ax.set_extent([-159, 200, -40, 90], crs=ccrs.Geodetic())
+        time_windows = np.concatenate(
+            [
+                np.array([0]),
+                np.logspace(
+                    3.5, np.log(np.max(self.ts.tables.nodes.time)), num=40, base=2.718
+                ),
+            ]
         )
+        # time_windows = np.concatenate([np.array([0]), np.exp(np.geomspace(np.log(1.1), np.log(np.max(self.ts.tables.nodes.time)), 40))])
         for population in np.arange(0, 55):
             pop_size = np.sum(hgdp_sgdp_ancients.tables.nodes.population == population)
             result_colorline = self.colorline(
@@ -2557,15 +2600,15 @@ class PopulationAncestors(Figure):
                 transform=ccrs.Geodetic(),
                 ax=ax,
             )
-            cax = fig.add_axes(
-                [ax.get_position().x0, ax.get_position().y0 - 0.1, 0.78, 0.05]
-            )
-            cbar = fig.colorbar(result_colorline, cax=cax, orientation="horizontal")
+        cax = fig.add_axes(
+            [ax.get_position().x0, ax.get_position().y0 - 0.1, 0.78, 0.05],
+        )
+        cbar = fig.colorbar(result_colorline, cax=cax, orientation="horizontal")
 
-            cbar.set_label(label="Time in Years", size=20)
-            cbar.ax.set_xticklabels(
-                25 * np.round(time_windows_smaller[[0, 4, 8, 12, 16, 20]])
-            )
+        cbar.set_label(label="Time in Years", size=20)
+        cbar.ax.set_xticklabels(
+            (25 * np.round(time_windows[[0, 8, 16, 24, 32, 40]]).astype(int))
+        )
         self.save(self.name)
 
 
@@ -2621,7 +2664,7 @@ class WorldDensity(Figure):
                 ccrs.Geodetic(), avg_locations[:, 1], avg_locations[:, 0]
             )
             h = ax.hist2d(
-                xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.5, cmin=10
+                xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.7, cmin=10
             )
             _ = plt.colorbar(h[3], ax=ax, shrink=0.7, format="%.1f", pad=0.02)
             ax.set_global()
@@ -2650,6 +2693,7 @@ class AncientDescent(Figure):
         exclude_pop_names,
         normalised_descendants,
         descent_sum_sample,
+        descent_cutoff,
         axis_label,
         filename,
     ):
@@ -2677,7 +2721,7 @@ class AncientDescent(Figure):
             index=index,
         )
         df = df.sort_values(["regions", "descent"])
-        df = df[df["descent"] > 0.00003]
+        df = df[df["descent"] > descent_cutoff]
         fig, axes = plt.subplots(
             2, 1, figsize=(55, 10), sharex=True, gridspec_kw={"wspace": 0, "hspace": 0}
         )
@@ -2693,10 +2737,9 @@ class AncientDescent(Figure):
 
         axes[0].set_xticks([])
         axes[0].set_yticklabels(axes[0].get_yticks(), size=16)
-        axes[0].yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.3f"))
-        axes[0].set_ylabel(
-            "Normalised Descent from \n" + axis_label + "-like Ancestry", size=19
-        )
+        axes[0].yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f"))
+        axes[0].set_ylabel("Genomic Descent from \n" + axis_label, size=19)
+        axes[0].yaxis.get_major_ticks()[0].label1.set_visible(False)
         boxes = axes[1].boxplot(df["median_descent"].to_numpy())
         for color, box in zip(df["colors"], boxes["boxes"]):
             box.set_color(color)
@@ -2713,9 +2756,7 @@ class AncientDescent(Figure):
         axes[1].set_xticklabels(pop_labels, rotation=90, size=18)
 
         axes[1].set_xlim(0, df.shape[0] + 1)
-        axes[1].set_ylabel(
-            "Total Length of " + axis_label + "-\n like Ancestry (Kb)", size=19
-        )
+        axes[1].set_ylabel("Total Length of " + axis_label + "\nAncestry (Kb)", size=19)
 
         pos = np.concatenate([major_tick_label[1], [df.shape[0]]]) / df.shape[0]
         pos = np.array((pos[1:] + pos[:-1]) / 2) - np.repeat(
@@ -2818,6 +2859,7 @@ class AncientDescent(Figure):
             self.exclude_pop_names,
             genomic_descent,
             sample_desc_sum,
+            self.descent_cutoff,
             self.plotname.capitalize(),
             self.plotname + "_median_descent",
         )
@@ -2843,6 +2885,8 @@ class AfanasievoDescent(AncientDescent):
     plotname = "afanasievo"
     proxy_time = 164.01
     exclude_pop_names = ["Afanasievo"]
+    descent_cutoff = 0.0001
+
 
 class VindijaDescent(AncientDescent):
     """
@@ -2861,6 +2905,7 @@ class VindijaDescent(AncientDescent):
     plotname = "vindija"
     proxy_time = 2000.01
     exclude_pop_names = ["Vindija"]
+    descent_cutoff = 0.00025
 
 
 class DenisovanDescent(AncientDescent):
@@ -2880,6 +2925,7 @@ class DenisovanDescent(AncientDescent):
     plotname = "denisovan"
     proxy_time = 2556.01
     exclude_pop_names = ["Denisovan"]
+    descent_cutoff = 0.0005
 
 
 class ChagyrskayaDescent(AncientDescent):
@@ -2899,6 +2945,7 @@ class ChagyrskayaDescent(AncientDescent):
     plotname = "chagyrskaya"
     proxy_time = 3200.01
     exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
+    descent_cutoff = 0.001
 
 
 class AltaiDescent(AncientDescent):
@@ -2918,6 +2965,7 @@ class AltaiDescent(AncientDescent):
     plotname = "altai"
     proxy_time = 4400.01
     exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
+    descent_cutoff = 0.0025
 
 
 class SiteLinkageAndQuality(Figure):
@@ -2947,7 +2995,8 @@ class SiteLinkageAndQuality(Figure):
     def plot(self):
 
         client = dask.distributed.Client(
-            dashboard_address="localhost:22222", processes=False,
+            dashboard_address="localhost:22222",
+            processes=False,
         )
 
         haploid = ts.genotype_matrix()
@@ -3036,14 +3085,16 @@ class SiteLinkageAndQuality(Figure):
         no_ld = np.isnan(ld)
 
         total_hist, bin_edges = np.histogram(
-            muts_per_site, bins=self.gen_log_space(1000, 50)[1:],
+            muts_per_site,
+            bins=self.gen_log_space(1000, 50)[1:],
         )
         masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
         prop_masked_hist = masked_hist / total_hist
         ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
         prop_ld_hist = ld_hist / total_hist
         neither_hist, bins = np.histogram(
-            muts_per_site[np.logical_and(~masked, ~low_ld)], bins=bin_edges,
+            muts_per_site[np.logical_and(~masked, ~low_ld)],
+            bins=bin_edges,
         )
         prop_neither_hist = neither_hist / total_hist
 

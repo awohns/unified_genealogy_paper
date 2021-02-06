@@ -1,23 +1,13 @@
-import argparse
 import csv
-from itertools import combinations
 import logging
-import math
-import multiprocessing
 import os
-import random
 import subprocess
-import shutil
 import sys
 import tempfile
-from functools import reduce
 
 import json
 import numpy as np
 import pandas as pd
-import scipy
-from scipy.stats import gaussian_kde, pearsonr, spearmanr
-from sklearn.metrics import mean_squared_error, mean_squared_log_error
 
 import msprime
 import tsinfer
@@ -25,8 +15,6 @@ import tskit
 import stdpopsim
 
 import utility
-import run_inference
-from intervals import read_hapmap
 
 import tsdate  # NOQA
 
@@ -69,60 +57,48 @@ def run_neutral_sim(
     return ts
 
 
-def get_genetic_map_chr20_snippet(rowdata, filename):
-    """
-    For each chromosome 20 simulation, randomly select a region to run inference on
-    """
-    species = stdpopsim.get_species("HomSap")
-    genetic_map = species.get_genetic_map("HapMapII_GRCh37")
-    cm = genetic_map.get_chromosome_map("chr20")
-    pos = np.array(cm.get_positions())
-    snippet = np.where(
-        np.logical_and(pos > rowdata["snippet"][0], pos < rowdata["snippet"][1])
-    )
-    snippet_pos = pos[snippet]
-    snippet_rates = np.array(cm.get_rates())[snippet]
-    map_distance = np.concatenate(
-        [[0], (np.diff(snippet_pos) * snippet_rates[:-1]) / 1e6]
-    )
-    genetic_map_output = pd.DataFrame(
-        data=np.stack([snippet_pos, snippet_rates, map_distance], axis=1),
-        columns=["position", "COMBINED_rate.cM.Mb.", "Genetic_Map.cM."],
-    )
-    path_to_genetic_map = os.path.join(self.data_dir, filename + "_genetic_map.txt")
-    genetic_map_output.to_csv(path_to_genetic_map, sep=" ", index=False)
-    return genetic_map_output
-
-
 def infer_with_mismatch(
     sample_data,
     path_to_genetic_map,
-    ma_mismatch=0.1,
-    ms_mismatch=0.1,
+    ma_mismatch=1,
+    ms_mismatch=1,
     precision=15,
     num_threads=1,
-    progress_monitor=False
+    progress_monitor=False,
 ):
-    ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads, progress_monitor=progress_monitor)
-    gmap = read_hapmap(path_to_genetic_map)
-    
+    ancestors = tsinfer.generate_ancestors(
+        sample_data, num_threads=num_threads, progress_monitor=progress_monitor
+    )
+    gmap = msprime.RateMap.read_hapmap(
+        path_to_genetic_map, sequence_length=ancestors.sequence_length
+    )
+    genetic_dists = tsinfer.Matcher.recombination_rate_to_dist(
+        gmap, ancestors.sites_position[:]
+    )
+    recombination = tsinfer.Matcher.recombination_dist_to_prob(genetic_dists)
+    recombination[recombination == 0] = 1e-20
+    mismatch = np.full(
+        len(ancestors.sites_position[:]),
+        tsinfer.Matcher.mismatch_ratio_to_prob(1, np.median(genetic_dists), 2),
+    )
+
     ancestors_ts = tsinfer.match_ancestors(
         sample_data,
         ancestors,
-        recombination_rate=gmap,
-        mismatch_ratio=ma_mismatch,
+        recombination=recombination,
+        mismatch=mismatch,
         precision=precision,
         num_threads=num_threads,
-        progress_monitor=progress_monitor
+        progress_monitor=progress_monitor,
     )
     return tsinfer.match_samples(
         sample_data,
         ancestors_ts,
-        recombination_rate=gmap,
-        mismatch_ratio=ms_mismatch,
+        recombination=recombination,
+        mismatch=mismatch,
         precision=precision,
         num_threads=num_threads,
-        progress_monitor=progress_monitor
+        progress_monitor=progress_monitor,
     )
 
 
@@ -146,9 +122,12 @@ def remove_ancient_only_muts(ts, modern_samples=None):
     Remove mutations which only appear in ancients, and mutations which are fixed when
     ancients are removed.
     """
+    tables = ts.dump_tables()
+    tables.migrations.clear()
+    ts_nomig = tables.tree_sequence()
     if modern_samples is None:
         modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
-    modern_ts = ts.simplify(samples=modern_samples, keep_unary=True)
+    modern_ts = ts_nomig.simplify(samples=modern_samples, keep_unary=True)
 
     del_sites = list(
         np.where(
@@ -357,23 +336,6 @@ def compare_mutations(
         )
 
     return run_results
-
-
-def construct_tsinfer_name(sim_name, subsample_size, input_seq_error=None):
-    """
-    Returns a TSinfer filename. In the future we may have a tweakable error parameter
-    for tsinfer, which may be different from the actual error injected into the
-    simulated samples, so we allow for this here.
-    If the file is a subset of the original, this can be added to the
-    basename in this function, or later using the
-    add_subsample_param_to_name() routine.
-    """
-    d, f = os.path.split(sim_name)
-    suffix = "" if input_seq_error is None else "SQerr{}".format(input_seq_error)
-    name = os.path.join(d, "+".join(["tsinfer", f, suffix]))
-    if subsample_size is not None and not pd.isnull(subsample_size):
-        name = add_subsample_param_to_name(name, subsample_size)
-    return name
 
 
 def run_tsdate(input_fn, Ne, mut_rate, timepoints, method):
@@ -701,3 +663,324 @@ def time_cmd(cmd, stdout=sys.stdout):
         system_time = float(split[1])
         user_time = float(split[2])
     return user_time + system_time, max_memory
+
+
+def papuans_10j19():
+    id = "PapuansOutOfAfrica_10J19"
+    description = "Out-of-Africa with archaic admixture into Papuans"
+    long_description = """
+        A ten population model of out-of-Africa, including two pulses of
+        Denisovan admixture into Papuans, and several pulses of Neandertal
+        admixture into non-Africans.
+        Most parameters are from Jacobs et al. (2019), Table S5 and Figure S5.
+        This model is an extension of one from Malaspinas et al. (2016), thus
+        some parameters are inherited from there.
+        """
+
+    # sampling times
+    T_DenA = 2203
+    T_NeaA = 3793
+
+    populations = [
+        # humans
+        stdpopsim.Population(id="YRI", description="1000 Genomes YRI (Yorubans)"),
+        stdpopsim.Population(
+            id="CEU",
+            description="1000 Genomes CEU (Utah Residents (CEPH) with Northern and Western European Ancestry",
+        ),
+        stdpopsim.Population(
+            id="CHB", description="1000 Genomes CHB (Han Chinese in Beijing, China)"
+        ),
+        stdpopsim.Population("Papuan", "Papuans from Indonesia and New Guinea"),
+        # archaics
+        stdpopsim.Population(
+            "DenA", "Altai Denisovan (sampling) lineage", sampling_time=T_DenA
+        ),
+        stdpopsim.Population(
+            "NeaA", "Altai Neandertal (sampling) lineage", sampling_time=T_NeaA
+        ),
+        stdpopsim.Population(
+            "Den1", "Denisovan D1 (introgressing) lineage", sampling_time=None
+        ),
+        stdpopsim.Population(
+            "Den2", "Denisovan D2 (introgressing) lineage", sampling_time=None
+        ),
+        stdpopsim.Population(
+            "Nea1", "Neandertal N1 (introgressing) lineage", sampling_time=1725
+        ),
+        stdpopsim.Population("Ghost", "Out-of-Africa lineage", sampling_time=None),
+    ]
+    pop = {p.id: i for i, p in enumerate(populations)}
+
+    citations = [
+        stdpopsim.Citation(
+            author="Jacobs et al.",
+            year=2019,
+            doi="https://doi.org/10.1016/j.cell.2019.02.035",
+            reasons={stdpopsim.CiteReason.DEM_MODEL},
+        ),
+        stdpopsim.Citation(
+            author="Malaspinas et al.",
+            year=2016,
+            doi="https://doi.org/10.1038/nature18299",
+            reasons={stdpopsim.CiteReason.DEM_MODEL},
+        ),
+    ]
+
+    # Inherited from Malaspinas et al., which gives the following refs:
+    generation_time = 29  # Fenner 2005
+    # mutation_rate = 1.25e-8  # per gen per site, Scally & Durbin 2012
+
+    N_YRI = 48433
+    N_Ghost = 8516
+    N_CEU = 6962
+    N_CHB = 9025
+    N_Papuan = 8834
+
+    N_DenA = 5083
+    N_Den1 = 13249
+    N_Den2 = 13249
+    N_NeaA = 826
+    N_Nea1 = 13249
+
+    pop_meta = {p.id: p.asdict() for p in populations}
+    population_configurations = [
+        msprime.PopulationConfiguration(initial_size=N_YRI, metadata=pop_meta["YRI"]),
+        msprime.PopulationConfiguration(initial_size=N_CEU, metadata=pop_meta["CEU"]),
+        msprime.PopulationConfiguration(initial_size=N_CHB, metadata=pop_meta["CHB"]),
+        msprime.PopulationConfiguration(
+            initial_size=N_Papuan, metadata=pop_meta["Papuan"]
+        ),
+        msprime.PopulationConfiguration(initial_size=N_DenA, metadata=pop_meta["DenA"]),
+        msprime.PopulationConfiguration(initial_size=N_NeaA, metadata=pop_meta["NeaA"]),
+        msprime.PopulationConfiguration(initial_size=N_Den1, metadata=pop_meta["Den1"]),
+        msprime.PopulationConfiguration(initial_size=N_Den2, metadata=pop_meta["Den2"]),
+        msprime.PopulationConfiguration(initial_size=N_Nea1, metadata=pop_meta["Nea1"]),
+        msprime.PopulationConfiguration(
+            initial_size=N_Ghost, metadata=pop_meta["Ghost"]
+        ),
+    ]
+    assert len(populations) == len(population_configurations)
+
+    # initial migrations
+    m_Ghost_Afr = 1.79e-4
+    m_Ghost_EU = 4.42e-4
+    m_EU_AS = 3.14e-5
+    m_AS_Papuan = 5.72e-5
+    # older migrations
+    m_Eurasian_Papuan = 5.72e-4
+    m_Eurasian_Ghost = 4.42e-4
+
+    migration_matrix = [[0] * len(populations) for _ in range(len(populations))]
+    migration_matrix[pop["Ghost"]][pop["YRI"]] = m_Ghost_Afr
+    migration_matrix[pop["YRI"]][pop["Ghost"]] = m_Ghost_Afr
+    migration_matrix[pop["Ghost"]][pop["CEU"]] = m_Ghost_EU
+    migration_matrix[pop["CEU"]][pop["Ghost"]] = m_Ghost_EU
+    migration_matrix[pop["CEU"]][pop["CHB"]] = m_EU_AS
+    migration_matrix[pop["CHB"]][pop["CEU"]] = m_EU_AS
+    migration_matrix[pop["CHB"]][pop["Papuan"]] = m_AS_Papuan
+    migration_matrix[pop["Papuan"]][pop["CHB"]] = m_AS_Papuan
+
+    # splits
+    T_EU_AS_split = 1293
+    T_Eurasian_Ghost_split = 1758
+    T_Papuan_Ghost_split = 1784
+    T_Ghost_Afr_split = 2218
+    T_NeaA_Nea1_split = 3375
+    T_DenA_Den1_split = 9750
+    T_DenA_Den2_split = 12500
+    T_Den_Nea_split = 15090
+    T_Afr_Archaic_split = 20225
+
+    # bottlenecks
+    Tb_Eurasia = 1659
+    Tb_Papua = 1685
+    Tb_Ghost = 2119
+    Nb_Eurasia = 2231
+    Nb_Papua = 243
+    Nb_Ghost = 1394
+
+    # internal branches
+    N_EU_AS = 12971
+    N_Ghost_Afr = 41563
+    N_NeaA_Nea1 = 13249
+    N_Den_Anc = 100  # S10.i p. 31/45
+    N_DenA_Den1 = N_Den_Anc
+    N_DenA_Den2 = N_Den_Anc
+    N_Den_Nea = 13249
+    N_Afr_Archaic = 32671
+
+    # admixture pulses
+    m_Den_Papuan = 0.04
+    p1 = 0.55  # S10.i p. 31/45
+    m_Den1_Papuan = p1 * m_Den_Papuan
+    m_Den2_Papuan = (1 - p1) * m_Den_Papuan
+    m_Nea1_Ghost = 0.024
+    m_Nea1_Eurasian = 0.011
+    m_Nea1_Papuan = 0.002
+    m_Nea1_AS = 0.002
+
+    T_Nea1_Ghost_mig = 1853
+    T_Nea1_Eurasian_mig = 1566
+    T_Nea1_Papuan_mig = 1412
+    T_Nea1_AS_mig = 883
+    # Fig. 4B, and S10.h p. 30/45
+    T_Den1_Papuan_mig = 29.8e3 / generation_time
+    T_Den2_Papuan_mig = 45.7e3 / generation_time
+
+    demographic_events = [
+        # human lineage splits
+        msprime.MassMigration(
+            time=T_EU_AS_split, source=pop["CEU"], destination=pop["CHB"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_EU_AS_split, initial_size=N_EU_AS, population_id=pop["CHB"]
+        ),
+        msprime.MassMigration(
+            time=T_Eurasian_Ghost_split, source=pop["CHB"], destination=pop["Ghost"]
+        ),
+        msprime.MassMigration(
+            time=T_Papuan_Ghost_split, source=pop["Papuan"], destination=pop["Ghost"]
+        ),
+        msprime.MassMigration(
+            time=T_Ghost_Afr_split, source=pop["Ghost"], destination=pop["YRI"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_Ghost_Afr_split, initial_size=N_Ghost_Afr, population_id=pop["YRI"]
+        ),
+        # archaic lineage splits
+        msprime.MassMigration(
+            time=T_DenA_Den1_split, source=pop["Den1"], destination=pop["DenA"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_DenA_Den1_split, initial_size=N_DenA_Den1, population_id=pop["DenA"]
+        ),
+        msprime.MassMigration(
+            time=T_DenA_Den2_split, source=pop["Den2"], destination=pop["DenA"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_DenA_Den2_split, initial_size=N_DenA_Den2, population_id=pop["DenA"]
+        ),
+        msprime.MassMigration(
+            time=T_NeaA_Nea1_split, source=pop["Nea1"], destination=pop["NeaA"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_NeaA_Nea1_split, initial_size=N_NeaA_Nea1, population_id=pop["NeaA"]
+        ),
+        msprime.MassMigration(
+            time=T_Den_Nea_split, source=pop["NeaA"], destination=pop["DenA"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_Den_Nea_split, initial_size=N_Den_Nea, population_id=pop["DenA"]
+        ),
+        msprime.MassMigration(
+            time=T_Afr_Archaic_split, source=pop["DenA"], destination=pop["YRI"]
+        ),
+        msprime.PopulationParametersChange(
+            time=T_Afr_Archaic_split,
+            initial_size=N_Afr_Archaic,
+            population_id=pop["YRI"],
+        ),
+        # bottlenecks
+        msprime.PopulationParametersChange(
+            time=Tb_Eurasia, initial_size=Nb_Eurasia, population_id=pop["CHB"]
+        ),
+        msprime.PopulationParametersChange(
+            time=Tb_Papua, initial_size=Nb_Papua, population_id=pop["Papuan"]
+        ),
+        msprime.PopulationParametersChange(
+            time=Tb_Ghost, initial_size=Nb_Ghost, population_id=pop["Ghost"]
+        ),
+        # migration changes
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["CHB"], pop["CEU"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["CEU"], pop["CHB"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["Papuan"], pop["CHB"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["CHB"], pop["Papuan"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["Ghost"], pop["CEU"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split, rate=0, matrix_index=(pop["CEU"], pop["Ghost"])
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split,
+            rate=m_Eurasian_Papuan,
+            matrix_index=(pop["CHB"], pop["Papuan"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split,
+            rate=m_Eurasian_Papuan,
+            matrix_index=(pop["Papuan"], pop["CHB"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split,
+            rate=m_Eurasian_Ghost,
+            matrix_index=(pop["CHB"], pop["Ghost"]),
+        ),
+        msprime.MigrationRateChange(
+            time=T_EU_AS_split,
+            rate=m_Eurasian_Ghost,
+            matrix_index=(pop["Ghost"], pop["CHB"]),
+        ),
+        # all migrations off
+        msprime.MigrationRateChange(time=Tb_Eurasia, rate=0),
+        # admixture pulses
+        msprime.MassMigration(
+            time=T_Den1_Papuan_mig,
+            proportion=m_Den1_Papuan,
+            source=pop["Papuan"],
+            destination=pop["Den1"],
+        ),
+        msprime.MassMigration(
+            time=T_Den2_Papuan_mig,
+            proportion=m_Den2_Papuan,
+            source=pop["Papuan"],
+            destination=pop["Den2"],
+        ),
+        msprime.MassMigration(
+            time=T_Nea1_Ghost_mig,
+            proportion=m_Nea1_Ghost,
+            source=pop["Ghost"],
+            destination=pop["Nea1"],
+        ),
+        msprime.MassMigration(
+            time=T_Nea1_Eurasian_mig,
+            proportion=m_Nea1_Eurasian,
+            source=pop["CHB"],
+            destination=pop["Nea1"],
+        ),
+        msprime.MassMigration(
+            time=T_Nea1_Papuan_mig,
+            proportion=m_Nea1_Papuan,
+            source=pop["Papuan"],
+            destination=pop["Nea1"],
+        ),
+        msprime.MassMigration(
+            time=T_Nea1_AS_mig,
+            proportion=m_Nea1_AS,
+            source=pop["CHB"],
+            destination=pop["Nea1"],
+        ),
+    ]
+
+    demographic_events.sort(key=lambda x: x.time)
+
+    return stdpopsim.DemographicModel(
+        id=id,
+        description=description,
+        long_description=long_description,
+        populations=populations,
+        citations=citations,
+        generation_time=generation_time,
+        population_configurations=population_configurations,
+        migration_matrix=migration_matrix,
+        demographic_events=demographic_events,
+    )
