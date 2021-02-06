@@ -10,23 +10,16 @@ import tsdate
 
 
 def sites_time_from_ts(
-    tree_sequence, *, unconstrained=True, node_selection="child", exclude_root=True
+    tree_sequence, *, node_selection="child", exclude_root=True
 ):
     if tree_sequence.num_sites < 1:
         raise ValueError("Invalid tree sequence: no sites present")
-    if node_selection not in ["arithmetic", "geometric", "child", "parent"]:
+    if node_selection not in ["arithmetic", "geometric", "child", "parent", "msprime"]:
         raise ValueError(
             "The node_selection parameter must be "
-            "'child', 'parent', 'arithmetic', or 'geometric'"
+            "'child', 'parent', 'arithmetic', 'geometric', or 'msprime'"
         )
-    if unconstrained:
-        try:
-            nodes_time = nodes_time_unconstrained(tree_sequence)
-        except ValueError as e:
-            e.args += "Try calling sites_time_from_ts() with unconstrained=False."
-            raise
-    else:
-        nodes_time = tree_sequence.tables.nodes.time
+    nodes_time = tree_sequence.tables.nodes.time
     sites_time = np.full(tree_sequence.num_sites, np.nan)
 
     for tree in tree_sequence.trees():
@@ -43,6 +36,8 @@ def sites_time_from_ts(
                         age = (nodes_time[mutation.node] + parent_age) / 2
                     elif node_selection == "geometric":
                         age = np.sqrt(nodes_time[mutation.node] * parent_age)
+                    elif node_selection == "msprime":
+                        age = mutation.time
                 if np.isnan(sites_time[site.id]) or sites_time[site.id] < age:
                     sites_time[site.id] = age
                     if exclude_root and parent_node == tree_sequence.num_nodes - 1:
@@ -50,23 +45,17 @@ def sites_time_from_ts(
     return sites_time
 
 
-def get_mut_pos_df(ts, name, node_dates, mutation_age="arithmetic", exclude_root=False):
-    if mutation_age == "uniform":
-        child_times = tsdate.sites_time_from_ts(
-            ts, mutation_age="child", unconstrained=False, eps=0
-        )
-        parent_times = tsdate.sites_time_from_ts(
-            ts, mutation_age="parent", unconstrained=False, eps=0
-        )
-        sites_time = np.random.uniform(child_times, parent_times)
+def get_mut_pos_df(ts, name, node_dates, node_selection="arithmetic", exclude_root=False):
+    if node_selection == "msprime":
+        sites_time = sites_time_from_ts(ts, node_selection="msprime", exclude_root=False)
     else:
         if exclude_root:
             sites_time = sites_time_from_ts(
-                ts, node_selection=mutation_age, unconstrained=False, exclude_root=True
+                ts, node_selection=node_selection, exclude_root=True
             )
         else:
             sites_time = tsdate.sites_time_from_ts(
-                ts, mutation_age=mutation_age, unconstrained=False, eps=0
+                ts, node_selection=node_selection, unconstrained=False, min_time=0
             )
     positions = ts.tables.sites.position
     mut_dict = dict(zip(positions, sites_time))
@@ -126,3 +115,19 @@ def vectorized_weighted_geographic_center(lat_arr, long_arr, weights):
     central_sqrt = np.sqrt((weighted_avg_x ** 2) + (weighted_avg_y ** 2))
     central_latitude = np.arctan2(weighted_avg_z, central_sqrt)
     return np.degrees(central_latitude), np.degrees(central_longitude)
+
+
+def add_grand_mrca(ts):
+    """
+    Function to add a grand mrca node to a tree sequence
+    """
+    grand_mrca = ts.max_root_time + 1
+    tables = ts.dump_tables()
+    new_node_number = tables.nodes.add_row(time=grand_mrca)
+    for tree in ts.trees():
+        tables.edges.add_row(
+            tree.interval[0], tree.interval[1], new_node_number, tree.root
+        )
+    tables.sort()
+    return tables.tree_sequence()
+

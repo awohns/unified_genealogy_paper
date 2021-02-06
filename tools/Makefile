@@ -5,9 +5,9 @@ geva:
 	cd geva && make
 
 relate:
-	wget https://myersgroup.github.io/relate/download/relate_v1.1.4_x86_64_dynamic.tgz
-	tar -xzf relate_v1.1.4_x86_64_dynamic.tgz
-	mv relate_v1.1.4_x86_64_dynamic relate 
+	wget https://myersgroup.github.io/relate/download/relate_v1.1.5_x86_64_dynamic.tgz
+	tar -xzf relate_v1.1.5_x86_64_dynamic.tgz
+	mv relate_v1.1.5_x86_64_dynamic relate 
 
 htslib:
 	wget https://github.com/samtools/htslib/releases/download/1.11/htslib-1.11.tar.bz2
@@ -40,3 +40,6 @@ beagle:
 plink:
 	wget http://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_20201019.zip
 	unzip plink_linux_x86_64_20201019.zip -d bin/
+
+clean:
+	rm -rf geva relate htslib bcftools samtools picard.jar eigensoft bin beagle
