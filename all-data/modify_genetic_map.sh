@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Replace all 0 values for recombination rate by 0.001
-#cat genetic_map_GRCh38_merged.tab | tr ' ' '\t' > genetic_map_GRCh38_merged_modified.tab
 awk -F"\t" 'BEGIN{OFS="\t";} $3 ==0 {$3=0.001}1' recomb-hg38/genetic_map_GRCh38_merged.tab > recomb-hg38/genetic_map_GRCh38_merged_modified.tab
 
 # Split file based on value of column 1
