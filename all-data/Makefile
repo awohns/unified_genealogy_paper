@@ -650,5 +650,5 @@ hgdp_1kg_sgdp_high_cov_ancients_dated_%.trees: hgdp_1kg_sgdp_high_cov_ancients_d
 		python3 tsutil.py simplify hgdp_1kg_sgdp_high_cov_ancients_dated_$*.binned.nosimplify.trees $@
 
 clean:
-		rm -f 1kg_samples.ped sgdp_samples.txt *.vcf* *.samples*
+		rm -f 1kg_samples.ped sgdp_samples.txt *.vcf* *.samples* recomb-hg38/
 
