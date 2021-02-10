@@ -1,0 +1,3 @@
+[submodule "tsinfer-benchmarking"]
+	path = tsinfer-benchmarking
+	url = https://github.com/hyanwong/tsinfer-benchmarking
