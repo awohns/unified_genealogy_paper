@@ -322,13 +322,17 @@ class Figure(object):
     def __init__(self):
         self.data = list()
         if self.filename is not None:
-            for fn in self.filename:
+            for fn, header in zip(self.filename, self.header):
                 datafile_name = os.path.join(self.data_path, fn + ".csv")
                 self.data.append(
                     pd.read_csv(
-                        datafile_name, delimiter=self.delimiter, header=self.header
+                        datafile_name, delimiter=self.delimiter, header=header
                     )
                 )
+        # Unified TS used in multiple plots
+        self.ts = tskit.load(
+            "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr" + self.chrom + ".trees"
+        )
 
     def save(self, figure_name=None, animation=None, bbox_inches="tight"):
         if figure_name is None:
@@ -903,7 +907,7 @@ class TmrcaClustermap(Figure):
     Figure 2: Plot the TMRCA clustermap
     """
 
-    name = "tmrca_clustermap"
+    name = "tmrcas"
     data_path = "data"
     filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
 
@@ -2706,14 +2710,17 @@ class PopulationAncestors(Figure):
     """
 
     name = "population_ancestors"
-    data_path = "data"
-    filename = [
-        "avg_pop_ancestral_location_LATS",
-        "avg_pop_ancestral_location_LONGS",
-        "num_ancestral_lineages",
-    ]
-    delimiter = ","
-    header = None
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.filename = [
+            "avg_pop_ancestral_location_LATS_chr" + self.chrom,
+            "avg_pop_ancestral_location_LONGS_chr" + self.chrom,
+            "num_ancestral_lineages_chr" + self.chrom,
+        ]
+        self.delimiter = ","
+        self.header = [None, None, None]
+        super().__init__()
 
     def colorline(self, x, y, z, transform, cmap, norm, ax, linewidth=3, alpha=1.0):
         """
@@ -2887,13 +2894,13 @@ class AncientDescent(Figure):
 
     def __init__(self):
         super().__init__()
-        self.pop_names = np.loadtxt("data/combined_ts_pop_names.csv", dtype="str")
+        self.pop_names = np.loadtxt("data/unified_ts_pop_names.csv", dtype="str")
         self.reference_sets = pickle.load(
-            open("data/combined_ts_reference_sets.p", "rb"))
+            open("data/unified_ts_reference_sets.p", "rb"))
         self.ref_set_map = np.loadtxt(
-            "data/combined_ts_reference_set_map.csv").astype(int)
+            "data/unified_ts_reference_set_map.csv").astype(int)
         self.regions = np.loadtxt(
-            "data/combined_ts_regions.csv", delimiter=",", dtype="str")
+            "data/unified_ts_regions.csv", delimiter=",", dtype="str")
 
     def plot_total_median_descent(
         self,
@@ -2901,22 +2908,23 @@ class AncientDescent(Figure):
         exclude_pop_names,
         normalised_descendants,
         descent_sum_sample,
-        descent_cutoff,
+        minimum_descent,
         axis_label,
         filename,
     ):
         # Remove populations which should not be plotted
         # For example, don't plot other archaics as scale will be off
-        exclude_pop = ~np.in1d(self.pop_names, exclude_pop_names)
+        reference_set_lens = np.array([len(ref_set) for ref_set in self.reference_sets])
+        # Only consider populations with > 1 individuals and remove manually excluded populations
+        exclude_pop = np.logical_and(~np.in1d(self.pop_names, exclude_pop_names), reference_set_lens > 4)
         index = np.where(exclude_pop)[0]
         # Determine population level descent from ancients
         vals = np.sum(normalised_descendants, axis=0)[exclude_pop]
-        vals = pd.Series(vals, index=index)
+        vals = pd.Series(vals.values, index=index)
         median_descent = {}
         for pop in index:
             median_descent[pop] = descent_sum_sample[self.reference_sets[pop]]
         median_descent = pd.Series(median_descent)
-        reference_set_lens = np.array([len(ref_set) for ref_set in self.reference_sets])
         df = pd.DataFrame(
             {
                 "descent": vals,
@@ -2929,7 +2937,7 @@ class AncientDescent(Figure):
             index=index,
         )
         df = df.sort_values(["regions", "descent"])
-        df = df[df["descent"] > descent_cutoff]
+        df = df[df["descent"] > minimum_descent]
         fig, axes = plt.subplots(
             2, 1, figsize=(55, 10), sharex=True, gridspec_kw={"wspace": 0, "hspace": 0}
         )
@@ -2946,8 +2954,10 @@ class AncientDescent(Figure):
         axes[0].set_xticks([])
         axes[0].set_yticklabels(axes[0].get_yticks(), size=16)
         axes[0].yaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.4f"))
-        axes[0].set_ylabel("Genomic Descent from \n" + axis_label, size=19)
-        axes[0].yaxis.get_major_ticks()[0].label1.set_visible(False)
+        #axes[0].yaxis.get_major_ticks()[0].label1.set_visible(False)
+        axes[0].set_ylabel(
+            "Genomic Descent from \n" + axis_label + " Haplotypes", size=19
+        )
         boxes = axes[1].boxplot(df["median_descent"].to_numpy())
         for color, box in zip(df["colors"], boxes["boxes"]):
             box.set_color(color)
@@ -3047,14 +3057,14 @@ class AncientDescent(Figure):
 
     def plot(self):
         descent_arr = np.genfromtxt(
-            "data/combined_ts_" + self.plotname + "_descent_arr.csv", delimiter=","
+            "data/unified_ts_chr" + self.chrom + "_" + self.plotname + "_descent_arr.csv", delimiter=","
         )
         descendants = self.data[0].to_numpy().ravel().astype(int)
         corrcoef_df = self.data[1]
         sample_desc_sum = self.data[2].T.to_numpy()[0]
         genomic_descent = self.data[3]
         genomic_descent = genomic_descent.set_index(genomic_descent.columns[0])
-        genomic_descent.columns = genomic_descent.iloc[0]
+        #genomic_descent.columns = genomic_descent.iloc[0]
         genomic_descent = genomic_descent[1:]
         genomic_descent.columns.name = "Population ID"
         genomic_descent = genomic_descent[
@@ -3067,12 +3077,12 @@ class AncientDescent(Figure):
             self.exclude_pop_names,
             genomic_descent,
             sample_desc_sum,
-            self.descent_cutoff,
+            self.minimum_descent,
             self.plotname.capitalize(),
-            self.plotname + "_median_descent",
+            self.plotname + "_median_descent_chr" + self.chrom,
         )
         self.plot_haplotype_linkage(
-            corrcoef_df, descent_arr, descendants, self.plotname + "_haplotypes"
+            corrcoef_df, descent_arr, descendants, self.exclude_pop_names, self.plotname + "_haplotypes_chr" + self.chrom
         )
 
 
@@ -3082,38 +3092,44 @@ class AfanasievoDescent(AncientDescent):
     """
 
     name = "afanasievo_descent"
-    data_path = "data"
-    filename = [
-        "combined_ts_afanasievo_descendants",
-        "combined_ts_afanasievo_corrcoef_df",
-        "combined_ts_afanasievo_sample_desc_sum",
-        "combined_ts_ancient_descendants",
-    ]
-    header = None
-    plotname = "afanasievo"
-    proxy_time = 164.01
-    exclude_pop_names = ["Afanasievo"]
-    descent_cutoff = 0.0001
 
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.filename = [
+            "unified_ts_chr" + self.chrom + "_afanasievo_descendants",
+            "unified_ts_chr" + self.chrom + "_afanasievo_corrcoef_df",
+            "unified_ts_chr" + self.chrom + "_afanasievo_sample_desc_sum",
+            "unified_ts_chr" + self.chrom + "_ancient_descendants",
+        ]
+        self.header = [None, None, None, "infer"]
+        self.plotname = "afanasievo"
+        self.proxy_time = 164.01
+        self.exclude_pop_names = ["Afanasievo"]
+        self.minimum_descent = 0.0001
+        super().__init__()
 
 class VindijaDescent(AncientDescent):
     """
     Find Descendants of the Vindija Neanderthal
     """
-
+    
     name = "vindija_descent"
-    data_path = "data"
-    filename = [
-        "combined_ts_vindija_descendants",
-        "combined_ts_vindija_corrcoef_df",
-        "combined_ts_vindija_sample_desc_sum",
-        "combined_ts_ancient_descendants",
-    ]
-    header = None
-    plotname = "vindija"
-    proxy_time = 2000.01
-    exclude_pop_names = ["Vindija"]
-    descent_cutoff = 0.00025
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.filename = [
+            "unified_ts_chr" + self.chrom + "_vindija_descendants",
+            "unified_ts_chr" + self.chrom + "_vindija_corrcoef_df",
+            "unified_ts_chr" + self.chrom + "_vindija_sample_desc_sum",
+            "unified_ts_chr" + self.chrom + "_ancient_descendants",
+        ]
+        self.header = [None, None, None, "infer"]
+        self.plotname = "vindija"
+        self.proxy_time = 2000.01
+        self.exclude_pop_names = ["Vindija"]
+        super().__init__()
 
 
 class DenisovanDescent(AncientDescent):
@@ -3122,18 +3138,22 @@ class DenisovanDescent(AncientDescent):
     """
 
     name = "denisovan_descent"
-    data_path = "data"
-    filename = [
-        "combined_ts_denisovan_descendants",
-        "combined_ts_denisovan_corrcoef_df",
-        "combined_ts_denisovan_sample_desc_sum",
-        "combined_ts_ancient_descendants",
-    ]
-    header = None
-    plotname = "denisovan"
-    proxy_time = 2556.01
-    exclude_pop_names = ["Denisovan"]
-    descent_cutoff = 0.0005
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.filename = [
+            "unified_ts_chr" + self.chrom + "_denisovan_descendants",
+            "unified_ts_chr" + self.chrom + "_denisovan_corrcoef_df",
+            "unified_ts_chr" + self.chrom + "_denisovan_sample_desc_sum",
+            "unified_ts_chr" + self.chrom + "_ancient_descendants",
+        ]
+        self.header = [None, None, None, "infer"]
+        self.plotname = "denisovan"
+        self.proxy_time = 2556.01
+        self.exclude_pop_names = ["Vindija", "Denisovan"]
+        self.minimum_descent = 0.0004
+        super().__init__()
 
 
 class ChagyrskayaDescent(AncientDescent):
@@ -3142,18 +3162,20 @@ class ChagyrskayaDescent(AncientDescent):
     """
 
     name = "chagyrskaya_descent"
-    data_path = "data"
-    filename = [
-        "combined_ts_chagyrskaya_descendants",
-        "combined_ts_chagyrskaya_corrcoef_df",
-        "combined_ts_chagyrskaya_sample_desc_sum",
-        "combined_ts_ancient_descendants",
-    ]
-    header = None
-    plotname = "chagyrskaya"
-    proxy_time = 3200.01
-    exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
-    descent_cutoff = 0.001
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = [
+            "unified_ts_chagyrskaya_descendants",
+            "unified_ts_chagyrskaya_corrcoef_df",
+            "unified_ts_chagyrskaya_sample_desc_sum",
+            "unified_ts_ancient_descendants",
+        ]
+        self.header = None
+        self.plotname = "chagyrskaya"
+        self.proxy_time = 3200.01
+        self.exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
+        super().__init__()
 
 
 class AltaiDescent(AncientDescent):
@@ -3162,18 +3184,21 @@ class AltaiDescent(AncientDescent):
     """
 
     name = "altai_descent"
-    data_path = "data"
-    filename = [
-        "combined_ts_altai_descendants",
-        "combined_ts_altai_corrcoef_df",
-        "combined_ts_altai_sample_desc_sum",
-        "combined_ts_ancient_descendants",
-    ]
-    header = None
-    plotname = "altai"
-    proxy_time = 4400.01
-    exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
-    descent_cutoff = 0.0025
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.filename = [
+            "unified_ts_chr" + self.chrom + "_altai_descendants",
+            "unified_ts_chr" + self.chrom + "_altai_corrcoef_df",
+            "unified_ts_chr" + self.chrom + "_altai_sample_desc_sum",
+            "unified_ts_chr" + self.chrom + "_ancient_descendants",
+        ]
+        self.header = None
+        self.plotname = "altai"
+        self.proxy_time = 4400.01
+        self.exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
+        super().__init__()
 
 
 class SiteLinkageAndQuality(Figure):
@@ -3604,14 +3629,19 @@ def main():
         help="figure name",
         choices=sorted(list(name_map.keys()) + ["all"]),
     )
-
+    parser.add_argument(
+        "--chrom",
+        type=str,
+        help="chromosome to create data from",
+        default="20"
+    )
     args = parser.parse_args()
     if args.name == "all":
         for _, fig in name_map.items():
             if fig in figures:
-                fig().plot()
+                fig().plot(args)
     else:
-        fig = name_map[args.name]()
+        fig = name_map[args.name](args)
         fig.plot()
 
 

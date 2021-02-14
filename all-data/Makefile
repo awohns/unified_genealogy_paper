@@ -521,7 +521,7 @@ afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_
 				$@ > $@.report
 
 AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
-		gunzip -c $<  | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' AfanasievoFamily_$*${VCF_SUFFIX}.vcf > \
+		gunzip -c $<  | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > \
 			AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf \
 			O=AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf \

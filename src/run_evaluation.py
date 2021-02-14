@@ -25,8 +25,8 @@ import tskit
 import tsinfer
 import msprime
 
-# import stdpopsim
 import sys
+import stdpopsim
 import tsdate
 from tsdate.prior import SpansBySamples, ConditionalCoalescentTimes
 
@@ -35,7 +35,6 @@ import constants
 import utility
 import error_generation
 
-import stdpopsim
 
 
 class DataGeneration:
