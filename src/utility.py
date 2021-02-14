@@ -88,10 +88,8 @@ def weighted_geographic_center(lat_list, long_list, weights):
     x = np.cos(lat_radians) * np.cos(long_radians)
     y = np.cos(lat_radians) * np.sin(long_radians)
     z = np.sin(lat_radians)
-
     weights = np.array(weights)
     central_latitude, central_longitude = radians_center_weighted(x, y, z, weights)
-
     return (np.degrees(central_latitude), np.degrees(central_longitude))
 
 
@@ -114,7 +112,6 @@ def vectorized_weighted_geographic_center(lat_arr, long_arr, weights):
     x = np.cos(lat_arr) * np.cos(long_arr)
     y = np.cos(lat_arr) * np.sin(long_arr)
     z = np.sin(lat_arr)
-
     if len(weights.shape) > 1:
         total_weights = np.sum(weights, axis=1)
     else:

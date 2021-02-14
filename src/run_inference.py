@@ -243,11 +243,11 @@ if __name__ == "__main__":
         help="An alternative genetic map to be used for this analysis, in the format"
         "expected by msprime.RateMap.read_hapmap",
     )
-    # We only use mismatch ratio of 1 and precision of 15 in the paper
-    assert params.match_ancestors_mrate == params.match_samples_mrate == 1
-    assert params.precision == 15
-    
+        
     args = parser.parse_args()
+    # We only use mismatch ratio of 1 and precision of 15 in the paper
+    assert args.match_ancestors_mrate == args.match_samples_mrate == 1
+    assert args.precision == 15
 
     (
         samples,

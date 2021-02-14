@@ -209,6 +209,10 @@ SGDP_GENOTYPES_BASE=https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/ph
 sgdp_samples.txt:
 		curl https://sharehost.hms.harvard.edu/genetics/reich_lab/sgdp/SGDP_metadata.279public.21signedLetter.samples.txt -o $@
 
+sgdp_%_genotypes.vcf.gz:
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz -o $@
+		curl ${SGDP_GENOTYPES_BASE}/cteam_extended.v4.PS2_phase.public.$*.vcf.gz.csi -o $@.csi
+
 sgdp_%_genotypes.bcf: sgdp_%_genotypes.vcf.gz
 		# Remove the S_Naxi-2 individual because (a) it doesn't have any metadata in the 
 		# file we're using and (b) it has a massively elevated sample edge count if we 
@@ -519,7 +523,7 @@ afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_
 				$@ > $@.report
 
 AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
-		gunzip -c $<  | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' AfanasievoFamily_$*${VCF_SUFFIX}.vcf > \
+		gunzip -c $<  | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > \
 			AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf \
 			O=AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf \

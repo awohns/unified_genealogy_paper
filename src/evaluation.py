@@ -26,7 +26,6 @@ import stdpopsim
 
 import utility
 import run_inference
-from intervals import read_hapmap
 
 import tsdate  # NOQA
 
@@ -104,7 +103,7 @@ def infer_with_mismatch(
     progress_monitor=False
 ):
     ancestors = tsinfer.generate_ancestors(sample_data, num_threads=num_threads, progress_monitor=progress_monitor)
-    gmap = read_hapmap(path_to_genetic_map)
+    gmap = msprime.RateMap.read_hapmap(path_to_genetic_map)
     
     ancestors_ts = tsinfer.match_ancestors(
         sample_data,

@@ -7,6 +7,7 @@ import itertools
 import logging
 import argparse
 import collections
+import os
 
 from tqdm import tqdm
 
@@ -62,7 +63,7 @@ def get_pairwise_tmrca_pops(
                     raise ValueError(
                             "Tree Sequence must be dated to use unconstrained=True")
         logging.info("Using tsdate unconstrained node times")
-    except KeyError:
+    except ValueError:
         logging.info("Using standard ts node times")
         node_ages[:] = ts.tables.nodes.time[:]
     unique_times, time_index = np.unique(node_ages, return_inverse=True)
@@ -91,7 +92,7 @@ def get_pairwise_tmrca_pops(
             nodes_for_pop[key] = np.random.choice(nodes, max_pop_nodes, replace=False)
         else:
             nodes_for_pop[key] = nodes
-    
+
     # Make all combinations of populations
     pop_names = list(nodes_for_pop.keys())
     tmrca_df = pd.DataFrame(columns=pop_names, index=pop_names)
@@ -190,7 +191,7 @@ def save_tmrcas(
         return_raw_data=save_raw_data,
     )
     popstring = "all" if populations is None else "+".join(populations)
-    outfn = fn + f".{max_pop_nodes}nodes_{popstring}.tmrcas"
+    outfn = os.path.join("data", os.path.basename(fn)) + f".{max_pop_nodes}nodes_{popstring}.tmrcas"
     logging.info(f"Writing mean MRCAs to {outfn}.csv")
     tMRCAS.means.to_csv(outfn + ".csv")
     logging.info(f"Writing bins and MRCA histogram distributions to {outfn}.npz")

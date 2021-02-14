@@ -30,7 +30,6 @@ import evaluation
 import constants
 import utility
 import error_generation
-from intervals import read_hapmap
 
 
 class DataGeneration:
@@ -929,7 +928,7 @@ class Chr20Sims(NeutralSims):
         map_file = os.path.join(
             gmap.map_cache_dir, gmap.file_pattern.format(id="chr20")
         )
-        hapmap = read_hapmap(map_file)
+        hapmap = msprime.RateMap.read_hapmap(map_file)
         snip_map = hapmap.slice(start=self.snippet[0], end=self.snippet[1], trim=True)
         pos = snip_map.position  # GEVA fails if first position is at 0
         rate = snip_map.rate
@@ -1091,8 +1090,7 @@ class Chr20AncientIteration(Chr20Sims):
             sim.tables.sites.position, inferred_modern_dated.tables.sites.position
         )
 
-        # ancient_sample_sizes = [1, 5, 10, 20, 40]
-        ancient_sample_sizes = [1, 5, 10]
+        ancient_sample_sizes = [1, 5, 10, 20, 40]
         tables = sim.tables
         iter_ts_ancients = []
         iter_ts_inferred = []

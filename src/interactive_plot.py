@@ -10,7 +10,7 @@ from mpld3 import plugins, utils
 #mpld3.enable_notebook() # if in a jupyter notebook - also needs %matplotlib inline
 
 # Get data and massage it to the right format
-base_filename = "all-data/merged_hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.binned.historic.20nodes.tmrcas"
+base_filename = "data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"
 mean_tmrca_df = pd.read_csv(base_filename + ".csv", index_col=0)
 # Flatten the upper triangular means and log (also matches the hist data)
 mean_tmrcas = np.log(mean_tmrca_df.values[np.triu_indices(mean_tmrca_df.shape[0])])
