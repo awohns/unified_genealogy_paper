@@ -1737,8 +1737,10 @@ class TgpMutationAverageAge(Figure):
                 relate_ages["relate_age"],
                 comparable_mutations["AgeMean_Jnt"],
             ],
+            widths=0.75,
             patch_artist=True,
         )
+        plt.xticks([1, 2, 3], ['tsdate', 'Relate', 'GEVA'])
         colors = ["blue", "green", "red"]
         for patch, color in zip(ax["boxes"], colors):
             patch.set_facecolor(color)
@@ -1746,7 +1748,7 @@ class TgpMutationAverageAge(Figure):
         plt.yscale("log")
         plt.ylabel("Estimated Allele Age (generations)")
         plt.title(
-            "Estimated TGP Allele Ages \n {} Variant Sites on Chr 20".format(
+            "Estimated TGP Allele Ages \n {} Variant Sites on Chromosome 20".format(
                 comparable_mutations.shape[0]
             )
         )
