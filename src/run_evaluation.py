@@ -2234,6 +2234,8 @@ def main():
         filemode="w",
         level=logging.DEBUG,
     )
+    if not args.setup and not args.inference:
+        raise ValueError("must run with --setup, --inference, or both.")
     if args.name == "all":
         for _, fig in name_map.items():
             if fig in figures:
@@ -2242,15 +2244,12 @@ def main():
                     fig.setup()
                 if args.inference:
                     fig.run_multiprocessing(fig.inference, num_processes=args.processes)
-
     else:
         fig = name_map[args.name]()
         if args.setup:
             fig.setup()
         if args.inference:
             fig.run_multiprocessing(fig.inference, args.processes)
-    if not args.setup and not args.inference:
-        raise ValueError("must run with --setup, --inference, or both.")
 
 
 if __name__ == "__main__":
