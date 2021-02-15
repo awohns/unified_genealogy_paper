@@ -240,7 +240,7 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
 
 def get_ancient_constraints_tgp(args):
     if os.path.exists("all-data/all_ancients_chr" + args.chrom + ".samples"):
-        ancient_samples = tsinfer.load("all-data/all_ancients_chr20.samples")
+        ancient_samples = tsinfer.load("all-data/all_ancients_chr" + args.chrom + ".samples")
     else:
         raise FileNotFoundError(
             "Must create all_ancients_chr" + args.chrom + ".samples using all-data/Makefile"

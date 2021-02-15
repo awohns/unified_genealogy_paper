@@ -389,7 +389,7 @@ loshbour_GRCh38_%.samples: loshbour.%_mq25_mapab100.GRCh38.vcf.gz %_ancestral_st
 				--target-samples=hgdp_1kg_sgdp_$*.samples \
 				$@ > $@.report
 
-altai_%.samples: altai.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai altai_metadata.txt
+altai_%.samples: altai.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai altai_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				altai.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -400,7 +400,7 @@ altai_%.samples: altai.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai altai
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-chagyrskaya_%.samples: chagyrskaya.%.noRB.vcf.gz %_ancestral_states_37.fa.fai chagyrskaya_metadata.txt
+chagyrskaya_%.samples: chagyrskaya.%.noRB.vcf.gz %_ancestral_states_37.fa.fai chagyrskaya_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				chagyrskaya.$*.noRB.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -411,7 +411,7 @@ chagyrskaya_%.samples: chagyrskaya.%.noRB.vcf.gz %_ancestral_states_37.fa.fai ch
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-denisovan_%.samples: denisovan.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai denisovan_metadata.txt
+denisovan_%.samples: denisovan.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai denisovan_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				denisovan.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -422,7 +422,7 @@ denisovan_%.samples: denisovan.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.f
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-vindija_%.samples: vindija.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai vindija_metadata.txt
+vindija_%.samples: vindija.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai vindija_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				vindija.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -433,7 +433,7 @@ vindija_%.samples: vindija.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai v
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-ust_ishim_%.samples: ust_ishim.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai ust_ishim_metadata.txt
+ust_ishim_%.samples: ust_ishim.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai ust_ishim_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				ust_ishim.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -444,7 +444,7 @@ ust_ishim_%.samples: ust_ishim.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.f
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-loshbour_%.samples: loshbour.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai loshbour_metadata.txt
+loshbour_%.samples: loshbour.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai loshbour_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				loshbour.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -455,7 +455,7 @@ loshbour_%.samples: loshbour.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai
 				--target-samples=1kg_$*.samples \
 				$@ > $@.report
 
-lbk_%.samples: lbk.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai lbk_metadata.txt
+lbk_%.samples: lbk.%_mq25_mapab100.vcf.gz %_ancestral_states_37.fa.fai lbk_metadata.txt 1kg_%.samples
 		python3 convert.py max-planck -p \
 				lbk.$*_mq25_mapab100.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -509,8 +509,8 @@ archaics_phased_GRCh38_%.samples: archaics_phased_GRCh38_%.vcf.gz %_ancestral_st
 #############################################
 VCF_SUFFIX=.phased.detailed.filtered
 
-afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_37.fa.fai
-		../tools/bin/tabix -p vcf $<
+afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_37.fa.fai 1kg_%.samples
+		../tools/bin/tabix -f -p vcf $<
 		python3 convert.py afanasievo -p \
 				AfanasievoFamily_$*${VCF_SUFFIX}.vcf.gz \
 				$*_ancestral_states_37.fa \
@@ -528,9 +528,9 @@ AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz: AfanasievoFamily_%${V
 			CHAIN=hg19ToHg38.over.chain.gz REJECT=AfanasievoFamily_$*${VCF_SUFFIX}.phased.GRCh38.rejected_variants.vcf R=hg38.fa
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		../tools/bin/bgzip -c AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf > AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
-		../tools/bin/tabix -p vcf AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
+		../tools/bin/tabix -f -p vcf AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
 		../tools/bin/bcftools view AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz --regions $* -O z > $@
-		../tools/bin/tabix -p vcf $@
+		../tools/bin/tabix -f -p vcf $@
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf*
 
 afanasievo_GRCh38_%.samples: AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz %_ancestral_states.fa.fai hgdp_1kg_sgdp_%.samples

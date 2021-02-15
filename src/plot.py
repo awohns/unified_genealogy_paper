@@ -307,19 +307,19 @@ class Figure(object):
     data_path = None
     filename = None
     delimiter = None
-    header = "infer"
+    header = ["infer"]
 
-    def main_ts(self):
+    def main_ts(self, chrom):
         """Return unified TS used in multiple plots; cache if necessary"""
         try:
             return self._main_ts
         except AttributeError:
             self._main_ts = tskit.load(
-                "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees")
+                "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr" + chrom + ".trees")
             return self._main_ts
 
 
-    def __init__(self):
+    def __init__(self, args):
         self.data = list()
         if self.filename is not None:
             for fn, header in zip(self.filename, self.header):
@@ -329,10 +329,6 @@ class Figure(object):
                         datafile_name, delimiter=self.delimiter, header=header
                     )
                 )
-        # Unified TS used in multiple plots
-        self.ts = tskit.load(
-            "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr" + self.chrom + ".trees"
-        )
 
     def save(self, figure_name=None, animation=None, bbox_inches="tight"):
         if figure_name is None:
@@ -493,8 +489,8 @@ class Mismatch(Figure):
         "ms_mis_ratio": dict(linestyle=":"),
     }
     mut_label_rel_pos = 0.32
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
         self.d = self.data[0].sort_values(["ma_mis_ratio", "ms_mis_ratio"])
 
         self.d['edges1000'] = self.d['edges'] / 1000
@@ -639,8 +635,8 @@ class MismatchSimulation(Mismatch):
         "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
     }
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
         self.d['rel_ts_size'] = self.d['ts_bytes']/self.d['sim_ts_min_bytes']
         assert np.allclose(np.diff(self.d['kc_max'][np.isfinite(self.d['kc_max'])]), 0)
         kc_max = np.mean(self.d['kc_max'][np.isfinite(self.d['kc_max'])])
@@ -672,8 +668,8 @@ class MismatchRealData(Mismatch):
         "ts_size_Mb": ["Filesize", "Filesize (Mb)"],
         "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
     }
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
         self.d["ts_size_Mb"] = self.d["ts_bytes"] / 1e6
 
 
@@ -711,8 +707,8 @@ class Chr20AncientIteration(Figure):
     ]
     plt_title = "iteration_ancients"
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
 
     def plot(self):
         msle = self.data[0]
@@ -1084,7 +1080,7 @@ class InsetTmrcaHistograms(Figure):
     data_path = "data"
     filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
 
-    def __init__(self):
+    def __init__(self, args):
         base_name = self.filename[0]
         hist_data = np.load(os.path.join(self.data_path, base_name + ".npz"))
         raw_data = np.load(os.path.join(self.data_path, base_name + "_RAW.npz"))
@@ -1093,7 +1089,7 @@ class InsetTmrcaHistograms(Figure):
         self.raw_logtimes = np.where(np.exp(raw_logtimes) < 1, np.log(1), raw_logtimes)
         self.raw_weights = raw_data[list(raw_data.keys())[1]]
         self.data_rownames = hist_data["combos"]
-        super().__init__()
+        super().__init__(args)
 
     def plot(self):
         df = self.data[0]
@@ -1516,6 +1512,7 @@ class ScalingFigure(Figure):
     name = "scaling"
     data_path = "simulated-data"
     filename = ["cpu_scaling_samplesize", "cpu_scaling_length"]
+    header = ["infer", "infer"]
     plt_title = "scaling_fig"
     include_geva = False
     col_1_name = "Length fixed at 1Mb"
@@ -1975,7 +1972,7 @@ class PriorEvaluation(Figure):
     filename = "evaluateprior"
     plt_title = "prior_evaluation"
 
-    def __init__(self):
+    def __init__(self, args):
         datafile_name = os.path.join(self.data_path, self.filename + ".csv")
         self.data = pickle.load(open(datafile_name, "rb"))
 
@@ -2184,7 +2181,7 @@ class TsdateAccuracy(Figure):
     filename = "tsdate_accuracy.mutation_ages.kc_distances"
     plt_title = "tsdate_accuracy"
 
-    def __init__(self):
+    def __init__(self, args):
         datafile_name = os.path.join(self.data_path, self.filename + ".csv")
         self.data = pickle.load(open(datafile_name, "rb"))
 
@@ -2277,6 +2274,7 @@ class NeutralSims(Figure):
         "neutral_simulated_mutation_accuracy_mutations",
         "neutral_simulated_mutation_accuracy_kc_distances",
     ]
+    header = ["infer", "infer"]
 
     def plot(self):
         df = self.data[0]
@@ -2614,17 +2612,22 @@ class plot_sample_locations(Figure):
     Figure 4a: Plot the locations of samples
     """
 
+    
     name = "sample_locations"
-    data_path = "data"
-    filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
-    delimiter = " "
-    header = None
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
+        self.delimiter = " "
+        self.header = [None]
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
 
     def plot(self):
         # Remove samples in 1kg
-        hgdp_sgdp_ancients = self.main_ts().simplify(
+        hgdp_sgdp_ancients = self.ts.simplify(
             np.where(~np.isin(
-                self.main_ts().tables.nodes.population[self.main_ts().samples()],
+                self.ts.tables.nodes.population[self.ts.samples()],
                 np.arange(54, 80),
             ))[0]
         )
@@ -2635,8 +2638,6 @@ class plot_sample_locations(Figure):
         ax.coastlines(linewidth=0.1)
         ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
         ax.set_global()
-
-        ax.set_extent([-170, 180, -60, 80], crs=ccrs.Geodetic())
 
         def jitter(array):
             max_min = np.max(array) - np.min(array)
@@ -2713,6 +2714,7 @@ class PopulationAncestors(Figure):
     def __init__(self, args):
         self.data_path = "data"
         self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
         self.filename = [
             "avg_pop_ancestral_location_LATS_chr" + self.chrom,
             "avg_pop_ancestral_location_LONGS_chr" + self.chrom,
@@ -2720,7 +2722,7 @@ class PopulationAncestors(Figure):
         ]
         self.delimiter = ","
         self.header = [None, None, None]
-        super().__init__()
+        super().__init__(args)
 
     def colorline(self, x, y, z, transform, cmap, norm, ax, linewidth=3, alpha=1.0):
         """
@@ -2831,19 +2833,23 @@ class WorldDensity(Figure):
     """
     Figure 4c: World map with all ancestors plotted at six timepoints
     """
-
+    
     name = "world_density"
-    data_path = "data"
-    filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
-    delimiter = " "
-    header = None
-
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
+        self.delimiter = " "
+        self.header = [None]
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
+    
     def plot(self):
         locations = self.data[0].to_numpy()
         # Remove samples in 1kg
-        ts = self.main_ts().simplify(
+        ts = self.ts.simplify(
             np.where(~np.isin(
-                    self.main_ts().tables.nodes.population[self.main_ts().samples()],
+                    self.ts.tables.nodes.population[self.ts.samples()],
                     np.arange(54, 80),
             ))[0]
         )
@@ -2892,8 +2898,8 @@ class AncientDescent(Figure):
     Parent class for all ancient descent figures
     """
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args):
+        super().__init__(args)
         self.pop_names = np.loadtxt("data/unified_ts_pop_names.csv", dtype="str")
         self.reference_sets = pickle.load(
             open("data/unified_ts_reference_sets.p", "rb"))
@@ -3107,7 +3113,7 @@ class AfanasievoDescent(AncientDescent):
         self.proxy_time = 164.01
         self.exclude_pop_names = ["Afanasievo"]
         self.minimum_descent = 0.0001
-        super().__init__()
+        super().__init__(args)
 
 class VindijaDescent(AncientDescent):
     """
@@ -3129,7 +3135,7 @@ class VindijaDescent(AncientDescent):
         self.plotname = "vindija"
         self.proxy_time = 2000.01
         self.exclude_pop_names = ["Vindija"]
-        super().__init__()
+        super().__init__(args)
 
 
 class DenisovanDescent(AncientDescent):
@@ -3153,7 +3159,7 @@ class DenisovanDescent(AncientDescent):
         self.proxy_time = 2556.01
         self.exclude_pop_names = ["Vindija", "Denisovan"]
         self.minimum_descent = 0.0004
-        super().__init__()
+        super().__init__(args)
 
 
 class ChagyrskayaDescent(AncientDescent):
@@ -3175,7 +3181,7 @@ class ChagyrskayaDescent(AncientDescent):
         self.plotname = "chagyrskaya"
         self.proxy_time = 3200.01
         self.exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
-        super().__init__()
+        super().__init__(args)
 
 
 class AltaiDescent(AncientDescent):
@@ -3198,7 +3204,7 @@ class AltaiDescent(AncientDescent):
         self.plotname = "altai"
         self.proxy_time = 4400.01
         self.exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
-        super().__init__()
+        super().__init__(args)
 
 
 class SiteLinkageAndQuality(Figure):
@@ -3208,6 +3214,10 @@ class SiteLinkageAndQuality(Figure):
     """
 
     name = "ld_quality_by_mutations"
+    def __init__(self, args):
+        self.ts = self.main_ts(args.chrom)
+        super().__init__(args)
+
 
     def gen_log_space(self, limit, n):
         result = [1]
@@ -3232,7 +3242,7 @@ class SiteLinkageAndQuality(Figure):
             processes=False,
         )
 
-        haploid = ts.genotype_matrix()
+        haploid = self.ts.genotype_matrix()
         haploid = da.from_array(haploid, chunks=(10000, haploid.shape[1]))
         # Convert to bi-allelic
         haploid[haploid > 1] = 1
@@ -3307,11 +3317,11 @@ class SiteLinkageAndQuality(Figure):
         # From https://www.internationalgenome.org/announcements/genome-accessibility-masks/
         mask_chr20 = SeqIO.index("data/20160622.chr20.mask.fasta", "fasta")["chr20"].seq
         mask = []
-        for site in ts.tables.sites:
+        for site in self.ts.tables.sites:
             mask.append(mask_chr20[int(site.position) - 1])
         mask = np.asarray(mask, dtype="U1")
 
-        muts_per_site = np.unique(ts.tables.mutations.site, return_counts=True)[1]
+        muts_per_site = np.unique(self.ts.tables.mutations.site, return_counts=True)[1]
 
         masked = mask != "P"
         low_ld = ld < 10
@@ -3367,10 +3377,14 @@ class AncestryVideo(Figure):
     """
 
     name = "ancestry_video"
-    data_path = "data"
-    filename = ["hgdp_sgdp_ancients_ancestor_coordinates"]
-    delimiter = " "
-    header = None
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
+        self.delimiter = " "
+        self.header = [None]
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
 
     def mix_colors(self, color1_arr, color2_arr):
         new_color = np.zeros((color1_arr.shape[0], 3))
@@ -3381,13 +3395,13 @@ class AncestryVideo(Figure):
 
     def plot(self):
         locations = self.data[0].to_numpy()
-        ts_no_tgp = self.main_ts().simplify(
+        ts_no_tgp = self.ts.simplify(
             np.where(~np.isin(
-                self.main_ts().tables.nodes.population[self.main_ts().samples()],
+                self.ts.tables.nodes.population[self.ts.samples()],
                 np.arange(54, 80),
             ))[0]
         )
-        tables = self.main_ts().tables
+        tables = ts_no_tgp.tables
         times = tables.nodes.time[:]
         reference_sets = []
         population_names = []
@@ -3440,7 +3454,6 @@ class AncestryVideo(Figure):
                 matplotlib.colors.get_named_colors_mapping()["black"]
             ),
         )
-        # colors = get_tgp_hgdp_sgdp_region_colors()
         for region, ancestors in region_unique.items():
             if region == "Archaics":
                 region_colors[region] = region_colors["Ancients"]
@@ -3536,11 +3549,15 @@ class Timeline(Figure):
     """
 
     name = "timeline"
-    data_path = None
-    filename = None
+    def __init__(self, args):
+        self.data_path = None
+        self.filename = None
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
 
     def plot(self):
-        times = ts.tables.nodes.time[:]
+        times = self.ts.tables.nodes.time[:]
         fig, ax = plt.subplots(2, 1, figsize=(10, 1))
         fig = plt.figure(figsize=(10, 1))
         spec = fig.add_gridspec(ncols=1, nrows=2, height_ratios=[1, 0.1])
@@ -3639,7 +3656,7 @@ def main():
     if args.name == "all":
         for _, fig in name_map.items():
             if fig in figures:
-                fig().plot(args)
+                fig(args).plot()
     else:
         fig = name_map[args.name](args)
         fig.plot()

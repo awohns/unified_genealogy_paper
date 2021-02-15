@@ -3,7 +3,7 @@ NUM_PROCS = 60
 SPECIES = HomSap
 CONTIG = chr20
 
-all: | relate_ages geva_ages mismatch
+all: | relate_ages geva_ages mismatch chr20_mask
 
 relate_ages: 
 	curl https://zenodo.org/record/3234689/files/allele_ages_AFR.zip?download=1 -o allele_ages_AFR.zip
@@ -19,6 +19,10 @@ relate_ages:
 
 geva_ages:
 	curl https://human.genome.dating/bulk/atlas.chr20.csv.gz -o geva_ages.csv.gz
+
+chr20_mask:
+	curl http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/working/20160622_genome_mask_GRCh38/StrictMask/20160622.chr20.mask.fasta.gz -o 20160622.chr20.mask.fasta.gz
+	gunzip 20160622.chr20.mask.fasta.gz
 
 ############
 # Mismatch #

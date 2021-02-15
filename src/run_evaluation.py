@@ -43,7 +43,7 @@ class DataGeneration:
     """
 
     # Default settings
-    default_replicates = 10
+    replicates = 10
     default_seed = 123
     data_dir = os.path.join(os.getcwd(), "simulated-data/")
 
@@ -88,7 +88,7 @@ class DataGeneration:
             parameter_arr, desc="Running Simulations", disable=not progress
         ):
             seeds = [
-                self.rng.randint(1, 2 ** 31) for i in range(self.default_replicates)
+                self.rng.randint(1, 2 ** 31) for i in range(self.replicates)
             ]
             for index, seed in tqdm(
                 enumerate(seeds), desc="Running Iterations", total=len(seeds)
@@ -259,8 +259,8 @@ class NeutralSims(DataGeneration):
             "_anc_error_kc_distances.csv",
         ]
         self.sim_cols = self.sim_cols
-        self.default_replicates = 30
-        self.num_rows = self.default_replicates
+        self.replicates = 30
+        self.num_rows = self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.rng = random.Random(self.default_seed)
         self.empirical_error = False
@@ -539,7 +539,7 @@ class TsdateNeutralSims(NeutralSims):
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred"]
         self.output_suffixes = ["_mutations.csv"]
         self.sim_cols = self.sim_cols
-        self.num_rows = self.default_replicates
+        self.num_rows = self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.rng = random.Random(self.default_seed)
         self.make_vcf = False
@@ -582,7 +582,7 @@ class CpuScalingSampleSize(DataGeneration):
     """
 
     name = "cpu_scaling_samplesize"
-    default_replicates = 5
+    replicates = 5
     include_geva = True
 
     def __init__(self):
@@ -616,7 +616,7 @@ class CpuScalingSampleSize(DataGeneration):
             self.tools = ["tsdate", "tsinfer", "relate", "geva"]
         else:
             self.tools = ["tsdate", "tsinfer", "relate"]
-        self.num_rows = len(self.sample_sizes) * self.default_replicates
+        self.num_rows = len(self.sample_sizes) * self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.rng = random.Random(self.default_seed)
 
@@ -766,8 +766,8 @@ class Chr20Sims(NeutralSims):
     def __init__(self):
         DataGeneration.__init__(self)
         self.columns = ["simulated_ts", "tsdate", "tsdate_inferred", "relate", "geva"]
-        self.default_replicates = 30
-        self.num_rows = self.default_replicates
+        self.replicates = 30
+        self.num_rows = self.replicates
         self.sim_cols = self.sim_cols + ["snippet"]
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.rng = random.Random(self.default_seed)
@@ -874,7 +874,7 @@ class Chr20Sims(NeutralSims):
         """
         species = stdpopsim.get_species("HomSap")
         gmap = species.get_genetic_map("HapMapII_GRCh37")
-        map_file = os.path.join(gmap.map_cache_dir, gmap.file_pattern.format(id="20"))
+        map_file = os.path.join(gmap.map_cache_dir, gmap.file_pattern.format(id="chr20"))
         hapmap = msprime.RateMap.read_hapmap(map_file)
         if "snippet" in rowdata:
             hapmap = hapmap.slice(start=self.snippet[0], end=self.snippet[1], trim=True)
@@ -922,9 +922,9 @@ class Chr20AncientIteration(Chr20Sims):
             "_spearman.csv",
             "_kc.csv",
         ]
-        self.default_replicates = 1
+        self.replicates = 20
         self.sim_cols = self.sim_cols
-        self.num_rows = self.default_replicates
+        self.num_rows = self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.empirical_error = False
         self.ancestral_state_error = False
@@ -955,11 +955,6 @@ class Chr20AncientIteration(Chr20Sims):
             individuals=np.arange(0, row["sample_size_modern"])
         )
         inferred_ts = tsinfer.infer(modern_samples, num_threads=10)
-        #inferred_ts = evaluation.infer_with_mismatch(
-        #    modern_samples,
-        #    path_to_genetic_map,
-        #    num_threads=10,
-        #)
         inferred_ts = tsdate.preprocess_ts(inferred_ts, filter_sites=False)
         dated = tsdate.date(inferred_ts, row["Ne"], row["mut_rate"])
         dated.dump(path_to_file + ".modern_inferred_dated.trees")
@@ -968,9 +963,6 @@ class Chr20AncientIteration(Chr20Sims):
         # Iterate with only modern samples
         sites_time = tsdate.sites_time_from_ts(dated)
         dated_samples = tsdate.add_sampledata_times(modern_samples, sites_time)
-        #iter_inferred_ts = evaluation.infer_with_mismatch(
-        #    dated_samples, path_to_genetic_map, num_threads=10
-        #)
         iter_inferred_ts = tsinfer.infer(dated_samples, num_threads=10)
         iter_inferred_ts = tsdate.preprocess_ts(iter_inferred_ts)
         iter_dated = tsdate.date(
@@ -1455,7 +1447,7 @@ class TsdateChr20(Chr20Sims):
 
     def __init__(self):
         DataGeneration.__init__(self)
-        self.default_replicates = 1
+        self.replicates = 1
         self.columns = [
             "simulated_ts",
             "tsdate",
@@ -1471,7 +1463,7 @@ class TsdateChr20(Chr20Sims):
             "_error_kc_distances.csv",
             "_anc_error_kc_distances.csv",
         ]
-        self.num_rows = self.default_replicates
+        self.num_rows = self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.empirical_error = True
         self.ancestral_state_error = True
@@ -1725,7 +1717,7 @@ class ArchaicDescent(Chr20Sims):
 
     def __init__(self):
         DataGeneration.__init__(self)
-        self.default_replicates = 10
+        self.replicates = 10
         self.columns = []
 
         self.output_suffixes = [
@@ -1742,7 +1734,7 @@ class ArchaicDescent(Chr20Sims):
             "_altai_results.csv",
             "_vindija_results.csv",
         ]
-        self.num_rows = self.default_replicates
+        self.num_rows = self.replicates
         self.data = pd.DataFrame(columns=self.sim_cols)
         self.empirical_error = False
         self.ancestral_state_error = False
