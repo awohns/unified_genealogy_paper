@@ -1,3 +1,4 @@
+SEED = 1
 NUM_PROCS = 60
 SPECIES = HomSap
 CONTIG = chr20
@@ -19,17 +20,31 @@ relate_ages:
 geva_ages:
 	curl https://human.genome.dating/bulk/atlas.chr20.csv.gz -o geva_ages.csv.gz
 
-SEED = 1
-########################
-# Mismatch simulations #
-########################
+############
+# Mismatch #
+############
 
+# Default simulation settings
 MODEL = OutOfAfrica_3G09
 NUM_SAMPLES = 1500
 
-
 OOA = $(MODEL)_$(CONTIG)_n$(NUM_SAMPLES)_seed$(SEED)
 
+# Default real data settings
+# Subset the real sample files down to a limited number of sites (these should not span the centromere)
+START_SITE = 1000000
+END_SITE = 1100000
+
+DETAILS = $(CONTIG)_$(START_SITE)-$(END_SITE)
+
+mismatch: $(OOA)_results_plus_RF.csv $(OOA)_ae0.01_results_plus_RF.csv \
+	1kg_$(DETAILS)_results.csv hgdp_$(DETAILS)_results.csv
+
+clean:
+	rm -f $(MODEL)* 1kg_$(DETAILS)* hgdp_$(DETAILS)*
+
+#### SIMULATIONS ####
+#
 # Generate the polytomy-split RF distances - this can take a few days
 # The -k flag means that we should use (keep) previously run files, so
 # if this has been run already, it shouldn't take long
@@ -56,16 +71,8 @@ $(OOA)_ae0.01_results.csv:
 	$(SPECIES):$(CONTIG):$(MODEL):$(NUM_SAMPLES) -vv -k -e 0.01 -p $(NUM_PROCS)
 
 
-######################
-# Mismatch real data #
-######################
-
-# subset the real sample files down to a limited number of sites
-# these should not span the centromere
-START_SITE = 1000000
-END_SITE = 1100000
-
-DETAILS = $(CONTIG)_$(START_SITE)-$(END_SITE)
+#### REAL DATA ####
+#
 
 1kg_$(DETAILS)_results.csv: 1kg_$(DETAILS).samples
 	python3 ../tsinfer-benchmarking/analysis/test_mismatch_rates.py \
@@ -84,5 +91,3 @@ hgdp_$(DETAILS).samples:
 	python3 -c 'import tsinfer; sd=tsinfer.load("../all-data/hgdp_$(CONTIG).samples"); \
 	sd.subset(sites=range($(START_SITE), $(END_SITE)), path="hgdp_$(DETAILS).samples")'
 
-clean:
-	rm -f $(MODEL)* 1kg_$(DETAILS)* hgdp_$(DETAILS)*
