@@ -54,16 +54,18 @@ def run(params):
             anc = anc_w_proxy.copy(path=prefix + ".proxy.ancestors")
             anc.finalise()
             # Don't use path compression if ancient ancestors (can be fixed in the future)
-            path_compression = False
+            path_compression = True
+        maximum_time = np.max(anc.ancestors_time[:])
+        if maximum_time < 3: # hacky way of checking if we used frequency to order ancestors
+            anc = anc.truncate_ancestors(0.4, 0.6, length_multiplier=2, path=prefix + ".truncated.ancestors")
+        else:
+            upper_time_limit = maximum_time * 0.6
+            lower_time_limit = maximum_time * 0.4
+            anc = anc.truncate_ancestors(lower_time_limit, upper_time_limit, length_multiplier=2, path=prefix + ".truncated.ancestors")
         print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
     else:
-        # Check to see if proxy ancestors were added, if not, load ancestordata file
-        if os.path.isfile(prefix + ".proxy.ancestors"):
-            anc = tsinfer.load(prefix + ".proxy.ancestors")
-            path_compression = False
-        else:
-            anc = tsinfer.load(prefix + ".ancestors")
-            path_compression = True
+        anc = tsinfer.load(prefix + ".truncated.ancestors")
+        path_compression = True
     ga_process_time = time.process_time() - ga_start_time
 
     r_prob, m_prob = get_rho(anc, params.filename)
