@@ -13,6 +13,7 @@ pysam
 numba
 dask[complete]
 cython >= 0.28
+cyvcf2
 pyreadr
 seaborn
 mpld3
