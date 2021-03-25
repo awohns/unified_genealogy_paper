@@ -910,9 +910,9 @@ class AfanasievoConverter(MaxPlanckConverter):
             metadata = {}
             metadata["name"] = name
             if "Son" in name:
-                metadata["age"] = 4100 / GENERATION_TIME
+                metadata["age"] = 4589 / GENERATION_TIME
             else:
-                metadata["age"] = 4125 / GENERATION_TIME
+                metadata["age"] = 4614 / GENERATION_TIME
             self.samples.add_individual(
                 metadata=metadata, time=metadata["age"], population=pop_id, ploidy=2
             )

@@ -18,6 +18,8 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 # Save all intermediate files
 .SECONDARY:
 
+# Allow filtering in prerequisites
+.SECONDEXPANSION:
 
 ####################################################
 # Standard pipeline for samples file to .dated.trees
@@ -25,6 +27,12 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 
 %.missing_binned.samples: %.samples
 		python3 bin_missing.py $^ $@
+
+%_p.missing_binned.samples: %.missing_binned.samples
+		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+
+%_q.missing_binned.samples: %.missing_binned.samples
+		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
 
 1kg_chr20.trees: 1kg_chr20.samples
 		python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 1 -S 1
@@ -326,7 +334,7 @@ loshbour.%_mq25_mapab100.vcf.gz:
 ust_ishim.%_mq25_mapab100.GRCh38.vcf.gz: ust_ishim.%_mq25_mapab100.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c ust_ishim.$*_mq25_mapab100.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > ust_ishim.$*_mq25_mapab100.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=ust_ishim.$*_mq25_mapab100.withchr.vcf O=ust_ishim.$*_mq25_mapab100.GRCh38.vcf \
-			CHAIN=hg19ToHg38.over.chain.gz REJECT=ust_ishim.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
+			CHAIN=hg19ToHg38.over.chain.gz REJECT=ust_ishim.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.ust_ishim.$*.log
 		rm ust_ishim.$*_mq25_mapab100.withchr.vcf
 		../tools/bin/bgzip -c ust_ishim.$*_mq25_mapab100.GRCh38.vcf > ust_ishim.$*_mq25_mapab100.GRCh38.all.vcf.gz 
 		../tools/bin/tabix -p vcf ust_ishim.$*_mq25_mapab100.GRCh38.all.vcf.gz
@@ -348,7 +356,7 @@ ust_ishim_GRCh38_%.samples: ust_ishim.%_mq25_mapab100.GRCh38.vcf.gz %_ancestral_
 lbk.%_mq25_mapab100.GRCh38.vcf.gz: lbk.%_mq25_mapab100.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c lbk.$*_mq25_mapab100.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > lbk.$*_mq25_mapab100.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=lbk.$*_mq25_mapab100.withchr.vcf O=lbk.$*_mq25_mapab100.GRCh38.vcf \
-			CHAIN=hg19ToHg38.over.chain.gz REJECT=lbk.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
+			CHAIN=hg19ToHg38.over.chain.gz REJECT=lbk.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.lbk.$*.log
 		rm lbk.$*_mq25_mapab100.withchr.vcf
 		../tools/bin/bgzip -c lbk.$*_mq25_mapab100.GRCh38.vcf > lbk.$*_mq25_mapab100.GRCh38.all.vcf.gz 
 		../tools/bin/tabix -p vcf lbk.$*_mq25_mapab100.GRCh38.all.vcf.gz
@@ -370,7 +378,7 @@ lbk_GRCh38_%.samples: lbk.%_mq25_mapab100.GRCh38.vcf.gz %_ancestral_states.fa.fa
 loshbour.%_mq25_mapab100.GRCh38.vcf.gz: loshbour.%_mq25_mapab100.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c loshbour.$*_mq25_mapab100.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > loshbour.$*_mq25_mapab100.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=loshbour.$*_mq25_mapab100.withchr.vcf O=loshbour.$*_mq25_mapab100.GRCh38.vcf \
-			CHAIN=hg19ToHg38.over.chain.gz REJECT=loshbour.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa
+			CHAIN=hg19ToHg38.over.chain.gz REJECT=loshbour.$*_mq25_mapab100.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.loshbour.$*.log
 		rm loshbour.$*_mq25_mapab100.withchr.vcf
 		../tools/bin/bgzip -c loshbour.$*_mq25_mapab100.GRCh38.vcf > loshbour.$*_mq25_mapab100.GRCh38.all.vcf.gz 
 		../tools/bin/tabix -p vcf loshbour.$*_mq25_mapab100.GRCh38.all.vcf.gz
@@ -480,10 +488,10 @@ archaics_phased_GRCh38_%.vcf.gz: altai.%_mq25_mapab100.vcf.gz chagyrskaya.%.noRB
 		java -Xmx100g -jar ../tools/beagle.18May20.d20.jar gt=archaics_merged_$*.snps.only.vcf.gz \
 			out=archaics_phased_$* map=plink.$*.GRCh37.map nthreads=20
 		gunzip -c archaics_phased_$*.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > archaics_phased_$*.withchr.vcf
-		# Liftover to GRCh38
+		## Liftover to GRCh38
 		java -jar ../tools/picard.jar LiftoverVcf I=archaics_phased_$*.withchr.vcf \
 			O=archaics_phased_$*.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz \
-			REJECT=archaics_phased_$*.GRCh38.rejected_variants.vcf R=hg38.fa
+			REJECT=archaics_phased_$*.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.archaics_phased.$*.log
 		rm archaics_phased_$*.withchr.vcf
 		../tools/bin/bgzip -c archaics_phased_$*.GRCh38.vcf > archaics_phased_$*.GRCh38.all.vcf.gz 
 		../tools/bin/tabix -p vcf archaics_phased_$*.GRCh38.all.vcf.gz
@@ -525,7 +533,8 @@ AfanasievoFamily_%.phased.detailed.filtered.GRCh38.vcf.gz: AfanasievoFamily_%${V
 			AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf \
 			O=AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf \
-			CHAIN=hg19ToHg38.over.chain.gz REJECT=AfanasievoFamily_$*${VCF_SUFFIX}.phased.GRCh38.rejected_variants.vcf R=hg38.fa
+			CHAIN=hg19ToHg38.over.chain.gz REJECT=AfanasievoFamily_$*${VCF_SUFFIX}.phased.GRCh38.rejected_variants.vcf R=hg38.fa \
+			RECOVER_SWAPPED_REF_ALT=TRUE &> picard.afanasievo.$*.log
 		rm AfanasievoFamily_$*${VCF_SUFFIX}.withchr.vcf
 		../tools/bin/bgzip -c AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf > AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
 		../tools/bin/tabix -f -p vcf AfanasievoFamily_$*${VCF_SUFFIX}.liftedover.GRCh38.vcf.gz
@@ -587,13 +596,13 @@ reich_ancients_%.samples: reich_%.samples
 v42.4.1240K_GRCh38_%.vcf.gz: v42.4.1240K_%.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c v42.4.1240K_$*.vcf.gz > v42.4.1240K_$*.vcf
 		awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' v42.4.1240K_$*.vcf > v42.4.1240K_$*.withchr.vcf
-		java -Xmx100G -jar ../tools/picard.jar LiftoverVcf \
+		java -Xmx200G -jar ../tools/picard.jar LiftoverVcf \
 				INPUT=v42.4.1240K_$*.withchr.vcf \
 				OUTPUT=v42.4.1240K_GRCh38_$*.vcf \
 				CHAIN=hg19ToHg38.over.chain.gz \
 				REJECT=v42.4.1240K_GRCh38_$*.rejected_variants.vcf \
 				R=hg38.fa \
-				RECOVER_SWAPPED_REF_ALT=true
+				RECOVER_SWAPPED_REF_ALT=TRUE &> picard.v42.4.1240K.$*.log
 		../tools/bin/bgzip -c v42.4.1240K_GRCh38_$*.vcf > v42.4.1240K_GRCh38_$*.all.vcf.gz 
 		rm v42.4.1240K_GRCh38_$*.vcf
 		../tools/bin/tabix -p vcf v42.4.1240K_GRCh38_$*.all.vcf.gz
@@ -633,21 +642,33 @@ hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples 
 		python3 tsutil.py merge-sampledata-files --input-sampledata $< reich_ancients_GRCh38_$*.subset.samples \
 			ust_ishim_GRCh38_$*.subset.samples loshbour_GRCh38_$*.subset.samples lbk_GRCh38_$*.subset.samples --output $@
 
+hgdp_1kg_sgdp_high_cov_ancients_%_p.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples
+		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+
+hgdp_1kg_sgdp_high_cov_ancients_%_q.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples
+		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
+
+hgdp_1kg_sgdp_all_ancients_%_p.samples: hgdp_1kg_sgdp_all_ancients_%.samples
+		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+
+hgdp_1kg_sgdp_all_ancients_%_q.samples: hgdp_1kg_sgdp_all_ancients_%.samples
+		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
+
 all_ancients_%.samples: 1kg_%.samples reich_ancients_%.samples afanasievo_%.samples denisovan_%.samples vindija_%.samples \
 	chagyrskaya_%.samples altai_%.samples ust_ishim_%.samples loshbour_%.samples lbk_%.samples
 		python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
 
-hgdp_1kg_sgdp_high_cov_ancients_dated_%.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples \
+hgdp_1kg_sgdp_high_cov_ancients_%_dated.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples \
 	hgdp_1kg_sgdp_all_ancients_%.samples
 		python3 tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples \
 			--all-samples hgdp_1kg_sgdp_all_ancients_$*.samples --dated-ts hgdp_1kg_sgdp_$*.missing_binned.dated.trees \
 			--output $@ > hgdp_1kg_sgdp_high_cov_ancients_dated_$*_constrained_variants.txt
 
-hgdp_1kg_sgdp_high_cov_ancients_dated_%.trees: hgdp_1kg_sgdp_high_cov_ancients_dated_%.samples recomb-hg38/
-		python3 bin_dates.py $< hgdp_1kg_sgdp_high_cov_ancients_dated_$*.binned.samples
-		python3 ../src/run_inference.py hgdp_1kg_sgdp_high_cov_ancients_dated_$*.binned.samples -t ${NUM_THREADS} -A 1 -S 1 \
+hgdp_1kg_sgdp_high_cov_ancients_%.dated.trees: hgdp_1kg_sgdp_high_cov_ancients_%_dated.samples recomb-hg38/
+		python3 bin_dates.py $< hgdp_1kg_sgdp_high_cov_ancients_$*_dated.binned.samples
+		python3 ../src/run_inference.py hgdp_1kg_sgdp_high_cov_ancients_$*_dated.binned.samples -t ${NUM_THREADS} -A 1 -S 1 \
 			-m recomb-hg38/genetic_map_GRCh38_
-		python3 tsutil.py simplify hgdp_1kg_sgdp_high_cov_ancients_dated_$*.binned.nosimplify.trees $@
+		python3 tsutil.py simplify hgdp_1kg_sgdp_high_cov_ancients_$*_dated.binned.nosimplify.trees $@
 
 clean:
 		rm -f 1kg_samples.ped sgdp_samples.txt *.vcf* *.samples* recomb-hg38/
