@@ -57,11 +57,11 @@ def run(params):
             path_compression = True
         maximum_time = np.max(anc.ancestors_time[:])
         if maximum_time < 3: # hacky way of checking if we used frequency to order ancestors
-            anc = anc.truncate_ancestors(0.4, 0.6, length_multiplier=2, path=prefix + ".truncated.ancestors")
+            anc = anc.truncate_ancestors(0.4, 0.6, length_multiplier=1, path=prefix + ".truncated.ancestors")
         else:
             upper_time_limit = maximum_time * 0.6
             lower_time_limit = maximum_time * 0.4
-            anc = anc.truncate_ancestors(lower_time_limit, upper_time_limit, length_multiplier=2, path=prefix + ".truncated.ancestors")
+            anc = anc.truncate_ancestors(lower_time_limit, upper_time_limit, length_multiplier=1, path=prefix + ".truncated.ancestors")
         print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
     else:
         anc = tsinfer.load(prefix + ".truncated.ancestors")
@@ -153,6 +153,10 @@ def get_rho(ancestors, filename):
     inference_pos = ancestors.sites_position[:]
 
     match = re.search(r"(chr\d+)", filename)
+    arm = "_q" in filename
+    sequence_length = None
+    if arm:
+        sequence_length = ancestors.sequence_length 
     if match is None:
         raise ValueError("chr must be in filename")
     chr = match.group(1)
@@ -161,7 +165,7 @@ def get_rho(ancestors, filename):
         if map is not None:
             print(f"Using {chr} from GRCh38 for the recombination map")
             rmap = msprime.RateMap.read_hapmap(
-                map + chr + ".txt", sequence_length=ancestors.sequence_length
+                map + chr + ".txt", sequence_length=sequence_length
             )
         else:
             print(f"Using {chr} from HapMapII_GRCh37 for the recombination map")
@@ -172,7 +176,7 @@ def get_rho(ancestors, filename):
                 map.map_cache_dir, map.file_pattern.format(id="chr20")
             )
             rmap = msprime.RateMap.read_hapmap(
-                map_file, sequence_length=ancestors.sequence_length
+                map_file, sequence_length=sequence_length
             )
         genetic_dists = tsinfer.Matcher.recombination_rate_to_dist(rmap, inference_pos)
         recombination = tsinfer.Matcher.recombination_dist_to_prob(genetic_dists)
