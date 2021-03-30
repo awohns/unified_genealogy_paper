@@ -1,10 +1,11 @@
 """
-    print(args.chrom)
 Various utilities for manipulating tree sequences and running tsinfer.
 """
 import argparse
+import csv
 import time
 import collections
+import re
 import json
 import os.path
 
@@ -564,6 +565,80 @@ def combined_ts_constrained_samples(args):
     high_cov_samples_copy.finalise()
 
 
+def split_chromosome(args):
+    match = re.search(r"(chr\d+)", args.chrom)
+    if match is None:
+        raise ValueError("chr must be in filename")
+    chrom = match.group(1)
+    with open(args.centromeres) as csvfile:
+        reader = csv.DictReader(csvfile)
+        centromere_positions = list()
+        for row in reader:
+            if row["chrom"] == chrom:
+                centromere_positions.append(int(row["chromStart"]))
+                centromere_positions.append(int(row["chromEnd"]))
+    start = np.min(centromere_positions)
+    end = np.max(centromere_positions)
+    split_point = (start + end) / 2
+    samples = tsinfer.load(args.input)
+    position = samples.sites_position[:]
+    print(f"Splitting at {split_point}")
+    if args.arm == "p":
+        keep_sites = np.where(position < split_point)[0]
+        print(f"Keeping {keep_sites.shape[0]} sites")
+        arm = samples.subset(sites=keep_sites)
+        snipped_samples = arm.copy(path=args.output)
+        snipped_samples.data.attrs["sequence_length"] = split_point
+    elif args.arm == "q":
+        keep_sites = np.where(position > split_point)[0]
+        print(f"Keeping {keep_sites.shape[0]} sites")
+        arm = samples.subset(sites=keep_sites)
+        snipped_samples = arm.copy(path=args.output)
+    snipped_samples.finalise()
+
+
+def combine_chromosome_arms(args):
+    """
+    Splices two chromosome arms together to form a full chromosome
+    """
+    short_arm = tskit.load(args.p_arm)
+    long_arm = tskit.load(args.q_arm)
+    assert short_arm.num_samples == long_arm.num_samples
+    # Remove material before first position and after last position
+    short_arm = short_arm.keep_intervals([[short_arm.tables.sites.position[0], short_arm.tables.sites.position[-1]]], simplify=False)
+    long_arm = long_arm.keep_intervals([[long_arm.tables.sites.position[0], long_arm.tables.sites.position[-1]]], simplify=False)
+    short_tables = short_arm.dump_tables()
+    long_tables = long_arm.dump_tables()
+    assert np.array_equal(short_tables.individuals.metadata, long_tables.individuals.metadata)
+    short_tables.sequence_length = long_arm.get_sequence_length()
+    short_tables.nodes.append_columns(long_tables.nodes.flags[~np.isin(np.arange(long_arm.num_nodes), long_arm.samples())], long_tables.nodes.time[~np.isin(np.arange(long_arm.num_nodes), long_arm.samples())])
+    long_edges_parent = long_tables.edges.parent
+    long_edges_child = long_tables.edges.child
+    long_arm_sample_map = np.zeros(long_arm.num_nodes).astype(int)
+    long_arm_sample_map[long_arm.samples()] = short_arm.samples()
+    long_edges_parent[~np.isin(long_edges_parent, long_arm.samples())] = long_edges_parent[~np.isin(long_edges_parent, long_arm.samples())] + (short_arm.num_nodes)
+    long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]] = long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]] - long_arm.num_samples
+    long_edges_child[~np.isin(long_edges_child, long_arm.samples())] = long_edges_child[~np.isin(long_edges_child, long_arm.samples())] + (short_arm.num_nodes)
+    long_edges_child[long_tables.edges.child > long_arm.samples()[-1]] = long_edges_child[long_tables.edges.child > long_arm.samples()[-1]] - long_arm.num_samples
+    long_edges_child[np.isin(long_tables.edges.child, long_arm.samples())] = long_arm_sample_map[long_tables.edges.child[np.isin(long_tables.edges.child, long_arm.samples())]]
+    short_tables.edges.append_columns(long_tables.edges.left, long_tables.edges.right, long_edges_parent, long_edges_child)
+    short_tables.sites.append_columns(long_tables.sites.position, long_tables.sites.ancestral_state, long_tables.sites.ancestral_state_offset)
+    long_mutations_node = long_tables.mutations.node
+    long_mutations_node[~np.isin(long_mutations_node, long_arm.samples())] = long_mutations_node[~np.isin(long_mutations_node, long_arm.samples())] + (short_arm.num_nodes)
+    long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]] = long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]] - long_arm.num_samples
+    long_mutations_node[np.isin(long_tables.mutations.node, long_arm.samples())] = long_arm_sample_map[long_tables.mutations.node[np.isin(long_tables.mutations.node, long_arm.samples())]]
+    short_tables.mutations.append_columns(long_tables.mutations.site + short_arm.num_sites, long_mutations_node, long_tables.mutations.derived_state, long_tables.mutations.derived_state_offset) 
+    short_tables.sort()
+    combined = short_tables.tree_sequence()
+    assert combined.num_sites == (short_arm.num_sites + long_arm.num_sites)
+    assert combined.num_edges == (short_arm.num_edges + long_arm.num_edges)
+    assert combined.num_mutations == (short_arm.num_mutations + long_arm.num_mutations)
+    assert np.array_equal(np.sort(combined.tables.sites.position), np.concatenate([short_arm.tables.sites.position, long_arm.tables.sites.position]))
+    assert np.array_equal(np.sort(combined.tables.nodes.time[combined.tables.mutations.node]), np.sort(np.concatenate([short_arm.tables.nodes.time[short_arm.tables.mutations.node], long_arm.tables.nodes.time[long_arm.tables.mutations.node]])))
+    assert np.array_equal(combined.tables.individuals.metadata, long_tables.individuals.metadata)
+    combined.dump(args.output)
+
+
 def main():
 
     parser = argparse.ArgumentParser()
@@ -688,6 +763,28 @@ def main():
     )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)
+
+    subparser = subparsers.add_parser("split-chromosome")
+    subparser.add_argument(
+        "input", type=str, help="Input SampleData")
+    subparser.add_argument(
+        "output", type=str, help="Output SampleData")
+    subparser.add_argument(
+        "chrom", type=str, help="Chromosome name")
+    subparser.add_argument(
+        "arm", type=str, help="Arm name")
+    subparser.add_argument(
+        "centromeres", type=str, help="CSV file containing centromere coordinates.")
+    subparser.set_defaults(func=split_chromosome)
+
+    subparser = subparsers.add_parser("combine-chromosome")
+    subparser.add_argument(
+        "p_arm", type=str, help="Input p Arm")
+    subparser.add_argument(
+        "q_arm", type=str, help="Input q Arm")
+    subparser.add_argument(
+        "output", type=str, help="Output SampleData")
+    subparser.set_defaults(func=combine_chromosome_arms)
 
     daiquiri.setup(level="INFO")
 

@@ -1,9 +1,7 @@
 tskit >= 0.3.5
 pandas >= 1.2.2
 numpy >= 1.20.1
-tsdate >= 0.1.3
 msprime >= 1.0.0a3
-tsinfer >= 0.2.0
 scikit-allel
 matplotlib
 sklearn
@@ -18,4 +16,6 @@ pyreadr
 seaborn
 mpld3
 Bio
+git+https://github.com/tskit-dev/tsdate.git@main#e=tsdate
+git+https://github.com/tskit-dev/tsinfer.git@main#e=tsinfer
 git+git://github.com/popsim-consortium/stdpopsim.git@main#e=stdpopsim

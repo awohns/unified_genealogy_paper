@@ -5,8 +5,8 @@ geva:
 	cd geva && make
 
 relate:
-	wget https://myersgroup.github.io/relate/download/relate_v1.1.5_x86_64_dynamic.tgz
-	tar -xzf relate_v1.1.5_x86_64_dynamic.tgz
+	wget https://myersgroup.github.io/relate/download/relate_v1.1.6_x86_64_dynamic.tgz
+	tar -xzf relate_v1.1.6_x86_64_dynamic.tgz
 	mv relate_v1.1.5_x86_64_dynamic relate 
 
 htslib:
