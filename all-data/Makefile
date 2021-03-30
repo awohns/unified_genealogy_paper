@@ -481,7 +481,8 @@ archaics_phased_GRCh38_%.vcf.gz: altai.%_mq25_mapab100.vcf.gz chagyrskaya.%.noRB
 		../tools/bin/tabix -p vcf chagyrskaya.$*.vcf.gz
 		# Merge the high coverage archaics
 		../tools/bin/bcftools merge altai.$*_mq25_mapab100.vcf.gz chagyrskaya.$*.vcf.gz \
-			vindija.$*_mq25_mapab100.vcf.gz denisovan.$*_mq25_mapab100.vcf.gz -O z -o archaics_merged_$*.vcf.gz
+			vindija.$*_mq25_mapab100.vcf.gz denisovan.$*_mq25_mapab100.vcf.gz -O z \
+			-o archaics_merged_$*.vcf.gz &> high_cov_archaics_merge.$*.log
 		# Some chromosomes have non-acgt ref alleles
 		../tools/bin/plink --vcf archaics_merged_$*.vcf.gz --snps-only just-acgt --recode vcf bgz --out archaics_merged_$*.snps.only
 		# Perform phasing

@@ -598,9 +598,14 @@ def split_chromosome(args):
 
 
 def combine_chromosome_arms(args):
+    """
+    Splices two chromosome arms together to form a full chromosome
+    """
     short_arm = tskit.load(args.p_arm)
     long_arm = tskit.load(args.q_arm)
     assert short_arm.num_samples == long_arm.num_samples
+    # Remove material before first position and after last position
+    short_arm = short_arm.keep_intervals([[short_arm.tables.sites.position[0], short_arm.tables.sites.position[-1]]], simplify=False)
     long_arm = long_arm.keep_intervals([[long_arm.tables.sites.position[0], long_arm.tables.sites.position[-1]]], simplify=False)
     short_tables = short_arm.dump_tables()
     long_tables = long_arm.dump_tables()

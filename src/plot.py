@@ -3,7 +3,6 @@
 Generates all the actual figures. Should be called with following format:
  python3 src/plot.py PLOT_NAME
 """
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import argparse
 import collections
 import json
@@ -1581,7 +1580,7 @@ class ScalingFigure(Figure):
         if samplesize and xlabel:
             ax.set_xlabel("Sample Size", fontsize=12)
         elif length and xlabel:
-            ax.set_xlabel("Length (Gb)", fontsize=12)
+            ax.set_xlabel("Length (Mb)", fontsize=12)
         ax.plot(
             index,
             means_arr[0],
@@ -3154,7 +3153,6 @@ class AncientDescent(Figure):
             corrcoef_df,
             descent_arr,
             descendants,
-            self.exclude_pop_names,
             self.plotname + "_haplotypes_chr" + self.chrom,
         )
 
@@ -3203,6 +3201,7 @@ class VindijaDescent(AncientDescent):
         self.plotname = "vindija"
         self.proxy_time = 2000.01
         self.exclude_pop_names = ["Vindija"]
+        self.minimum_descent = 0.00004
         super().__init__(args)
 
 
@@ -3273,6 +3272,79 @@ class AltaiDescent(AncientDescent):
         self.proxy_time = 4400.01
         self.exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
         super().__init__(args)
+
+
+class VindijaRegionDescent(Figure):
+    """
+    Extended Data Fig. 8: Vindija Descent Boxplot
+    """
+
+    name = "vindija_descent_boxplot"
+
+    def plot(self):
+        data_path = "data/"
+        filename = "unified_ts_chr"
+        suffix = "_regions_ancient_descendants.csv"
+
+        summed = []
+        for chrom in range(1, 23):
+            for arm in ["_p", "_q"]:
+                chrom_name = str(chrom) + arm
+                try:
+                    csv_file = pd.read_csv(
+                        data_path + filename + chrom_name + suffix,
+                        index_col="Unnamed: 0",
+                    )
+                    vindija_only = np.sum(csv_file.loc["Vindija"], axis=0)
+                    summed.append(vindija_only)
+                    print(chrom_name, vindija_only)
+                except:
+                    print("No region descent file for chr{}".format(chrom_name))
+
+        summed = pd.DataFrame(summed, columns=csv_file.columns)
+        fig, ax = plt.subplots(figsize=(10, 7))
+        sns.boxplot(
+            x="variable",
+            y="value",
+            data=pd.melt(summed.iloc[:, :-1]),
+            palette=region_colors,
+        )
+        ax.set_ylabel("Genomic Descent from Vindija Haplotypes", size=15)
+        ax.set_xlabel("Region", size=20)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=15, size=15)
+        self.save(self.name)
+
+
+class DenisovanRegionDescent(Figure):
+    """
+    Part b of Figure 3: Denisovan Descent by Region on Chromosome 20
+    """
+
+    name = "deniosvan_descent_boxplot_chr20"
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["unified_ts_chr20_regions_ancient_descendants"]
+        super().__init__(args)
+
+    def plot(self):
+        fig, ax = plt.subplots(figsize=(10, 7))
+        chr20_descent = self.data[0].set_index(self.data[0].columns[0])
+        # Exclude ancients column
+        chr20_descent = chr20_descent.iloc[:, :-1]
+        sns.barplot(
+            x=chr20_descent.columns,
+            y=np.sum(chr20_descent.loc["Denisovan"], axis=0),
+            palette=region_colors,
+        )
+        ax.set_ylabel(
+            "Chromosome 20 proportion descending \n from sampled Denisovan Haplotypes",
+            size=20,
+        )
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=30, size=15)
+        fig.show()
+        fig.tight_layout()
+        self.save(self.name)
 
 
 class SiteLinkageAndQuality(Figure):

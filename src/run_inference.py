@@ -46,15 +46,12 @@ def run(params):
             path=prefix + ".ancestors",
             progress_monitor=True,
         )
-        path_compression = True
         if np.any(params.sample_data.individuals_time[:] != 0):
             anc_w_proxy = anc.insert_proxy_samples(
                 params.sample_data, allow_mutation=True
             )
             anc = anc_w_proxy.copy(path=prefix + ".proxy.ancestors")
             anc.finalise()
-            # Don't use path compression if ancient ancestors (can be fixed in the future)
-            path_compression = True
         maximum_time = np.max(anc.ancestors_time[:])
         if maximum_time < 3: # hacky way of checking if we used frequency to order ancestors
             anc = anc.truncate_ancestors(0.4, 0.6, length_multiplier=1, path=prefix + ".truncated.ancestors")
@@ -65,7 +62,6 @@ def run(params):
         print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
     else:
         anc = tsinfer.load(prefix + ".truncated.ancestors")
-        path_compression = True
     ga_process_time = time.process_time() - ga_start_time
 
     r_prob, m_prob = get_rho(anc, params.filename)
@@ -89,7 +85,6 @@ def run(params):
             precision=precision,
             recombination=r_prob,
             mismatch=m_prob,
-            path_compression=path_compression,
             progress_monitor=True,
         )
         inferred_anc_ts.dump(prefix + ".atrees")
