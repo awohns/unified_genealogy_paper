@@ -7,7 +7,7 @@ geva:
 relate:
 	wget https://myersgroup.github.io/relate/download/relate_v1.1.6_x86_64_dynamic.tgz
 	tar -xzf relate_v1.1.6_x86_64_dynamic.tgz
-	mv relate_v1.1.5_x86_64_dynamic relate 
+	mv relate_v1.1.6_x86_64_dynamic relate 
 
 htslib:
 	wget https://github.com/samtools/htslib/releases/download/1.11/htslib-1.11.tar.bz2

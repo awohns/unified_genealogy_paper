@@ -2149,7 +2149,7 @@ class PriorEvaluation(Figure):
                 elinewidth=0.7,
                 alpha=0.1,
                 color="grey",
-                solid_capstyle="projecting",
+                #solid_capstyle="projecting",
                 capsize=4,
                 label="95% credible interval of the prior",
                 zorder=1,
@@ -2193,8 +2193,8 @@ class PriorEvaluation(Figure):
             rotation="vertical",
             size=15,
         )
-        axes[0].set_title("p=0", size=14)
-        axes[1].set_title("p=1e-8", size=14)
+        axes[0].set_title("$\it{r}$=0", size=14)
+        axes[1].set_title("$\it{r}$=1e-8", size=14)
         axes[1].text(
             1.03,
             0.2,
