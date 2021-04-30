@@ -172,7 +172,7 @@ GENOTYPES_BCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/su
 				-o $@
 
 1kg_%_genotypes.vcf.gz:
-		curl ${GENOTYPES_VCF_BASE}/ALL.$*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz -o $@
+		curl ${GENOTYPES_VCF_BASE}/ALL.$*.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf.gz -o $@
 
 1kg_%.samples: 1kg_%_genotypes.vcf.gz %_ancestral_states_37.fa.fai 1kg_samples.ped
 		../tools/bin/tabix -f -p vcf $<
@@ -517,6 +517,10 @@ archaics_phased_GRCh38_%.samples: archaics_phased_GRCh38_%.vcf.gz %_ancestral_st
 # Afanasievo Data
 #############################################
 VCF_SUFFIX=.phased.detailed.filtered
+
+AfanasievoFamily_%.phased.detailed.filtered.vcf.gz:
+		curl https://reichdata.hms.harvard.edu/pub/datasets/release/wohn_2021_phasedAfanasievo/AfanasievoFamily_${*}${VCF_SUFFIX}.vcf.gz -o $@
+		../tools/bin/tabix -p vcf $@
 
 afanasievo_%.samples: AfanasievoFamily_%${VCF_SUFFIX}.vcf.gz %_ancestral_states_37.fa.fai 1kg_%.samples
 		../tools/bin/tabix -f -p vcf $<

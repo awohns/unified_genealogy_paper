@@ -1,6 +1,6 @@
 # Code for "A unified genealogy of modern and ancient genomes"
 
-This repo contains code used in "A unified genealogy of modern and ancient genomes."
+This repo contains code used in ["A unified genealogy of modern and ancient genomes"](https://www.biorxiv.org/content/10.1101/2021.02.16.431497v1).
 This includes:
 * simulation based validation of [tsinfer](https://tsinfer.readthedocs.io/) and
 [tsdate](https://tsdate.readthedocs.io/en/latest/)
@@ -18,8 +18,8 @@ These analyses are placed in subdirectories as follows:
 You must first clone this repo, including submodules as follows:
 
 ```
-git clone --recurse-submodules https://github.com/awohns/unified_genealogy_paper.git
-cd unified_genealogy_paper
+$ git clone --recurse-submodules https://github.com/awohns/unified_genealogy_paper.git
+$ cd unified_genealogy_paper
 ```
 
 #### Required Software
@@ -64,21 +64,17 @@ $ make all
 
 Please see the [README](all-data/README.md) in the ``all-data`` directory for details on inferring the combined tree sequence. 
 
-You will need the `cyvcf2` Python module to read VCF files. Once the requirements above have been installed you should simply be able to do:
-
-```
-$ python -m pip install cyvcf2 # only for human data analysis: needs to be installed *after* numpy
-```
-
 
 #### Running Simulations
 
 To generate data required for simulation-based figures and to plot the figures themselves, follow this general process: generate data, run analyses, and plot the results. 
 The following example will generate Figure 1c:
 
-`python src/run_evaluation.py tsdate_neutral_sims --setup`
-`python src/run_evaluation.py tsdate_neutral_sims --inference`
-`python src/plot.py tsdate_neutral_sims`
+```
+$ python src/run_evaluation.py tsdate_neutral_sims --setup
+$ python src/run_evaluation.py tsdate_neutral_sims --inference
+$ python src/plot.py tsdate_neutral_sims
+```
 
 The first command runs the simulations for each evaluation. The simulations are stored in the `simulated-data` directory 
 The second command performs inference on the results of the simulations. This will take multiple

@@ -9,17 +9,17 @@ as well as all intermediate files.
 
 To infer the dated 1000 Genomes tree sequence:
 1. Download Chromosome 20 variant data
-2. Produce a ``.samples'' file (``tsinfer'' input format)
+2. Produce a ``.samples`` file (``tsinfer`` input format)
 3. Infer tree sequence
 4. Date tree sequence
 
 To infer the unified tree sequence for each chromosome:
 1. Download variant information
 2. LiftOver some datasets to GRCh38
-3. Produce a ``.samples'' file for each dataset
-4. Merge ``.samples'' files of modern datsets
-5. Infer a tree sequence of modern individuals with ``tsinfer''
-6. Date tree sequence with ``tsdate''
+3. Produce a ``.samples`` file for each dataset
+4. Merge ``.samples`` files of modern datsets
+5. Infer a tree sequence of modern individuals with ``tsinfer``
+6. Date tree sequence with ``tsdate``
 7. Constrain date estimates with ancient samples
 8. Reinfer tree sequence with modern and ancient samples
 
@@ -63,7 +63,7 @@ will tell ``tsinfer`` to use 20 threads where appropriate.
 To build the dated tree sequence of all datasets, run:
 
 ```
-$ make hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
+$ make hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.trees
 ```
 
 The pipeline for creating the unified tree sequence is generic, and so any chromosome can be built
