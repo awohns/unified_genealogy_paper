@@ -3,24 +3,36 @@ NUM_PROCS = 60
 SPECIES = HomSap
 CONTIG = chr20
 
-all: | relate_ages geva_ages mismatch chr20_mask
+downloads: | relate_ages geva_ages.csv.gz mismatch chr20_mask
 
-relate_ages: 
+relate_ages: allele_ages_AFR allele_ages_AMR allele_ages_EAS allele_ages_EUR allele_ages_SAS
+
+chr20_mask: 20160622.chr20.mask.fasta
+
+allele_ages_AFR:
 	curl https://zenodo.org/record/3234689/files/allele_ages_AFR.zip?download=1 -o allele_ages_AFR.zip
 	unzip allele_ages_AFR.zip
+
+allele_ages_AMR:
 	curl https://zenodo.org/record/3234689/files/allele_ages_AMR.zip?download=1 -o allele_ages_AMR.zip
 	unzip allele_ages_AMR.zip
+
+allele_ages_EAS:
 	curl https://zenodo.org/record/3234689/files/allele_ages_EAS.zip?download=1 -o allele_ages_EAS.zip
 	unzip allele_ages_EAS.zip
+
+allele_ages_EUR:
 	curl https://zenodo.org/record/3234689/files/allele_ages_EUR.zip?download=1 -o allele_ages_EUR.zip
 	unzip allele_ages_EUR.zip
+
+allele_ages_SAS:
 	curl https://zenodo.org/record/3234689/files/allele_ages_SAS.zip?download=1 -o allele_ages_SAS.zip
 	unzip allele_ages_SAS.zip
 
-geva_ages:
+geva_ages.csv.gz:
 	curl https://human.genome.dating/bulk/atlas.chr20.csv.gz -o geva_ages.csv.gz
 
-chr20_mask:
+20160622.chr20.mask.fasta:
 	curl http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000_genomes_project/working/20160622_genome_mask_GRCh38/StrictMask/20160622.chr20.mask.fasta.gz -o 20160622.chr20.mask.fasta.gz
 	gunzip 20160622.chr20.mask.fasta.gz
 
@@ -95,3 +107,5 @@ hgdp_$(DETAILS).samples:
 	python3 -c 'import tsinfer; sd=tsinfer.load("../all-data/hgdp_$(CONTIG).samples"); \
 	sd.subset(sites=range($(START_SITE), $(END_SITE)), path="hgdp_$(DETAILS).samples")'
 
+clean:
+	rm -fR allele_ages_* 1kg_* hgdp_* $(OOA)* geva_ages* chr20_mask.fasta
