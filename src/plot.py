@@ -315,7 +315,7 @@ class Figure(object):
             return self._main_ts
         except AttributeError:
             self._main_ts = tskit.load(
-                "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr" + chrom + ".trees"
+                "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + chrom + ".dated.trees"
             )
             return self._main_ts
 
@@ -335,9 +335,9 @@ class Figure(object):
         if animation is not None:
             animation.save("figures/{}.mp4".format(figure_name), dpi=300)
         else:
-            plt.savefig(
-                "figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400
-            )
+            # plt.savefig(
+            #    "figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400
+            # )
             plt.savefig(
                 "figures/{}.png".format(figure_name), bbox_inches="tight", dpi=400
             )
@@ -744,6 +744,7 @@ class Chr20AncientIteration(Figure):
         "chr20_ancient_iteration_amh_spearman",
         "chr20_ancient_iteration_amh_kc",
     ]
+    header = ["infer", "infer", "infer", "infer", "infer", "infer", "infer", "infer", "infer"]
     plt_title = "iteration_ancients"
 
     def __init__(self, args):
@@ -776,13 +777,13 @@ class Chr20AncientIteration(Figure):
         df = msle
         comb_df = pd.concat([msle, msle_ooa, msle_amh])
         sns.boxplot(
-            x=comb_df["tsdate_inferred"], orient="v", ax=ax[0, 0], color="silver"
+            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_inferred"], orient="v", ax=ax[0, 0],
         )
         sns.boxplot(
-            x=comb_df["tsdate_iterate"], orient="v", ax=ax[0, 1], color="silver"
+            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_iterate"], orient="v", ax=ax[0, 1], 
         )
-        plt.setp(ax[0, 0].artists, edgecolor="k", facecolor="silver")
-        plt.setp(ax[0, 1].artists, edgecolor="k", facecolor="silver")
+        plt.setp(ax[0, 0].artists, edgecolor="k", facecolor=(0.93, 0.13, 0.05))
+        plt.setp(ax[0, 1].artists, edgecolor="k", facecolor=(0.38, 0.85, 0.21))
         plt.setp(ax[0, 0].lines, color="k")
         plt.setp(ax[0, 1].lines, color="k")
         cols = ["Subset " + str(subset) for subset in [1, 5, 10, 20, 40]]
@@ -796,7 +797,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[0, 2],
             alpha=0.8,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[0, 2].scatter(
@@ -812,7 +813,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[0, 2],
             alpha=0.7,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[0, 2].scatter(
@@ -833,7 +834,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[0, 2],
             alpha=0.7,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[0, 2].scatter(
@@ -849,13 +850,13 @@ class Chr20AncientIteration(Figure):
         comb_df = pd.concat([spearman, spearman_ooa, spearman_amh])
 
         sns.boxplot(
-            x=comb_df["tsdate_inferred"], orient="v", ax=ax[1, 0], color="silver"
+            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_inferred"], orient="v", ax=ax[1, 0],
         )
         sns.boxplot(
-            x=comb_df["tsdate_iterate"], orient="v", ax=ax[1, 1], color="silver"
+            x=np.zeros(comb_df["tsdate_iterate"].shape), y=comb_df["tsdate_iterate"], orient="v", ax=ax[1, 1],
         )
-        plt.setp(ax[1, 0].artists, edgecolor="k", facecolor="silver")
-        plt.setp(ax[1, 1].artists, edgecolor="k", facecolor="silver")
+        plt.setp(ax[1, 0].artists, edgecolor="k", facecolor=(0.93, 0.13, 0.05))
+        plt.setp(ax[1, 1].artists, edgecolor="k", facecolor=(0.38, 0.85, 0.21))
         plt.setp(ax[1, 0].lines, color="k")
         plt.setp(ax[1, 1].lines, color="k")
 
@@ -870,7 +871,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[1, 2],
             alpha=0.8,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[1, 2].scatter(
@@ -885,7 +886,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[1, 2],
             alpha=0.7,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[1, 2].scatter(
@@ -906,7 +907,7 @@ class Chr20AncientIteration(Figure):
             sort=False,
             ax=ax[1, 2],
             alpha=0.7,
-            color="grey",
+            color=(0.23, 0.64, 1),
         )
         groupby = df_melt.groupby("variable").mean()
         ax[1, 2].scatter(
@@ -933,7 +934,6 @@ class Chr20AncientIteration(Figure):
         ax[0, 1].set_title("ii")
         ax[0, 2].set_title("iii")
 
-        # plt.suptitle("Mutation Estimation Accuracy: " + self.plt_title)
         self.save(self.name)
 
 
@@ -944,7 +944,7 @@ class TmrcaClustermap(Figure):
 
     name = "tmrcas"
     data_path = "data"
-    filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
+    filename = ["hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
 
     def make_symmetric(self, df):
         """
@@ -1117,7 +1117,7 @@ class InsetTmrcaHistograms(Figure):
 
     name = "inset_tmrca_histograms"
     data_path = "data"
-    filename = ["hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.20nodes_all.tmrcas"]
+    filename = ["hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
 
     def __init__(self, args):
         base_name = self.filename[0]
@@ -1544,7 +1544,7 @@ class AncientConstraints(Figure):
 
 class ScalingFigure(Figure):
     """
-    Extended Data Figure 5: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
+    Figure S9: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
     With both samples and length of sequence.
     """
 
@@ -1812,7 +1812,7 @@ class ScalingFigure(Figure):
 
 class TgpMutEstsFrequency(Figure):
     """
-    Supplementary Figure 5: Figure showing TGP mutation age estimates from tsdate,
+    Figure S19: Figure showing TGP mutation age estimates from tsdate,
     Relate, GEVA vs. frequency.
     """
 
@@ -1871,7 +1871,7 @@ class TgpMutEstsFrequency(Figure):
         )
         plt.xlim(3e-3, 1.05)
         plt.ylim(10, 5e5)
-        ax[0].set_title("Frequency vs. GEVA Estimated Allele Age")
+        ax[0].set_title("Frequency vs. tsdate Estimated Allele Age")
         ax[1].set_title("Frequency vs. Relate Estimated Allele Age")
         ax[2].set_title("Frequency vs. GEVA Estimated Allele Age")
         ax[0].set_xlabel("TGP Frequency")
@@ -1887,7 +1887,7 @@ class TgpMutEstsFrequency(Figure):
 
 class TgpMutationAgeComparisons(Figure):
     """
-    Supplementary Figure 7: Comparing TGP mutation age estimates from tsdate, Relate,
+    Figure S21: Comparing TGP mutation age estimates from tsdate, Relate,
     and GEVA.
     """
 
@@ -1963,7 +1963,7 @@ class TgpMutationAgeComparisons(Figure):
 
 class TgpMutationAverageAge(Figure):
     """
-    Supplementary Figure 6: Compare mutation age estimates from tsdate, Relate, and
+    Figure S20: Compare mutation age estimates from tsdate, Relate, and
     GEVA for tgp chromosome 20.
     """
 
@@ -2010,12 +2010,12 @@ class TgpMutationAverageAge(Figure):
 
 class PriorEvaluation(Figure):
     """
-    Supplementary Figure 2: Evaluating the Lognormal Prior
+    Figure S4: Evaluating the Lognormal Prior
     """
 
     name = "prior_evaluation"
     data_path = "simulated-data"
-    filename = "evaluateprior"
+    filename = "prior_evaluation"
     plt_title = "prior_evaluation"
 
     def __init__(self, args):
@@ -2057,6 +2057,14 @@ class PriorEvaluation(Figure):
                 upper_bound_all - expectations_all,
             ]
 
+            # Smoothed average of true times
+            num_bins = 100
+            df = pd.DataFrame(real_ages_all, index=np.log(num_tips_all))
+            df["bins"] = pd.cut((df.index), num_bins)
+            smoothed_mean_df = df.groupby("bins").mean()
+            smoothed_mean_df["bin_mean"] = np.exp(smoothed_mean_df.index.map(attrgetter("right")))
+            smoothed_mean_df = smoothed_mean_df.dropna()
+
             axes[index].errorbar(
                 num_tips_all,
                 expectations_all,
@@ -2071,21 +2079,30 @@ class PriorEvaluation(Figure):
             axes[index].scatter(
                 num_tips_all,
                 real_ages_all,
-                s=1,
-                alpha=0.5,
+                s=0.5,
+                alpha=0.1,
                 zorder=2,
-                color="blue",
-                label="True Time",
+                color="royalblue",
+                label="True time",
             )
             axes[index].scatter(
                 num_tips_all,
                 expectations_all,
-                s=1,
+                s=0.5,
                 color="red",
                 zorder=3,
-                label="expected time",
+                label="Expected time",
                 alpha=0.5,
             )
+            axes[index].plot(
+                smoothed_mean_df["bin_mean"].astype(float).values,
+                smoothed_mean_df[0].values,
+                alpha=0.5,
+                color="blue",
+                label="Moving average of true time",
+                zorder=4,
+            )
+
             coverage = np.sum(
                 np.logical_and(
                     real_ages_all < upper_bound_all, real_ages_all > lower_bound_all
@@ -2111,7 +2128,7 @@ class PriorEvaluation(Figure):
             axes[index].text(
                 0.35,
                 0.21,
-                "<10 Tips Coverage Probability:" + "{0:.3f}".format(coverage),
+                "<5 Tips Coverage Probability:" + "{0:.3f}".format(coverage),
                 size=10,
                 ha="center",
                 va="center",
@@ -2149,8 +2166,8 @@ class PriorEvaluation(Figure):
                 elinewidth=0.7,
                 alpha=0.1,
                 color="grey",
-                #solid_capstyle="projecting",
-                capsize=4,
+                # solid_capstyle="projecting",
+                #capsize=4,
                 label="95% credible interval of the prior",
                 zorder=1,
             )
@@ -2158,9 +2175,9 @@ class PriorEvaluation(Figure):
                 num_tips_all,
                 real_ages_all,
                 s=2,
-                color="blue",
-                alpha=0.5,
-                label="True Time",
+                color="royalblue",
+                alpha=0.1,
+                label="True time",
                 zorder=2,
             )
             axins.scatter(
@@ -2169,10 +2186,19 @@ class PriorEvaluation(Figure):
                 s=2,
                 color="red",
                 label="Expected time",
-                alpha=0.5,
+                alpha=0.1,
                 zorder=3,
             )
-            x1, x2, y1, y2 = 970, 1030, 5e3, 3e5
+            axins.plot(
+                smoothed_mean_df["bin_mean"].astype(int).values,
+                smoothed_mean_df[0].values,
+                alpha=0.8,
+                color="blue",
+                label="Moving average of true time",
+                zorder=4
+            )
+
+            x1, x2, y1, y2 = 970, 1050, 5e3, 3e5
             axins.set_xlim(x1, x2)
             axins.set_ylim(y1, y2)
             axins.set_xscale("log")
@@ -2219,7 +2245,7 @@ class PriorEvaluation(Figure):
 
 class TsdateAccuracy(Figure):
     """
-    Supplementary Figure 4: Evaluating tsdate's accuracy at various mutation rates
+    Figure S5: Evaluating tsdate's accuracy at various mutation rates
     """
 
     name = "tsdate_accuracy"
@@ -2310,7 +2336,7 @@ class TsdateAccuracy(Figure):
 
 class NeutralSims(Figure):
     """
-    Supplementary Figure 3: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
+    Figure S6: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
     on a neutral coalescent simulation.
     """
 
@@ -2395,7 +2421,7 @@ class NeutralSims(Figure):
 
 class TsdateChr20Accuracy(Figure):
     """
-    Supplementary Figure 6: Evaluating tsdate's accuracy on Simulated Chromosome 20
+    Figure S7: Evaluating tsdate's accuracy on Simulated Chromosome 20
     """
 
     name = "tsdate_accuracy_chr20"
@@ -2518,7 +2544,7 @@ class TsdateChr20Accuracy(Figure):
 
 class Chr20Sims(Figure):
     """
-    Extended Data Figure 4: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
+    Figure S8: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
     Chromosome 20 snippets
     """
 
@@ -3159,7 +3185,7 @@ class AncientDescent(Figure):
 
 class AfanasievoDescent(AncientDescent):
     """
-    Find Descendants of the Afanasievo Sons
+    Figure S16. Find Descendants of the Afanasievo Sons
     """
 
     name = "afanasievo_descent"
@@ -3207,7 +3233,7 @@ class VindijaDescent(AncientDescent):
 
 class DenisovanDescent(AncientDescent):
     """
-    Find Descendants of the Denisovan
+    Figure S17. Find Descendants of the Denisovan
     """
 
     name = "denisovan_descent"
@@ -3276,7 +3302,7 @@ class AltaiDescent(AncientDescent):
 
 class VindijaRegionDescent(Figure):
     """
-    Extended Data Fig. 8: Vindija Descent Boxplot
+    Figure S18: Vindija Descent Boxplot
     """
 
     name = "vindija_descent_boxplot"
@@ -3349,8 +3375,8 @@ class DenisovanRegionDescent(Figure):
 
 class SiteLinkageAndQuality(Figure):
     """
-    Plot proportion of sites with low quality or linkage as a function of the number
-    of mutations at those sites.
+    Figure S14. Plot proportion of sites with low quality or linkage as a function of the
+    number of mutations at those sites.
     """
 
     name = "ld_quality_by_mutations"
@@ -3513,7 +3539,7 @@ class SiteLinkageAndQuality(Figure):
 
 class AncestryVideo(Figure):
     """
-    Geography of all ancestors
+    Video S1. Geography of all ancestors
     """
 
     name = "ancestry_video"
@@ -3688,7 +3714,7 @@ class AncestryVideo(Figure):
 
 class Timeline(Figure):
     """
-    Timeline for Ancestry Map
+    Video S1. Timeline for Ancestry Map
     """
 
     name = "timeline"
@@ -3743,6 +3769,103 @@ class Timeline(Figure):
             fig, animate, interval=90, frames=len(time_intervals_log), repeat=True
         )
         self.save(self.name, animation=anim)
+
+
+class DeletedSitesChr20(Figure):
+    """
+    Figure S15. Evaluating the effect of deleting sites with > 100 mutations in the inferred tree sequence
+    of Chromosome 20.
+    """
+
+    name = "redate_delete_sites"
+    data_path = "data"
+    filename = ["hgdp_tgp_sgdp_chr20_q.deleted_site_times"]
+
+    def plot(self):
+        df = self.data[0] 
+        fig, ax = plt.subplots(
+            figsize=(6, 6), sharex=True, sharey=True
+        )
+        x = df["original_age"]
+        y = df["deleted_age"]
+        ax.set_xlim(1, 2e5)
+        ax.set_ylim(1, 2e5)
+        plotted_axis = self.mutation_accuracy(
+            ax, x, y, None, cmap=None
+        )
+        fig.subplots_adjust(right=0.9)
+        colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
+        cb = fig.colorbar(plotted_axis, cax=colorbar_ax)
+        cb.set_label("Number of Mutations")
+        ax.set_ylabel("Site age estimates (generations), deleting sites with > 100 mutations")
+        ax.set_xlabel("Site age estimates (generations) using all sites")
+        self.save(self.name)
+
+
+class GeographicEvaluation(Figure):
+    """
+    Figure S12. Evaluation of geographic estimator.
+    """
+
+    name = "geographic_evaluation"
+    data_path = "simulated-data"
+    filename = ["geographic_evaluation_true_pops", "geographic_evaluation_sim_locations",
+                "geographic_evaluation_inferred_locations", "geographic_evaluation_pre_out_of_africa"]
+    header = ["infer", "infer", "infer", "infer"]
+
+    def jitter(self, array):
+        max_min = np.max(array) - np.min(array)
+        return array + np.random.randn(len(array))
+
+    def plot_map(self, ax):
+        centre_point = [34, 42]
+        southwest = [13, -5]
+        southeast = [-6, 76]
+        northeast = [64, 58]
+
+        ax.coastlines(linewidth=0.1)
+        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
+        ax.set_extent([-5, 87, -2, 52], crs=ccrs.Geodetic())
+        ax.plot([southwest[1],centre_point[1]],[southwest[0],centre_point[0]],
+                 color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
+                 transform=ccrs.PlateCarree())
+        ax.plot([southeast[1],centre_point[1]],[southeast[0],centre_point[0]],
+                     color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
+                     transform=ccrs.PlateCarree())
+        ax.plot([centre_point[1],northeast[1]],[centre_point[0],northeast[0]],
+                     color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
+                     transform=ccrs.PlateCarree())
+        return ax
+
+
+    def plot(self):
+        true_pops = self.data[0][["Populations"]].to_numpy().transpose()[0]
+        sim_locs = self.data[1][["latitude", "longitude"]].to_numpy()
+        inferred_locs = self.data[2][["latitude", "longitude"]].to_numpy()
+        pre_out_of_africa = self.data[3][["Bool_ooa"]].to_numpy().transpose()[0]
+        colours = [sns.color_palette("Wistia", 3)[0],
+                   sns.color_palette("Blues", 1)[0],sns.color_palette("Greens", 2)[1],"salmon" ]
+        fig = plt.figure(figsize=(20, 15))
+        ax1 = plt.subplot(2, 2, 1, projection=ccrs.PlateCarree(central_longitude=41))
+
+        for index, color, population in zip(range(1, 5), colours, ["YRI", "CEU", "CHB", "\"Out of Africa\""]):
+            ax = plt.subplot(2, 2, index, projection=ccrs.PlateCarree(central_longitude=41))
+            ax = self.plot_map(ax)
+            ax.scatter(self.jitter(sim_locs[:, 1][true_pops==(index-1)]),
+                    self.jitter(sim_locs[:, 0][true_pops==index-1]), s=0.7, alpha=0.8, color=color,
+                       transform=ccrs.PlateCarree(), label=population)
+            ax.set_title("{}".format(np.sum(true_pops==index-1)) + " " + population + " ancestors", fontsize=20)
+        self.save(self.name + "_simulated")
+
+        fig = plt.figure(figsize=(20, 15))
+        ax = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=41))
+        ax = self.plot_map(ax)
+        ax.scatter(self.jitter(inferred_locs[:, 1][pre_out_of_africa]),
+                    self.jitter(inferred_locs[:, 0][pre_out_of_africa]), alpha=0.8, s=0.7,
+                  transform=ccrs.PlateCarree(), color=colours[0])
+        self.save(self.name + "_inferred")
+
+       
 
 
 ######################################

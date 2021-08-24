@@ -533,19 +533,40 @@ def delete_site_mutations(tables, site_ids, record_provenance=True):
 
 
 def combined_ts_constrained_samples(args):
+    modern_samples = tsinfer.load(args.modern)
     high_cov_samples = tsinfer.load(args.high_cov)
     all_ancient_samples = tsinfer.load(args.all_samples)
     dated_hgdp_1kg_sgdp_ts = tskit.load(args.dated_ts)
     sites_time = tsdate.sites_time_from_ts(dated_hgdp_1kg_sgdp_ts)
+    # Only look at sites where the same alleles are found in ancients and moderns. This means the site must be biallelic in moderns and the derived allele is shared between moderns and ancients
+    alleles_equal = np.full(high_cov_samples.num_sites, False, dtype=bool)
+    for index, (modern_alleles, high_cov_alleles, all_ancient_alleles) in enumerate(
+        zip(
+            modern_samples.sites_alleles[:],
+            high_cov_samples.sites_alleles[:],
+            all_ancient_samples.sites_alleles[:],
+        )
+    ):
+        modern_alleles = [i for i in modern_alleles if i]
+        high_cov_alleles = [i for i in high_cov_alleles if i]
+        all_ancient_alleles = [i for i in all_ancient_alleles if i]
+        if modern_alleles == high_cov_alleles == all_ancient_alleles:
+            alleles_equal[index] = True
+
     # Get the ancient bounds from sampledata file of all ancients
     all_ancient_samples_bound = all_ancient_samples.min_site_times(
         individuals_only=True
     )
+    high_cov_samples_bound = high_cov_samples.min_site_times(individuals_only=True)
     # Assert that the all ancient samples files has same or older ancient bounds than only high cov
-    assert np.all(
-        all_ancient_samples_bound
-        >= high_cov_samples.min_site_times(individuals_only=True)
+    assert np.all(all_ancient_samples_bound >= high_cov_samples_bound)
+    print(
+        "Number of ancient lower bounds (with multiallelic sites): ",
+        np.sum(all_ancient_samples_bound != 0),
     )
+
+    # Set time of non-biallelic sites to 0
+    all_ancient_samples_bound[~alleles_equal] = 0
     # Constrain the estimated ages from tree sequence with ancient bounds
     constrained_sites_time = np.maximum(sites_time, all_ancient_samples_bound)
     # Add constrained times to sampledata file with moderns and high cov ancients
@@ -605,37 +626,151 @@ def combine_chromosome_arms(args):
     long_arm = tskit.load(args.q_arm)
     assert short_arm.num_samples == long_arm.num_samples
     # Remove material before first position and after last position
-    short_arm = short_arm.keep_intervals([[short_arm.tables.sites.position[0], short_arm.tables.sites.position[-1]]], simplify=False)
-    long_arm = long_arm.keep_intervals([[long_arm.tables.sites.position[0], long_arm.tables.sites.position[-1]]], simplify=False)
+    short_arm = short_arm.keep_intervals(
+        [
+            [
+                short_arm.tables.sites.position[0] - 1,
+                short_arm.tables.sites.position[-1] + 1,
+            ]
+        ],
+        simplify=False,
+    )
+    long_arm = long_arm.keep_intervals(
+        [
+            [
+                long_arm.tables.sites.position[0] - 1,
+                long_arm.tables.sites.position[-1] + 1,
+            ]
+        ],
+        simplify=False,
+    )
     short_tables = short_arm.dump_tables()
     long_tables = long_arm.dump_tables()
-    assert np.array_equal(short_tables.individuals.metadata, long_tables.individuals.metadata)
+    assert np.array_equal(
+        short_tables.individuals.metadata, long_tables.individuals.metadata
+    )
     short_tables.sequence_length = long_arm.get_sequence_length()
-    short_tables.nodes.append_columns(long_tables.nodes.flags[~np.isin(np.arange(long_arm.num_nodes), long_arm.samples())], long_tables.nodes.time[~np.isin(np.arange(long_arm.num_nodes), long_arm.samples())])
+    short_metadata = short_tables.nodes.metadata
+    short_metadata_offset = short_tables.nodes.metadata_offset
+    short_metadata = tskit.unpack_bytes(short_metadata, short_metadata_offset)
+
+    long_metadata = long_tables.nodes.metadata
+    long_metadata_offset = long_tables.nodes.metadata_offset
+    long_metadata = tskit.unpack_bytes(long_metadata, long_metadata_offset)
+    long_metadata = long_metadata[long_arm.num_samples :]
+    combined_metadata = np.concatenate([short_metadata, long_metadata])
+    metadata, metadata_offset = tskit.pack_bytes(combined_metadata)
+
+    all_nodes_except_samples = ~np.isin(
+        np.arange(long_arm.num_nodes), long_arm.samples()
+    )
+    short_tables.nodes.append_columns(
+        long_tables.nodes.flags[all_nodes_except_samples],
+        long_tables.nodes.time[all_nodes_except_samples],
+        long_tables.nodes.population[all_nodes_except_samples],
+    )
+    short_tables.nodes.set_columns(
+        flags=short_tables.nodes.flags,
+        time=short_tables.nodes.time,
+        population=short_tables.nodes.population,
+        metadata=metadata,
+        individual=short_tables.nodes.individual,
+        metadata_offset=metadata_offset,
+    )
+
     long_edges_parent = long_tables.edges.parent
     long_edges_child = long_tables.edges.child
     long_arm_sample_map = np.zeros(long_arm.num_nodes).astype(int)
     long_arm_sample_map[long_arm.samples()] = short_arm.samples()
-    long_edges_parent[~np.isin(long_edges_parent, long_arm.samples())] = long_edges_parent[~np.isin(long_edges_parent, long_arm.samples())] + (short_arm.num_nodes)
-    long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]] = long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]] - long_arm.num_samples
-    long_edges_child[~np.isin(long_edges_child, long_arm.samples())] = long_edges_child[~np.isin(long_edges_child, long_arm.samples())] + (short_arm.num_nodes)
-    long_edges_child[long_tables.edges.child > long_arm.samples()[-1]] = long_edges_child[long_tables.edges.child > long_arm.samples()[-1]] - long_arm.num_samples
-    long_edges_child[np.isin(long_tables.edges.child, long_arm.samples())] = long_arm_sample_map[long_tables.edges.child[np.isin(long_tables.edges.child, long_arm.samples())]]
-    short_tables.edges.append_columns(long_tables.edges.left, long_tables.edges.right, long_edges_parent, long_edges_child)
-    short_tables.sites.append_columns(long_tables.sites.position, long_tables.sites.ancestral_state, long_tables.sites.ancestral_state_offset)
+    long_edges_parent[
+        ~np.isin(long_edges_parent, long_arm.samples())
+    ] = long_edges_parent[~np.isin(long_edges_parent, long_arm.samples())] + (
+        short_arm.num_nodes
+    )
+    long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]] = (
+        long_edges_parent[long_arm.tables.edges.parent > long_arm.samples()[-1]]
+        - long_arm.num_samples
+    )
+    long_edges_child[~np.isin(long_edges_child, long_arm.samples())] = long_edges_child[
+        ~np.isin(long_edges_child, long_arm.samples())
+    ] + (short_arm.num_nodes)
+    long_edges_child[long_tables.edges.child > long_arm.samples()[-1]] = (
+        long_edges_child[long_tables.edges.child > long_arm.samples()[-1]]
+        - long_arm.num_samples
+    )
+    long_edges_child[
+        np.isin(long_tables.edges.child, long_arm.samples())
+    ] = long_arm_sample_map[
+        long_tables.edges.child[np.isin(long_tables.edges.child, long_arm.samples())]
+    ]
+    short_tables.edges.append_columns(
+        long_tables.edges.left,
+        long_tables.edges.right,
+        long_edges_parent,
+        long_edges_child,
+    )
+    short_tables.sites.append_columns(
+        long_tables.sites.position,
+        long_tables.sites.ancestral_state,
+        long_tables.sites.ancestral_state_offset,
+    )
     long_mutations_node = long_tables.mutations.node
-    long_mutations_node[~np.isin(long_mutations_node, long_arm.samples())] = long_mutations_node[~np.isin(long_mutations_node, long_arm.samples())] + (short_arm.num_nodes)
-    long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]] = long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]] - long_arm.num_samples
-    long_mutations_node[np.isin(long_tables.mutations.node, long_arm.samples())] = long_arm_sample_map[long_tables.mutations.node[np.isin(long_tables.mutations.node, long_arm.samples())]]
-    short_tables.mutations.append_columns(long_tables.mutations.site + short_arm.num_sites, long_mutations_node, long_tables.mutations.derived_state, long_tables.mutations.derived_state_offset) 
+    long_mutations_node[
+        ~np.isin(long_mutations_node, long_arm.samples())
+    ] = long_mutations_node[~np.isin(long_mutations_node, long_arm.samples())] + (
+        short_arm.num_nodes
+    )
+    long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]] = (
+        long_mutations_node[long_tables.mutations.node > long_arm.samples()[-1]]
+        - long_arm.num_samples
+    )
+    long_mutations_node[
+        np.isin(long_tables.mutations.node, long_arm.samples())
+    ] = long_arm_sample_map[
+        long_tables.mutations.node[
+            np.isin(long_tables.mutations.node, long_arm.samples())
+        ]
+    ]
+    short_tables.mutations.append_columns(
+        long_tables.mutations.site + short_arm.num_sites,
+        long_mutations_node,
+        long_tables.mutations.derived_state,
+        long_tables.mutations.derived_state_offset,
+    )
+
     short_tables.sort()
     combined = short_tables.tree_sequence()
+    assert combined.num_nodes == (
+        short_arm.num_nodes + long_arm.num_nodes - short_arm.num_samples
+    )
     assert combined.num_sites == (short_arm.num_sites + long_arm.num_sites)
     assert combined.num_edges == (short_arm.num_edges + long_arm.num_edges)
     assert combined.num_mutations == (short_arm.num_mutations + long_arm.num_mutations)
-    assert np.array_equal(np.sort(combined.tables.sites.position), np.concatenate([short_arm.tables.sites.position, long_arm.tables.sites.position]))
-    assert np.array_equal(np.sort(combined.tables.nodes.time[combined.tables.mutations.node]), np.sort(np.concatenate([short_arm.tables.nodes.time[short_arm.tables.mutations.node], long_arm.tables.nodes.time[long_arm.tables.mutations.node]])))
-    assert np.array_equal(combined.tables.individuals.metadata, long_tables.individuals.metadata)
+    assert (
+        combined.num_individuals
+        == short_arm.num_individuals
+        == long_arm.num_individuals
+    )
+    assert np.array_equal(
+        np.sort(combined.tables.sites.position),
+        np.concatenate(
+            [short_arm.tables.sites.position, long_arm.tables.sites.position]
+        ),
+    )
+    assert np.array_equal(
+        np.sort(combined.tables.nodes.time[combined.tables.mutations.node]),
+        np.sort(
+            np.concatenate(
+                [
+                    short_arm.tables.nodes.time[short_arm.tables.mutations.node],
+                    long_arm.tables.nodes.time[long_arm.tables.mutations.node],
+                ]
+            )
+        ),
+    )
+    assert np.array_equal(
+        combined.tables.individuals.metadata, long_tables.individuals.metadata
+    )
     combined.dump(args.output)
 
 
@@ -724,10 +859,14 @@ def main():
 
     subparser = subparsers.add_parser("output-indiv-times")
     subparser.add_argument(
-        "input", type=str, help="Add individuals times to sampledata file.",
+        "input",
+        type=str,
+        help="Add individuals times to sampledata file.",
     )
     subparser.add_argument(
-        "output", type=str, help="Add individuals times to sampledata file.",
+        "output",
+        type=str,
+        help="Add individuals times to sampledata file.",
     )
     subparser.set_defaults(func=add_indiv_times)
 
@@ -752,38 +891,39 @@ def main():
     subparser.set_defaults(func=remove_moderns_reich)
 
     subparser = subparsers.add_parser("combined-ts-dated-samples")
+    subparser.add_argument("--modern", type=str, help="HGDP + 1kg + SGDP samples")
     subparser.add_argument(
-        "--high-cov", type=str, help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
+        "--high-cov",
+        type=str,
+        help="HGDP + 1kg + SGDP + High-Coverage Ancients.",
     )
     subparser.add_argument(
-        "--all-samples", type=str, help="HGDP + 1kg + SGDP + All Ancients.",
+        "--all-samples",
+        type=str,
+        help="HGDP + 1kg + SGDP + All Ancients.",
     )
     subparser.add_argument(
-        "--dated-ts", type=str, help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+        "--dated-ts",
+        type=str,
+        help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)
 
     subparser = subparsers.add_parser("split-chromosome")
+    subparser.add_argument("input", type=str, help="Input SampleData")
+    subparser.add_argument("output", type=str, help="Output SampleData")
+    subparser.add_argument("chrom", type=str, help="Chromosome name")
+    subparser.add_argument("arm", type=str, help="Arm name")
     subparser.add_argument(
-        "input", type=str, help="Input SampleData")
-    subparser.add_argument(
-        "output", type=str, help="Output SampleData")
-    subparser.add_argument(
-        "chrom", type=str, help="Chromosome name")
-    subparser.add_argument(
-        "arm", type=str, help="Arm name")
-    subparser.add_argument(
-        "centromeres", type=str, help="CSV file containing centromere coordinates.")
+        "centromeres", type=str, help="CSV file containing centromere coordinates."
+    )
     subparser.set_defaults(func=split_chromosome)
 
     subparser = subparsers.add_parser("combine-chromosome")
-    subparser.add_argument(
-        "p_arm", type=str, help="Input p Arm")
-    subparser.add_argument(
-        "q_arm", type=str, help="Input q Arm")
-    subparser.add_argument(
-        "output", type=str, help="Output SampleData")
+    subparser.add_argument("p_arm", type=str, help="Input p Arm")
+    subparser.add_argument("q_arm", type=str, help="Input q Arm")
+    subparser.add_argument("output", type=str, help="Output SampleData")
     subparser.set_defaults(func=combine_chromosome_arms)
 
     daiquiri.setup(level="INFO")

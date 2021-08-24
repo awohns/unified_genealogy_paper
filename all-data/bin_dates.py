@@ -14,10 +14,8 @@ import tskit
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input_file",
-        help="A tsinfer sample file ending in '.samples")
-    parser.add_argument("output_file",
-        help="A tsinfer sample file ending in '.samples")
+    parser.add_argument("input_file", help="A tsinfer sample file ending in '.samples")
+    parser.add_argument("output_file", help="A tsinfer sample file ending in '.samples")
     args = parser.parse_args()
 
     sd = tsinfer.load(args.input_file).copy(path=args.output_file)
@@ -30,5 +28,6 @@ if __name__ == "__main__":
         "Number of samples:",
         sd.num_samples,
         ". Number of discrete times:",
-        len(np.unique(sd.sites_time[:])))
+        len(np.unique(sd.sites_time[:])),
+    )
     sd.finalise()

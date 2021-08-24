@@ -64,6 +64,7 @@ def infer_with_mismatch(
     ms_mismatch=1,
     precision=15,
     num_threads=1,
+    path_compression=True,
     progress_monitor=False,
 ):
     ancestors = tsinfer.generate_ancestors(
@@ -89,6 +90,7 @@ def infer_with_mismatch(
         mismatch=mismatch,
         precision=precision,
         num_threads=num_threads,
+        path_compression=path_compression,
         progress_monitor=progress_monitor,
     )
     return tsinfer.match_samples(
@@ -98,6 +100,7 @@ def infer_with_mismatch(
         mismatch=mismatch,
         precision=precision,
         num_threads=num_threads,
+        path_compression=path_compression,
         progress_monitor=progress_monitor,
     )
 
@@ -127,20 +130,22 @@ def remove_ancient_only_muts(ts, modern_samples=None):
     ts_nomig = tables.tree_sequence()
     if modern_samples is None:
         modern_samples = np.where(ts.tables.nodes.time[ts.samples()] == 0)[0]
-    modern_ts = ts_nomig.simplify(samples=modern_samples, keep_unary=True)
-
-    del_sites = list(
-        np.where(
-            ~np.isin(ts.tables.sites.position[:], modern_ts.tables.sites.position[:])
-        )[0]
+    modern_ts = ts_nomig.simplify(
+        samples=modern_samples, keep_unary=True, filter_sites=False
     )
+
+    assert modern_ts.num_sites == ts.num_sites
+    del_sites = []
     for tree in modern_ts.trees():
         for site in tree.sites():
-            assert len(site.mutations) == 1  # Only supports infinite sites muts.
-            mut = site.mutations[0]
-            # delete fixed mutations
-            if tree.num_samples(mut.node) == modern_ts.num_samples:
+            assert len(site.mutations) <= 1  # Only supports infinite sites muts.
+            if len(site.mutations) == 0:
                 del_sites.append(site.id)
+            else:
+                mut = site.mutations[0]
+                # delete fixed mutations
+                if tree.num_samples(mut.node) == modern_ts.num_samples:
+                    del_sites.append(site.id)
     tables = ts.dump_tables()
     tables.delete_sites(del_sites)
     deleted_ts = tables.tree_sequence()

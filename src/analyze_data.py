@@ -10,6 +10,7 @@ import json
 import itertools
 import operator
 import pickle
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -53,12 +54,12 @@ def get_ancient_proxy_nodes(ts):
             parent_node = -9
             for tree in tqdm(ts.trees()):
                 cur_parent = tree.parent(node)
-                if parent_node == -9 and cur_parent != -1: # First tree with parent
+                if parent_node == -9 and cur_parent != -1:  # First tree with parent
                     assert cur_parent in ancient_proxy_node
                     parent_node = cur_parent
-                elif cur_parent != -1: # Subsequent tree with parent
+                elif cur_parent != -1:  # Subsequent tree with parent
                     assert parent_node == cur_parent, cur_parent
-                elif parent == -1: # Parent is -1, we've reached a snipped tree
+                elif cur_parent == -1:  # Parent is -1, we've reached a snipped tree
                     parent_node = -9
                 else:
                     raise ValueError("Incorrect relationship between proxy and ancient")
@@ -421,19 +422,36 @@ class AncestralGeography:
         """
 
         # Set lat and long for sample nodes
-        population_names = {
-            pop.id: json.loads(pop.metadata)["name"] for pop in self.ts.populations()
-        }
-        for indiv in self.ts.individuals():
-            if len(indiv.location) == 0:
-                for node in indiv.nodes:
-                    self.locations[node] = (
-                        pop_lats[population_names[self.ts.node(node).population]],
-                        pop_longs[population_names[self.ts.node(node).population]],
-                    )
-            else:
-                for node in indiv.nodes:
-                    self.locations[node] = (indiv.location[0], indiv.location[1])
+        print(self.ts.num_populations, self.ts.num_nodes)
+        print(self.ts.num_individuals)
+        if "name" in json.loads(self.ts.population(0).metadata):
+            population_names = {
+                pop.id: json.loads(pop.metadata)["name"]
+                for pop in self.ts.populations()
+            }
+        elif "id" in json.loads(self.ts.population(0).metadata):
+            population_names = {
+                pop.id: json.loads(pop.metadata)["id"] for pop in self.ts.populations()
+            }
+        else:
+            raise ValueError("Population metadata encoded incorrectly")
+        if self.ts.num_individuals > 0:
+            for indiv in self.ts.individuals():
+                if len(indiv.location) == 0:
+                    for node in indiv.nodes:
+                        self.locations[node] = (
+                            pop_lats[population_names[self.ts.node(node).population]],
+                            pop_longs[population_names[self.ts.node(node).population]],
+                        )
+                else:
+                    for node in indiv.nodes:
+                        self.locations[node] = (indiv.location[0], indiv.location[1])
+        else:
+            for node in self.ts.nodes():
+                self.locations[node.id] = (
+                    pop_lats[population_names[node.population]],
+                    pop_longs[population_names[node.population]],
+                )
         # Iterate through the nodes via groupby on parent node
         for parent_edges in tqdm(
             self.edges_by_parent_asc(),
@@ -465,6 +483,7 @@ def find_ancestral_geographies(args):
             )
         )[0]
     )
+    hgdp_sgdp_ancients.dump("all-data/hgdp_sgdp_high_cov_ancients_chr20.dated.trees")
 
     pop_lats = {}
     pop_longs = {}
@@ -770,12 +789,28 @@ def find_ancient_descendants(args):
             index=[
                 "Altai",
                 "Altai",
+                "Altai",
+                "Altai",
+                "Chagyrskaya",
+                "Chagyrskaya",
                 "Chagyrskaya",
                 "Chagyrskaya",
                 "Denisovan",
                 "Denisovan",
+                "Denisovan",
+                "Denisovan",
                 "Vindija",
                 "Vindija",
+                "Vindija",
+                "Vindija",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
+                "Afanasievo",
                 "Afanasievo",
                 "Afanasievo",
                 "Afanasievo",
@@ -1169,6 +1204,50 @@ def get_tmrcas(args):
     )
 
 
+def redate_delete_sites(args):
+    chr20_ts_fn = os.path.join(
+        data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.dated.trees"
+    )
+    # if not os.path.isfile(chr20_ts_fn):
+    #    subprocess.call(["python", os.path.join(data_prefix, "tsutil.py"), "combine-chromosome",
+    #                     os.path.join(data_prefix, "hgdp_1kg_sgdp_chr20_p.missing_binned.dated.trees"),
+    #                      os.path.join(data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.dated.trees"), chr20_ts_fn])
+    orig_dated = tskit.load(chr20_ts_fn)
+    delete_sites = []
+    for site in orig_dated.sites():
+        mutations = site.mutations
+        if len(mutations) > 100:
+            delete_sites.append(site.id)
+
+    deleted_ts = orig_dated.delete_sites(delete_sites)
+    deleted_dated = tsdate.date(
+        deleted_ts, Ne=10000, mutation_rate=1e-8, progress=True, ignore_oldest_root=True
+    )
+    deleted_dated.dump(
+        os.path.join(
+            data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.delete_100.dated.trees"
+        )
+    )
+    comparable_sites = np.isin(
+        orig_dated.tables.sites.position, deleted_dated.tables.sites.position
+    )
+    deleted_dated_site_times = tsdate.sites_time_from_ts(
+        deleted_dated, unconstrained=True, node_selection="arithmetic"
+    )
+    orig_dated_site_times = tsdate.sites_time_from_ts(
+        orig_dated, unconstrained=True, node_selection="arithmetic"
+    )
+
+    chr20_ages = pd.DataFrame(
+        {
+            "Position": orig_dated.tables.sites.position[comparable_sites],
+            "original_age": orig_dated_site_times[comparable_sites],
+            "deleted_age": deleted_dated_site_times,
+        }
+    )
+    chr20_ages.to_csv("data/hgdp_tgp_sgdp_chr20_q.deleted_site_times.csv")
+
+
 def main():
     name_map = {
         "recurrent_mutations": get_unified_recurrent_mutations,
@@ -1181,6 +1260,7 @@ def main():
         "ancient_descendants": find_ancient_descendants,
         "ancient_descent_haplotypes": find_ancient_descent_haplotypes,
         "tmrcas": get_tmrcas,
+        "redate_delete_sites": redate_delete_sites,
     }
 
     parser = argparse.ArgumentParser(
