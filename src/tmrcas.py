@@ -12,8 +12,9 @@ import os
 from tqdm import tqdm
 
 
-TmrcaData = collections.namedtuple('TMRCA_data', ['means', 'histogram', 'raw_data'])
-HistData = collections.namedtuple('Hist_data', ['bin_edges', 'data', 'rownames'])
+TmrcaData = collections.namedtuple("TMRCA_data", ["means", "histogram", "raw_data"])
+HistData = collections.namedtuple("Hist_data", ["bin_edges", "data", "rownames"])
+
 
 def get_pairwise_tmrca_pops(
     ts_name,
@@ -27,7 +28,7 @@ def get_pairwise_tmrca_pops(
     """
     Get the mean tMRCA and a histogram of tMRCA times for pairs of populations from a
     tree sequence.
-    
+
     :param int max_pop_nodes: The maximum number of sample nodes per pop to use. This
         number of samples (or lower, for small populations) will be taken at random from
         each population as a set of representative samples for which to construct
@@ -49,7 +50,7 @@ def get_pairwise_tmrca_pops(
     :rtype: TmrcaData
     """
     ts = tskit.load(ts_name)
-    deleted_trees = [tree.index for tree in ts.trees() if tree.parent(0) == -1]  
+    deleted_trees = [tree.index for tree in ts.trees() if tree.parent(0) == -1]
     node_ages = np.zeros_like(ts.tables.nodes.time[:])
     metadata = ts.tables.nodes.metadata[:]
     metadata_offset = ts.tables.nodes.metadata_offset[:]
@@ -61,13 +62,14 @@ def get_pairwise_tmrca_pops(
                     node_ages[index] = json.loads(met.decode())["mn"]
                 except json.decoder.JSONDecodeError:
                     raise ValueError(
-                            "Tree Sequence must be dated to use unconstrained=True")
+                        "Tree Sequence must be dated to use unconstrained=True"
+                    )
         logging.info("Using tsdate unconstrained node times")
     except ValueError:
         logging.info("Using standard ts node times")
         node_ages[:] = ts.tables.nodes.time[:]
     unique_times, time_index = np.unique(node_ages, return_inverse=True)
-    with np.errstate(divide='ignore'):
+    with np.errstate(divide="ignore"):
         log_unique_times = np.log(unique_times)
 
     # Make a random selection of up to 10 samples from each population
@@ -78,14 +80,14 @@ def get_pairwise_tmrca_pops(
         pops = [pop.id for pop in ts.populations()]
     else:
         # Convert any named populations to population ids
-        name2id = {json.loads(pop.metadata)["name"]:pop.id for pop in ts.populations()}
+        name2id = {json.loads(pop.metadata)["name"]: pop.id for pop in ts.populations()}
         pops = [int(p) if p.isdigit() else name2id[p] for p in restrict_populations]
     for pop_id in pops:
         metadata = json.loads(ts.population(pop_id).metadata)
         key = metadata["name"]
         # Hack to distinguish SGDP from HGDP (all uppercase) pop names
-        if 'region' in metadata and not metadata['region'].isupper():
-            key += " (SGDP)" 
+        if "region" in metadata and not metadata["region"].isupper():
+            key += " (SGDP)"
         assert key not in nodes_for_pop  # Check for duplicate names
         nodes = np.where(pop_nodes == pop_id)[0]
         if len(nodes) > max_pop_nodes:
@@ -106,19 +108,20 @@ def get_pairwise_tmrca_pops(
         itertools.repeat(deleted_trees),
     )
     data = np.zeros((len(combo_map), len(unique_times)), dtype=np.float)
-    with multiprocessing.Pool(processes=num_processes) as pool: 
+    with multiprocessing.Pool(processes=num_processes) as pool:
         for tmrca_weight, combo in tqdm(
             pool.imap_unordered(get_tmrca_weights, func_params), total=len(combo_map)
         ):
             popA = pop_names[combo[0]]
             popB = pop_names[combo[1]]
-            keep = (tmrca_weight != 0)  # Deal with log_unique_times[0] == -inf
+            keep = tmrca_weight != 0  # Deal with log_unique_times[0] == -inf
             mean_log_age = np.sum(log_unique_times[keep] * tmrca_weight[keep])
-            mean_log_age /= np.sum(tmrca_weight) # Normalise
+            mean_log_age /= np.sum(tmrca_weight)  # Normalise
             tmrca_df.loc[popA, popB] = np.exp(mean_log_age)
             data[combo_map[combo], :] = tmrca_weight
     bins, hist_data = make_histogram_data(
-        log_unique_times, data, hist_nbins, hist_min_gens)
+        log_unique_times, data, hist_nbins, hist_min_gens
+    )
     named_combos = [None] * len(combo_map)
     for combo, i in combo_map.items():
         named_combos[i] = (pop_names[combo[0]], pop_names[combo[1]])
@@ -127,24 +130,26 @@ def get_pairwise_tmrca_pops(
         data = None
     return TmrcaData(means=tmrca_df, histogram=hist, raw_data=(log_unique_times, data))
 
+
 def make_histogram_data(log_unique_times, data, hist_nbins, hist_min_gens):
     """
-    Return an tuple of (bin_edges, array), where the array is of size 
+    Return an tuple of (bin_edges, array), where the array is of size
     number_of_pairs x n_bins.
-    
+
     .. note::
         This can also be called on the (saved) full data matrix, if histograms need
         re-calculating with different bin widths etc.
     """
     av_weight = np.mean(data, axis=0)
-    keep = (av_weight != 0)
-    #Make common breaks for histograms
+    keep = av_weight != 0
+    # Make common breaks for histograms
     _, bins = np.histogram(
         log_unique_times[keep],
         weights=av_weight[keep],
         bins=hist_nbins,
         range=[np.log(hist_min_gens), max(log_unique_times)],
-        density=True)
+        density=True,
+    )
     hist_data = np.zeros((data.shape[0], hist_nbins), dtype=np.float32)
     for i, row in enumerate(data):
         hist_data[i, :], _ = np.histogram(
@@ -154,6 +159,7 @@ def make_histogram_data(log_unique_times, data, hist_nbins, hist_min_gens):
             density=True,
         )
     return bins, hist_data
+
 
 def get_tmrca_weights(params):
     combo, time_index, rand_nodes, ts_name, deleted_trees = params
@@ -167,10 +173,10 @@ def get_tmrca_weights(params):
         node_combos = [(x, y) for x in pop_0_nodes for y in pop_1_nodes]
     elif pop_0 == pop_1:
         node_combos = list(itertools.combinations(pop_0_nodes, 2))
-    # Return the weights 
+    # Return the weights
     tmrca_weight = np.zeros(num_unique_times, dtype=np.float)
 
-    for tree in ts.trees(): 
+    for tree in ts.trees():
         if tree.index not in deleted_trees:
             for index, (node_0, node_1) in enumerate(node_combos):
                 tmrca_weight[time_index[tree.mrca(node_0, node_1)]] += tree.span
@@ -182,7 +188,7 @@ def save_tmrcas(
 ):
     if not ts_file.endswith(".trees"):
         raise valueError("Tree sequence must end with '.trees'")
-    fn =  ts_file[:-len(".trees")]
+    fn = ts_file[: -len(".trees")]
     tMRCAS = get_pairwise_tmrca_pops(
         ts_file,
         max_pop_nodes,
@@ -191,23 +197,28 @@ def save_tmrcas(
         return_raw_data=save_raw_data,
     )
     popstring = "all" if populations is None else "+".join(populations)
-    outfn = os.path.join("data", os.path.basename(fn)) + f".{max_pop_nodes}nodes_{popstring}.tmrcas"
+    outfn = (
+        os.path.join("data", os.path.basename(fn))
+        + f".{max_pop_nodes}nodes_{popstring}.tmrcas"
+    )
     logging.info(f"Writing mean MRCAs to {outfn}.csv")
     tMRCAS.means.to_csv(outfn + ".csv")
     logging.info(f"Writing bins and MRCA histogram distributions to {outfn}.npz")
     hist = tMRCAS.histogram
     np.savez_compressed(
-        outfn + ".npz", bins=hist.bin_edges, histdata=hist.data, combos=hist.rownames)
+        outfn + ".npz", bins=hist.bin_edges, histdata=hist.data, combos=hist.rownames
+    )
     if save_raw_data:
         logging.info(f"Saving raw data to {outfn}_RAW.npz")
         np.savez_compressed(outfn + "_RAW.npz", *tMRCAS.raw_data)
 
+
 def main(args):
-    if args.verbosity==0:
+    if args.verbosity == 0:
         logging.basicConfig(level=logging.WARNING)
-    elif args.verbosity==1:
-        logging.basicConfig(level=logging.INFO, format='%(message)s')
-    elif args.verbosity>=2:
+    elif args.verbosity == 1:
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
+    elif args.verbosity >= 2:
         logging.basicConfig(level=logging.DEBUG)
 
     save_tmrcas(
@@ -218,35 +229,49 @@ def main(args):
         args.save_raw_data,
     )
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description=
-            "Calculate pairwise mean tMRCAs from a tree sequence. "
-            "This can be quite time-consuming if there are many populations")
+        description="Calculate pairwise mean tMRCAs from a tree sequence. "
+        "This can be quite time-consuming if there are many populations"
+    )
     parser.add_argument("tree_sequence")
     parser.add_argument(
-        "--max_pop_nodes", "-m", type=int, default=20, 
-        help='The maximum number of samples nodes to compare per population',
+        "--max_pop_nodes",
+        "-m",
+        type=int,
+        default=20,
+        help="The maximum number of samples nodes to compare per population",
     )
     parser.add_argument(
-        '--populations', '-P', nargs='*', default=None, 
-        help=
-            'Restrict pairwise calculations to particular populations. '
-            ' If None, use all populations in the tree sequence.',
+        "--populations",
+        "-P",
+        nargs="*",
+        default=None,
+        help="Restrict pairwise calculations to particular populations. "
+        " If None, use all populations in the tree sequence.",
     )
     parser.add_argument(
-        '--num_processes', '-p', type=int, default=64, 
-        help='The number of CPUs to use in the calculation',
+        "--num_processes",
+        "-p",
+        type=int,
+        default=64,
+        help="The number of CPUs to use in the calculation",
     )
     parser.add_argument(
-        '--save_raw_data', action='store_true',
-        help='Also save the (potentially huge) raw data file',
+        "--save_raw_data",
+        action="store_true",
+        help="Also save the (potentially huge) raw data file",
     )
     parser.add_argument(
-        '--verbosity', '-v', action="count", default=0, 
-        help='verbosity: output extra non-essential info',
+        "--verbosity",
+        "-v",
+        action="count",
+        default=0,
+        help="verbosity: output extra non-essential info",
     )
     return parser.parse_args()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main(parse_args())

@@ -28,7 +28,22 @@ import tmrcas
 data_prefix = "all-data"
 
 
+def calc_tmrcas(args):
+    """
+    Creates data for Figure 2
+    """
+    ts_fn = os.path.join(
+        data_prefix, "hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
+    )
+    tmrcas.save_tmrcas(
+        ts_fn, max_pop_nodes=20, num_processes=args.processes, save_raw_data=True
+    )
+
+
 def get_ancient_proxy_nodes(ts):
+    """
+    Helper function for finding descent from ancients
+    """
     ancient_proxy_nodes = {}
     ancient_proxy_nodes["Altai"] = np.where(ts.tables.nodes.time == 4400.04)[0]
     ancient_proxy_nodes["Chagyrskaya"] = np.where(ts.tables.nodes.time == 3200.04)[0]
@@ -73,9 +88,13 @@ def get_ancient_proxy_nodes(ts):
 
 
 def get_relate_tgp_age_df():
-    if os.path.exists("data/1kg_chr20_relate_mutation_ages_all_pops.csv"):
+    """
+    Get a dataframe of age estimates of TGP Chromosome 20 sites from
+    Relate
+    """
+    if os.path.exists("data/tgp_chr20_relate_mutation_ages_all_pops.csv"):
         relate_ages = pd.read_csv(
-            "data/1kg_chr20_relate_mutation_ages_all_pops.csv", index_col=0
+            "data/tgp_chr20_relate_mutation_ages_all_pops.csv", index_col=0
         )
     else:
         relate_ages = None
@@ -110,13 +129,16 @@ def get_relate_tgp_age_df():
         relate_ages["relate_daf_sum"] = relate_ages[daf_cols].sum(axis=1)
         relate_ages["relate_ancestral_allele"] = relate_ages["ancestral/derived"].str[0]
         relate_ages["relate_derived_allele"] = relate_ages["ancestral/derived"].str[2]
-        relate_ages.to_csv("data/1kg_chr20_relate_mutation_ages_all_pops.csv")
+        relate_ages.to_csv("data/tgp_chr20_relate_mutation_ages_all_pops.csv")
     return relate_ages
 
 
 def get_geva_tgp_age_df():
-    if os.path.exists("data/1kg_chr20_geva_mutation_ages.csv"):
-        geva_ages = pd.read_csv("data/1kg_chr20_geva_mutation_ages.csv", index_col=0)
+    """
+    Get a dataframe of age estimates for TGP Chromosome 20 sites from GEVA
+    """
+    if os.path.exists("data/tgp_chr20_geva_mutation_ages.csv"):
+        geva_ages = pd.read_csv("data/tgp_chr20_geva_mutation_ages.csv", index_col=0)
     else:
         geva = pd.read_csv(
             "data/geva_ages.csv.gz",
@@ -129,17 +151,17 @@ def get_geva_tgp_age_df():
         geva_ages = geva_tgp_consistent[
             ["Position", "AgeMean_Jnt", "AgeCI95Upper_Jnt", "AlleleRef", "AlleleAlt"]
         ]
-        geva_ages.to_csv("data/1kg_chr20_geva_mutation_ages.csv")
+        geva_ages.to_csv("data/tgp_chr20_geva_mutation_ages.csv")
     return geva_ages
 
 
 def get_tsdate_tgp_age_df():
-    if os.path.exists("data/1kg_chr20_tsdate_mutation_ages.csv"):
+    if os.path.exists("data/tgp_chr20_tsdate_mutation_ages.csv"):
         tsdate_ages = pd.read_csv(
-            "data/1kg_chr20_tsdate_mutation_ages.csv", index_col=0
+            "data/tgp_chr20_tsdate_mutation_ages.csv", index_col=0
         )
     else:
-        tgp_chr20 = tskit.load("all-data/1kg_chr20.dated.trees")
+        tgp_chr20 = tskit.load("all-data/tgp_chr20.dated.trees")
         posterior_mut_ages, posterior_upper_bound, oldest_mut_nodes = get_mut_ages(
             tgp_chr20, unconstrained=False, geometric=False
         )
@@ -165,13 +187,13 @@ def get_tsdate_tgp_age_df():
                 )[oldest_mut_nodes[keep_sites]],
             }
         )
-        tsdate_ages.to_csv("data/1kg_chr20_tsdate_mutation_ages.csv")
+        tsdate_ages.to_csv("data/tgp_chr20_tsdate_mutation_ages.csv")
     return tsdate_ages
 
 
 def tgp_date_estimates(args):
     """
-    Produce comparable set of mutations from tgp
+    Get a dataframe of age estimates for TGP Chromosome 20 sites from tsdate
     """
     tsdate_ages = get_tsdate_tgp_age_df()
     geva = get_geva_tgp_age_df()
@@ -209,7 +231,10 @@ def get_site_frequencies(ts):
 
 
 def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=True):
-    # Get age of oldest mutations associated with site, ignoring muts below oldest root
+    """
+    Get age of oldest mutations associated with site, ignoring muts below
+    the oldest root
+    """
     mut_ages = np.zeros(ts.num_sites)
     mut_upper_bounds = np.zeros(ts.num_sites)
     node_ages = ts.tables.nodes.time
@@ -244,6 +269,9 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
 
 
 def calc_ancient_constraints_tgp(args):
+    """
+    Calculate ancient constraints for TGP Chromosome 20 variant sites
+    """
     if os.path.exists("all-data/all_ancients_chr" + args.chrom + ".samples"):
         ancient_samples = tsinfer.load(
             "all-data/all_ancients_chr" + args.chrom + ".samples"
@@ -295,7 +323,7 @@ def calc_ancient_constraints_tgp(args):
 
 def get_unified_recurrent_mutations(ts):
     """
-    Get number of mutations per site.
+    Get number of mutations per site (reported in the text).
     """
     mutations_sites = ts.tables.mutations.site
     muts_per_site = np.unique(mutations_sites, return_counts=True)[1]
@@ -346,7 +374,7 @@ def calc_unified_recurrent_mutations(args):
     Get recurrent mutations from the unified tree sequence
     """
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
 
     (
@@ -369,10 +397,11 @@ def calc_unified_recurrent_mutations(args):
         "data/unified_chr" + args.chrom + ".recurrent_counts_nosamples_two_muts.csv"
     )
 
+
 def calc_simulated_recurrent_mutations(args):
     """
-    Look at the simulated OOA data as well as some of the real TGP/HGDP data
-    used to test mismatch, and get distributions of numbers of mutations at a site
+    For Figure S3: Look at the simulated OOA data as well as some of the real TGP/HGDP
+    data used to test mismatch, and get distributions of numbers of mutations at a site
     """
     sim = f"OutOfAfrica_3G09_chr{args.chrom}_n1500_seed1"
     orig_sample_data = tsinfer.load(f"data/{sim}.samples")
@@ -389,12 +418,11 @@ def calc_simulated_recurrent_mutations(args):
 
     assert orig_sample_data.num_sites == err_sample_data.num_sites
 
-    
-    data['true_trees'] = {
-        'nmuts': np.zeros(ts.num_sites, dtype=int),
-        'rm_nmuts': np.zeros((ts.num_sites, ntips_below_err_muts), dtype=int),
+    data["true_trees"] = {
+        "nmuts": np.zeros(ts.num_sites, dtype=int),
+        "rm_nmuts": np.zeros((ts.num_sites, ntips_below_err_muts), dtype=int),
     }
-    
+
     tree_iter = ts.trees()
     tree = next(tree_iter)
     for v_err, v in zip(err_sample_data.variants(), ts.variants()):
@@ -406,30 +434,30 @@ def calc_simulated_recurrent_mutations(args):
             ancestral_state=v_err.site.ancestral_state,
         )
         num_mutations = len(muts)
-        data['true_trees']['nmuts'][v_err.site.id] = num_mutations
+        data["true_trees"]["nmuts"][v_err.site.id] = num_mutations
         for n in range(ntips_below_err_muts):
             if num_mutations < 2:
-                data['true_trees']['rm_nmuts'][v_err.site.id, n] = num_mutations
+                data["true_trees"]["rm_nmuts"][v_err.site.id, n] = num_mutations
             else:
                 mutation_parents = set([tskit.NULL])
                 to_delete = []
                 for m in muts:
-                    if tree.num_samples(m.node) > n+1:
+                    if tree.num_samples(m.node) > n + 1:
                         mutation_parents.add(m.parent)
-                        data['true_trees']['rm_nmuts'][v_err.site.id, n] += 1
+                        data["true_trees"]["rm_nmuts"][v_err.site.id, n] += 1
                     else:
                         to_delete.append(m)
                 # Here we could loop over to_delete and collect information about
                 # whether deleting this mutation corrects an error in v.genotypes
                 # e.g. for mut in [m for m in to_delete if m.parent in mutation_parents]:
 
-    data['inf_trees'] = {
-        'nmuts': np.zeros(inferred_ts.num_sites, dtype=int),
-        'rm_nmuts': np.zeros((inferred_ts.num_sites, ntips_below_err_muts), dtype=int),
-    }    
-    
+    data["inf_trees"] = {
+        "nmuts": np.zeros(inferred_ts.num_sites, dtype=int),
+        "rm_nmuts": np.zeros((inferred_ts.num_sites, ntips_below_err_muts), dtype=int),
+    }
+
     assert inferred_ts.num_sites == ts.num_sites
-    
+
     vars_iter = ts.variants()
     err_vars_iter = inferred_ts.variants()
     correctly_changed = np.zeros(ntips_below_err_muts)
@@ -437,24 +465,24 @@ def calc_simulated_recurrent_mutations(args):
     unexpected = np.zeros(ntips_below_err_muts)
     derived_states = [m.derived_state for m in inferred_ts.mutations()]
     samples = inferred_ts.samples()
-    
+
     for tree in inferred_ts.trees():
         for site in tree.sites():
             v = next(vars_iter)
             v_err = next(err_vars_iter)
             muts = site.mutations
             num_mutations = len(muts)
-            data['inf_trees']['nmuts'][site.id] = num_mutations
+            data["inf_trees"]["nmuts"][site.id] = num_mutations
             for n in range(ntips_below_err_muts):
                 if num_mutations < 2:
-                    data['inf_trees']['rm_nmuts'][site.id, n] = num_mutations
+                    data["inf_trees"]["rm_nmuts"][site.id, n] = num_mutations
                 else:
                     mutation_parents = set([tskit.NULL])
                     to_delete = []
                     for m in muts:
-                        if tree.num_samples(m.node) > n+1:
+                        if tree.num_samples(m.node) > n + 1:
                             mutation_parents.add(m.parent)
-                            data['inf_trees']['rm_nmuts'][site.id, n] += 1
+                            data["inf_trees"]["rm_nmuts"][site.id, n] += 1
                         else:
                             to_delete.append(m)
                     for mut in [m for m in to_delete if m.parent in mutation_parents]:
@@ -463,7 +491,9 @@ def calc_simulated_recurrent_mutations(args):
                         else:
                             state = derived_states[mut.parent]
                         changed = np.isin(samples, [s for s in tree.samples(mut.node)])
-                        for g, ge in zip(v.genotypes[changed], v_err.genotypes[changed]):
+                        for g, ge in zip(
+                            v.genotypes[changed], v_err.genotypes[changed]
+                        ):
                             if v.alleles[g] == state and v_err.alleles[ge] != state:
                                 correctly_changed[n] += 1
                             elif (
@@ -487,58 +517,59 @@ def calc_simulated_recurrent_mutations(args):
         print(
             percent_correct,
             "% of mutations above",
-            i+1,
-            "tip(s) in inferred simulation correctly identified as erroneous"
+            i + 1,
+            "tip(s) in inferred simulation correctly identified as erroneous",
         )
-                        
 
-    data['hgdp'] = {
-        'nmuts': np.zeros(hgdp_ts.num_sites, dtype=int),
-        'rm_nmuts': np.zeros((hgdp_ts.num_sites, ntips_below_err_muts), dtype=int),
+    data["hgdp"] = {
+        "nmuts": np.zeros(hgdp_ts.num_sites, dtype=int),
+        "rm_nmuts": np.zeros((hgdp_ts.num_sites, ntips_below_err_muts), dtype=int),
     }
-    
+
     for tree in hgdp_ts.trees():
         for site in tree.sites():
             muts = site.mutations
             num_mutations = len(muts)
-            data['hgdp']['nmuts'][site.id] = num_mutations
+            data["hgdp"]["nmuts"][site.id] = num_mutations
             for n in range(ntips_below_err_muts):
                 if num_mutations < 2:
-                    data['hgdp']['rm_nmuts'][site.id, n] = num_mutations
+                    data["hgdp"]["rm_nmuts"][site.id, n] = num_mutations
                 else:
-                    data['hgdp']['rm_nmuts'][site.id, n] = len(
-                        [m for m in muts if tree.num_samples(m.node) > n+1])
-        
-    data['tgp'] = {
-        'nmuts': np.zeros(tgp_ts.num_sites, dtype=int),
-        'rm_nmuts': np.zeros((tgp_ts.num_sites, ntips_below_err_muts), dtype=int),
+                    data["hgdp"]["rm_nmuts"][site.id, n] = len(
+                        [m for m in muts if tree.num_samples(m.node) > n + 1]
+                    )
+
+    data["tgp"] = {
+        "nmuts": np.zeros(tgp_ts.num_sites, dtype=int),
+        "rm_nmuts": np.zeros((tgp_ts.num_sites, ntips_below_err_muts), dtype=int),
     }
-    
+
     for tree in tgp_ts.trees():
         for site in tree.sites():
             muts = site.mutations
             num_mutations = len(muts)
-            data['tgp']['nmuts'][site.id] = num_mutations
+            data["tgp"]["nmuts"][site.id] = num_mutations
             for n in range(ntips_below_err_muts):
                 if num_mutations < 2:
-                    data['tgp']['rm_nmuts'][site.id, n] = num_mutations
+                    data["tgp"]["rm_nmuts"][site.id, n] = num_mutations
                 else:
-                    data['tgp']['rm_nmuts'][site.id, n] = len(
-                        [m for m in muts if tree.num_samples(m.node) > n+1])
+                    data["tgp"]["rm_nmuts"][site.id, n] = len(
+                        [m for m in muts if tree.num_samples(m.node) > n + 1]
+                    )
 
-    num_rows = max([v['nmuts'].max() for v in data.values()]) + 1
+    num_rows = max([v["nmuts"].max() for v in data.values()]) + 1
 
     tabulated_data = np.zeros((num_rows, 4 * (1 + ntips_below_err_muts)))
     header = []
 
     column = 0
     for k, v in data.items():
-        for i, site_muts in enumerate(itertools.chain([v['nmuts']], v['rm_nmuts'].T)):
-            header += [k + ("_all" if i==0 else f"_{i}_tips_err")]
-            bincount = np.bincount(site_muts)/len(site_muts)
+        for i, site_muts in enumerate(itertools.chain([v["nmuts"]], v["rm_nmuts"].T)):
+            header += [k + ("_all" if i == 0 else f"_{i}_tips_err")]
+            bincount = np.bincount(site_muts) / len(site_muts)
             tabulated_data[np.arange(len(bincount)), column] = bincount
             column += 1
-     
+
     np.savetxt(
         f"data/muts_per_site_chr{args.chrom}.csv",
         tabulated_data,
@@ -548,7 +579,12 @@ def calc_simulated_recurrent_mutations(args):
         comments="",
     )
 
+
 class AncestralGeography:
+    """
+    Class of methods used to generate data for Figures 4, S12 and S13 and Video S1
+    """
+
     def __init__(self, ts):
         self.ts = ts
         self.fixed_nodes = set(ts.samples())
@@ -600,8 +636,6 @@ class AncestralGeography:
         """
 
         # Set lat and long for sample nodes
-        print(self.ts.num_populations, self.ts.num_nodes)
-        print(self.ts.num_individuals)
         if "name" in json.loads(self.ts.population(0).metadata):
             population_names = {
                 pop.id: json.loads(pop.metadata)["name"]
@@ -644,11 +678,12 @@ class AncestralGeography:
 
 def calc_ancestral_geographies(args):
     """
-    Calculate ancestral geographies for use in Figure 4 and Supplementary Video
+    Calculate ancestral geographies for use in Figures 4, S12, S13 and
+    Supplementary Video
     """
 
     tgp_hgdp_sgdp_ancients = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
     # Remove 1000 Genomes populations
     hgdp_sgdp_ancients = tgp_hgdp_sgdp_ancients.simplify(
@@ -699,7 +734,7 @@ def average_population_ancestors_geography(args):
             "Must run 'hgdp_sgdp_ancients_ancestral_geography' first to infer ancestral geography"
         )
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
     ts = ts.simplify(
         np.where(~np.isin(ts.tables.nodes.population[ts.samples()], np.arange(54, 80)))[
@@ -857,7 +892,7 @@ def calc_unified_reference_sets(args):
     the unified genealogy
     """
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
     pop_names = []
     reference_sets = list()
@@ -905,9 +940,12 @@ def calc_unified_reference_sets(args):
 def calc_ancient_descendants(args):
     """
     Calculate genomic descent statistic for proxy nodes in the unified genealogy
+    Running this function without the `--chrom` option requires the unified tree
+    sequence of chromosome 20, which can be created in the all-data/ directory with:
+    `make hgdp_tgp_sgdp_high_cov_ancients_chr20.dated.trees`
     """
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr"
         + args.chrom
         + "_dated.binned.nosimplify.trees"
     )
@@ -962,42 +1000,27 @@ def calc_ancient_descendants(args):
         normalised_descendants = (
             descendants / np.array(reference_set_lens)[np.newaxis, :]
         )
+        ancient_names = [
+            "Altai",
+            "Altai",
+            "Chagyrskaya",
+            "Chagyrskaya",
+            "Denisovan",
+            "Denisovan",
+            "Vindija",
+            "Vindija",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+            "Afanasievo",
+        ]
         descendants = pd.DataFrame(
             normalised_descendants[nodes],
-            index=[
-                "Altai",
-                "Altai",
-                "Altai",
-                "Altai",
-                "Chagyrskaya",
-                "Chagyrskaya",
-                "Chagyrskaya",
-                "Chagyrskaya",
-                "Denisovan",
-                "Denisovan",
-                "Denisovan",
-                "Denisovan",
-                "Vindija",
-                "Vindija",
-                "Vindija",
-                "Vindija",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-                "Afanasievo",
-            ],
+            index=ancient_names,
             columns=names,
         )
         descendants.to_csv(
@@ -1081,7 +1104,7 @@ def calc_ancient_descent_haplotypes(args):
         )
 
     ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr"
+        "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr"
         + args.chrom
         + "_dated.binned.nosimplify.trees"
     )
@@ -1132,264 +1155,13 @@ def calc_ancient_descent_haplotypes(args):
     save_descent_files("altai", altai_proxy, 100, "Altai", ref_set_map, pop_names)
 
 
-def calc_archaic_relationships(args):
-    """
-    Determine relationships between archaic individuals and younger samples
-    NOTE: these relationships are different than genomic descent (normalised
-    mean_descendants). Genomic descent shows how much of a reference set
-    descends from an ancestor. These relationships indicate the proportion of ancestors
-    genome inherited by younger samples.
-    """
-    ts = tskit.load(
-        "all-data/hgdp_1kg_sgdp_high_cov_ancients_dated_chr"
-        + args.chrom
-        + ".binned.nosimplify.trees"
-    )
-
-    tables = ts.tables
-    inds = tskit.unpack_bytes(
-        tables.individuals.metadata, tables.individuals.metadata_offset
-    )
-    individual_map = {}
-    for index, ind in enumerate(inds):
-        ind = json.loads(ind)
-        if "name" in ind:
-            individual_map[ind["name"]] = index
-    altai = ts.individual(individual_map["AltaiNeandertal"]).nodes
-    chagyrskaya = ts.individual(individual_map["Chagyrskaya-Phalanx"]).nodes
-    denisovan = ts.individual(individual_map["Denisova"]).nodes
-    vindija = ts.individual(individual_map["Vindija33.19"]).nodes
-    (
-        altai_proxy,
-        chagyrskaya_proxy,
-        denisovan_proxy,
-        vindija_proxy,
-        afanasievo_proxy,
-    ) = get_ancient_proxy_nodes(ts)
-    nonarchaic = ts.samples()[:-8]
-
-    # Descent from Vindija: straightforward descent in nonarchaic samples
-    # v=vindija, d=denisovan, c=chagyrskaya, a=altai, m=modern (nonarchaic)
-    v_descent = dict.fromkeys(["total_v_descent", "v_m"], 0)
-
-    for tree in tqdm(ts.trees(), desc="Vindija Descent"):
-        for node in vindija_proxy:
-            leaves = list(tree.leaves(node))
-            if len(leaves) > 1:
-                v_descent["total_v_descent"] += tree.span
-                if len(np.intersect1d(leaves, nonarchaic)) > 0:
-                    v_descent["v_m"] += tree.span
-                else:
-                    print(
-                        ts.tables.nodes.population[leaves], leaves, vindija, denisovan
-                    )
-                    raise ValueError("Leaves must be younger than Vindija")
-            elif len(leaves) == 1:
-                assert leaves[0] in vindija_proxy or leaves[0] in vindija
-
-    # Chagyrskaya
-    arrows = ["c_v", "c_d", "c_m", "c_d_v", "c_d_m", "c_v_m"]
-    c_descent = dict.fromkeys(["total_c_descent"] + arrows, 0)
-
-    # Iterate over each tree in the tree sequence
-    for tree in tqdm(ts.trees(), desc="Chagyrskaya Descent"):
-        # Check both archaic chromosome copies
-        for node in chagyrskaya_proxy:
-            leaves = list(tree.leaves(node))
-            # Only investigate tree if > 1 leaves (otherwise check child is archaic)
-            if len(leaves) > 1:
-                # Dictionary of booleans to track of relationships seen at this tree
-                flags = dict.fromkeys(arrows, False)
-                # If any descent, add to total
-                c_descent["total_c_descent"] += tree.span
-                for leaf in leaves:
-                    # First check the c->d relationship
-                    if leaf in denisovan:
-                        flags["c_d"] = True
-                    # Next check vindija, which could be c->v or d->v
-                    elif leaf in vindija:
-                        denisovan_descendant = False
-                        parent = tree.parent(leaf)
-                        while parent not in chagyrskaya_proxy:
-                            if parent in denisovan_proxy:
-                                denisovan_descendant = True
-                            parent = tree.parent(parent)
-                        # If denisovan is noted along path, then path is d->v
-                        if denisovan_descendant is True:
-                            flags["c_d_v"] = True
-                        # If no denisovan seen on path, then path is c->v
-                        else:
-                            flags["c_v"] = True
-                    # Enumerate possible paths if leaf is nonarchaic
-                    elif leaf in nonarchaic:
-                        vindija_descendant = False
-                        denisovan_descendant = False
-                        parent = tree.parent(leaf)
-                        while parent not in chagyrskaya_proxy:
-                            if parent in vindija_proxy:
-                                vindija_descendant = True
-                            elif parent in denisovan_proxy:
-                                denisovan_descendant = True
-                            parent = tree.parent(parent)
-                        # If we see vindija, we assign relationship to v->m
-                        if vindija_descendant:
-                            flags["c_v_m"] = True
-                        # If we don't see vindija, but do see denisovan, then it's d->m
-                        elif (
-                            vindija_descendant is False and denisovan_descendant is True
-                        ):
-                            flags["c_d_m"] = True
-                        # If we don't see vindija or denisovan, it's c->m
-                        elif (
-                            vindija_descendant is False
-                            and denisovan_descendant is False
-                        ):
-                            flags["c_m"] = True
-                for path, flag in flags.items():
-                    if flag is True:
-                        c_descent[path] += tree.span
-            else:
-                assert leaves[0] in chagyrskaya or leaves[0] in chagyrskaya_proxy
-
-    # Denisovan
-    arrows = ["d_v", "d_m", "d_v_m"]
-    d_descent = dict.fromkeys(["total_d_descent"] + arrows, 0)
-
-    for tree in tqdm(ts.trees(), desc="Denisovan Descent"):
-        for node in denisovan_proxy:
-            leaves = list(tree.leaves(node))
-            if len(leaves) > 1:
-                flags = dict.fromkeys(arrows, False)
-                d_descent["total_d_descent"] += tree.span
-                for leaf in leaves:
-                    if leaf in vindija:
-                        flags["d_v"] = True
-                    elif leaf in nonarchaic:
-                        vindija_descendant = False
-                        parent = tree.parent(leaf)
-                        while parent not in denisovan_proxy:
-                            if parent in vindija_proxy:
-                                vindija_descendant = True
-                            parent = tree.parent(parent)
-                        if vindija_descendant is True:
-                            flags["d_v_m"] = True
-                        else:
-                            flags["d_m"] = True
-                for path, flag in flags.items():
-                    if flag is True:
-                        d_descent[path] += tree.span
-            else:
-                assert leaves[0] in denisovan or leaves[0] in denisovan_proxy
-
-    # Altai
-    arrows = [
-        "a_d",
-        "a_c",
-        "a_v",
-        "a_m",
-        "a_c_v",
-        "a_c_d",
-        "a_c_m",
-        "a_d_v",
-        "a_d_m",
-        "a_v_m",
-    ]
-
-    a_descent = dict.fromkeys(["total_a_descent"] + arrows, 0)
-    for tree in tqdm(ts.trees(), desc="Altai Descent"):
-        for node in altai_proxy:
-            leaves = list(tree.leaves(node))
-            if len(leaves) > 1:
-                a_descent["total_a_descent"] += tree.span
-                flags = dict.fromkeys(arrows, False)
-                for leaf in leaves:
-                    if leaf in chagyrskaya:
-                        flags["a_c"] = True
-                    elif leaf in denisovan:
-                        flags["a_d"] = True
-                        parent = tree.parent(leaf)
-                        while parent not in altai_proxy:
-                            if parent in chagyrskaya_proxy:
-                                flags["a_c_d"] = True
-                            parent = tree.parent(parent)
-                    elif leaf in vindija:
-                        denisovan_descendant = False
-                        chagyrskaya_descendant = False
-                        parent = tree.parent(leaf)
-                        while parent not in altai_proxy:
-                            if parent in denisovan_proxy:
-                                denisovan_descendant = True
-                            elif parent in chagyrskaya_proxy:
-                                chagyrskaya_descendant = True
-                            parent = tree.parent(parent)
-                        if denisovan_descendant and chagyrskaya_descendant is False:
-                            flags["a_d_v"] = True
-                        elif chagyrskaya_descendant and denisovan_descendant is False:
-                            flags["a_c_v"] = True
-                        elif (
-                            chagyrskaya_descendant is False
-                            and denisovan_descendant is False
-                        ):
-                            flags["a_v"] = True
-                    elif leaf in nonarchaic:
-                        denisovan_descendant = False
-                        chagyrskaya_descendant = False
-                        vindija_descendant = False
-                        parent = tree.parent(leaf)
-                        while parent not in altai_proxy:
-                            if parent in denisovan_proxy:
-                                denisovan_descendant = True
-                            elif parent in chagyrskaya_proxy:
-                                chagyrskaya_descendant = True
-                            elif parent in vindija_proxy:
-                                vindija_descendant = True
-                            parent = tree.parent(parent)
-                        if vindija_descendant:
-                            flags["a_v_m"] = True
-                        elif denisovan_descendant and vindija_descendant is False:
-                            flags["a_d_m"] = True
-                        elif (
-                            chagyrskaya_descendant
-                            and denisovan_descendant is False
-                            and vindija_descendant is False
-                        ):
-                            flags["a_c_m"] = True
-                        elif (
-                            chagyrskaya_descendant is False
-                            and denisovan_descendant is False
-                            and vindija_descendant is False
-                        ):
-                            flags["a_m"] = True
-                for path, flag in flags.items():
-                    if flag is True:
-                        a_descent[path] += tree.span
-            else:
-                assert leaves[0] in altai or leaves[0] in altai_proxy
-
-    with open("data/archaic_descent.txt", "w") as file:
-        file.write(json.dumps(a_descent))
-        file.write(json.dumps(c_descent))
-        file.write(json.dumps(d_descent))
-        file.write(json.dumps(v_descent))
-
-
-def calc_tmrcas(args):
-    ts_fn = os.path.join(
-        data_prefix, "hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
-    )
-    tmrcas.save_tmrcas(
-        ts_fn, max_pop_nodes=20, num_processes=args.processes, save_raw_data=True
-    )
-
-
 def redate_delete_sites(args):
+    """
+    Creates data for Figure S15
+    """
     chr20_ts_fn = os.path.join(
-        data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.dated.trees"
+        data_prefix, "hgdp_tgp_sgdp_chr20_q.missing_binned.dated.trees"
     )
-    # if not os.path.isfile(chr20_ts_fn):
-    #    subprocess.call(["python", os.path.join(data_prefix, "tsutil.py"), "combine-chromosome",
-    #                     os.path.join(data_prefix, "hgdp_1kg_sgdp_chr20_p.missing_binned.dated.trees"),
-    #                      os.path.join(data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.dated.trees"), chr20_ts_fn])
     orig_dated = tskit.load(chr20_ts_fn)
     delete_sites = []
     for site in orig_dated.sites():
@@ -1403,7 +1175,7 @@ def redate_delete_sites(args):
     )
     deleted_dated.dump(
         os.path.join(
-            data_prefix, "hgdp_1kg_sgdp_chr20_q.missing_binned.delete_100.dated.trees"
+            data_prefix, "hgdp_tgp_sgdp_chr20_q.missing_binned.delete_100.dated.trees"
         )
     )
     comparable_sites = np.isin(
@@ -1435,7 +1207,6 @@ def main():
         "hgdp_sgdp_ancients_ancestral_geography": calc_ancestral_geographies,
         "average_pop_ancestors_geography": average_population_ancestors_geography,
         "reference_sets": calc_unified_reference_sets,
-        "archaic_relationships": calc_archaic_relationships,
         "ancient_descendants": calc_ancient_descendants,
         "ancient_descent_haplotypes": calc_ancient_descent_haplotypes,
         "tmrcas": calc_tmrcas,

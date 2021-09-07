@@ -52,7 +52,6 @@ def add_errors(sample_data, ancestral_allele_error=0, random_seed=None, **kwargs
     if sample_data.num_samples % 2 != 0:
         raise ValueError("Must have an even number of samples to inject error")
     error_probs = pd.read_csv("data/EmpiricalErrorPlatinum1000G.csv", index_col=0)
-    n_variants = 0
     aa_error_by_site = np.zeros(sample_data.num_sites, dtype=np.bool)
     if ancestral_allele_error > 0:
         assert ancestral_allele_error <= 1
