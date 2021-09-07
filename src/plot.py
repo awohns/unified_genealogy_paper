@@ -23,6 +23,7 @@ import tskit
 
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import (
     inset_axes,
@@ -494,6 +495,10 @@ class Mismatch(Figure):
 
         self.d["edges1000"] = self.d["edges"] / 1000
         self.d["muts1000"] = self.d["muts"] / 1000
+        try:
+            self.d["min_num_muts1000"] = self.d["min_num_muts"] / 1000
+        except (KeyError, TypeError):
+            pass
         self.d["edges_muts_1000"] = self.d["edges1000"] + self.d["muts1000"]
         assert np.allclose(np.diff(self.d["num_sites"]), 0)
         self.num_sites = np.mean(self.d["num_sites"])
@@ -521,6 +526,7 @@ class Mismatch(Figure):
                 unique_vals["ma_mis_ratio"],
                 unique_vals["ms_mis_ratio"],
                 Z,
+                10,
                 colors="gray",
             )
             ax_top.contourf(cs, cmap=self.cmap)
@@ -562,26 +568,26 @@ class Mismatch(Figure):
                     ax_sub_bottom.fill_between(
                         mm,
                         self.d["muts1000"][mask],
-                        self.d["muts1000"][mask] + self.d["edges1000"][mask],
+                        self.d["edges_muts_1000"][mask],
                         color="tab:brown",
                     )
                     ax_sub_bottom.plot(
-                        self.d[mm_lab][mask],
+                        mm,
                         self.d[metric][mask],
                         c="k",
                         **self.linestyles[mm_lab]
                     )
                     ax_sub_bottom.text(
-                        unique_vals[mm_lab][-2],
+                        np.mean(unique_vals[mm_lab][-2:]),
                         # np.mean(self.d['muts1000'][mask]/1.5),
                         (self.num_sites / 1000) * self.mut_label_rel_pos,
                         "Mutations",
                         ha="right",
                         va="bottom",
-                        bbox=dict(facecolor="w", alpha=0.9, ec="none"),
+                        bbox=dict(boxstyle='square,pad=0.2', facecolor="w", alpha=0.9, ec="none"),
                     )
                     ax_sub_bottom.text(
-                        unique_vals[mm_lab][-2],
+                        np.mean(unique_vals[mm_lab][-2:]),
                         np.mean(
                             (
                                 self.d["muts1000"][ma_mask] * 2
@@ -592,7 +598,7 @@ class Mismatch(Figure):
                         "Edges",
                         ha="right",
                         va="bottom",
-                        bbox=dict(facecolor="w", alpha=0.9, ec="none"),
+                        bbox=dict(boxstyle='square,pad=0.1', facecolor="w", alpha=0.9, ec="none"),
                     )
                     ax_sub_bottom.set_xlabel(title + r" mismatch ratio")
                     ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
@@ -600,7 +606,7 @@ class Mismatch(Figure):
                     ax_sub_bottom.set_xscale("log")
                     ax_sub_bottom.axhline(self.num_sites / 1000, c="grey")
                     ax_sub_bottom.text(
-                        unique_vals[mm_lab][2],
+                        unique_vals[mm_lab][1],
                         (self.num_sites / 1000) * 0.95,
                         "Number of sites",
                         va="center",
@@ -612,6 +618,22 @@ class Mismatch(Figure):
                             ec="none",
                         ),
                     )
+                    if self.is_simulated and self.has_error:
+                        y_pos = 156156 # np.mean(self.d["min_num_muts1000"][mask])
+                        ax_sub_bottom.axhline(y_pos / 1000, c="darkgrey")
+                        ax_sub_bottom.text(
+                            unique_vals[mm_lab][1],
+                            (y_pos / 1000) * 0.95,
+                            "Min number of mutations",
+                            va="center",
+                            color="k",
+                            bbox=dict(
+                                boxstyle="square,pad=0",
+                                facecolor="orange",
+                                alpha=0.9,
+                                ec="none",
+                            ),
+                        )
             else:
                 for i, (mm_lab, mask, title) in enumerate(
                     [
@@ -651,6 +673,7 @@ class Mismatch(Figure):
 
 class MismatchSimulation(Mismatch):
     figsize = (28, 10)
+    is_simulated = True
     metrics = {
         "edges_muts_1000": ["Edge + mutation count (1000's)"],
         "rel_ts_size": ["Filesize", "Filesize (relative to simulated tree sequence)"],
@@ -680,15 +703,15 @@ class MismatchSimulation(Mismatch):
 
         self.d["KCpoly"] = self.d["kc_poly"] / kc_max
         self.d["KCsplit"] = self.d["kc_split"] / kc_max_split
-        # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
+        #Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
         self.d["RFsplit"] = self.d["RFsplit"] / (2 * self.d["n"] - 4)
-
 
 class MismatchSimulationNoError(MismatchSimulation):
     # Create the files (takes a day or so) using the Makefile in ../data/
     name = "mismatch_parameter_chr20_simulated_noerr"
     filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_results_plus_RF"]
     plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
+    has_error = False
 
 
 class MismatchSimulationWithError(MismatchSimulation):
@@ -696,8 +719,8 @@ class MismatchSimulationWithError(MismatchSimulation):
     name = "mismatch_parameter_chr20_simulated_err"
     filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
     plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
-    mut_label_rel_pos = 1.7
-
+    mut_label_rel_pos = 1.35
+    has_error = True
 
 class MismatchRealData(Mismatch):
     figsize = (14, 10)
@@ -706,6 +729,7 @@ class MismatchRealData(Mismatch):
         "ts_size_Mb": ["Filesize", "Filesize (Mb)"],
         "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
     }
+    is_simulated = False
 
     def __init__(self, args):
         super().__init__(args)
@@ -724,6 +748,57 @@ class MismatchRealDataHGDP(MismatchRealData):
     name = "mismatch_parameter_chr20_hgdp"
     filename = ["hgdp_chr20_1000000-1100000_results"]
     plt_title = "Effect of mismatch parameters on inference of HGDP data"
+
+
+class MultipleMutationDistributions(Figure):
+    """
+    Plot the "histogram" of numbers of mutations for each site, for simulated and
+    small TGP/HGDP inferred tree sequences
+    """
+    name = "multiple_mutation_distributions"
+    data_path = "data"
+    filename = ["muts_per_site_chr20"]
+
+    def plot(self):
+        max_tips_err = 1  # The number of lines to plot as dashed
+        
+        df = self.data[0][1:] # Omit sites with 0 mutations
+        
+        plt.figure(figsize=(12, 5))
+        for data_type, lab, col in [
+            ("true_trees", "True trees from infinite-sites simulation with overlaid error", "tab:green"),
+            ("inf_trees", "Inferred trees from same simulation (mismatch ratios of 1)", "tab:blue"),
+            ("tgp", "Inferred TGP trees (mismatch ratios of 1)", "tab:red"),
+            ("hgdp", "Inferred HGDP trees (mismatch ratios of 1)", "tab:orange"),
+        ]:
+            column_name = data_type + "_all"
+            plt.plot(
+                df.index.to_numpy(), df[column_name].to_numpy(), color=col, label=lab)
+            for dotted_line in [f"{n}_tips_err" for n in range(1, max_tips_err+ 1)]:
+                column_name = data_type + "_" + dotted_line
+                plt.plot(
+                    df.index.to_numpy(), df[column_name].to_numpy(), color=col, ls=":")
+        
+        # Plot a line for the legent
+        line = Line2D([0,1],[0,1],linestyle='-', color='r')
+
+        plt.xlabel('Number of "mutations" per site')
+        plt.ylabel("Percent of sites")
+        plt.yscale("log")
+        plt.xscale("log")
+        plt.xlim(1, 800)
+        plt.ylim(0.5e-5, 1)
+        xticks = list(range(1, 6)) + list(range(10, 60, 10)) + list(range(100, 600, 100))
+        plt.xticks(ticks=xticks, labels=xticks, rotation=90)
+        yticks = [1, 0.1, 0.01, 0.001, 0.0001, 0.00001]
+        yticklabs = [f"{y*100:g}%" for y in yticks]
+        plt.yticks(ticks=yticks, labels=yticklabs)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        handles += [Line2D([0,1],[0,1],linestyle=':', c="k")]
+        labels += [" as above, removing mutations above samples at multiple-mutation sites"]
+        plt.legend(handles,labels)
+
+        self.save(self.name)
 
 
 class Chr20AncientIteration(Figure):

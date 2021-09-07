@@ -1,5 +1,5 @@
 """
-Analyses real data in all-data directory. Outputs csvs for
+Analyses real data in all-data and data directories. Outputs csvs for
 plotting in plot.py
 """
 import argparse
@@ -243,7 +243,7 @@ def get_mut_ages(ts, unconstrained=True, ignore_sample_muts=False, geometric=Tru
     return mut_ages, mut_upper_bounds, oldest_mut_ids.astype(int)
 
 
-def get_ancient_constraints_tgp(args):
+def calc_ancient_constraints_tgp(args):
     if os.path.exists("all-data/all_ancients_chr" + args.chrom + ".samples"):
         ancient_samples = tsinfer.load(
             "all-data/all_ancients_chr" + args.chrom + ".samples"
@@ -293,7 +293,7 @@ def get_ancient_constraints_tgp(args):
     tgp_muts_constraints.to_csv("data/tgp_muts_constraints.csv")
 
 
-def get_recurrent_mutations(ts):
+def get_unified_recurrent_mutations(ts):
     """
     Get number of mutations per site.
     """
@@ -341,7 +341,7 @@ def get_recurrent_mutations(ts):
     )
 
 
-def get_unified_recurrent_mutations(args):
+def calc_unified_recurrent_mutations(args):
     """
     Get recurrent mutations from the unified tree sequence
     """
@@ -354,7 +354,7 @@ def get_unified_recurrent_mutations(args):
         recurrent_counts_nosamples,
         sites_by_muts_nodouble,
         recurrent_counts_two_muts,
-    ) = get_recurrent_mutations(ts)
+    ) = get_unified_recurrent_mutations(ts)
     df = pd.DataFrame(recurrent_counts, columns=["recurrent_counts"])
     df.to_csv("data/unified_chr" + args.chrom + ".recurrent_counts.csv")
     df = pd.DataFrame(
@@ -369,6 +369,184 @@ def get_unified_recurrent_mutations(args):
         "data/unified_chr" + args.chrom + ".recurrent_counts_nosamples_two_muts.csv"
     )
 
+def calc_simulated_recurrent_mutations(args):
+    """
+    Look at the simulated OOA data as well as some of the real TGP/HGDP data
+    used to test mismatch, and get distributions of numbers of mutations at a site
+    """
+    sim = f"OutOfAfrica_3G09_chr{args.chrom}_n1500_seed1"
+    orig_sample_data = tsinfer.load(f"data/{sim}.samples")
+    ts = tskit.load(f"data/{sim}.trees")
+    err_sample_data = tsinfer.load(f"data/{sim}_ae0.01.samples")
+    inferred_ts = tskit.load(f"data/{sim}_ae0.01_rma1_rms1_pNone.trees")
+    hgdp_ts = tskit.load("data/hgdp_chr20_1000000-1100000_rma1_rms1_pNone.trees")
+    tgp_ts = tskit.load("data/1kg_chr20_1000000-1100000_rma1_rms1_pNone.trees")
+
+    # Change if you want to see the effect of removing mutations above n tips
+    ntips_below_err_muts = 3
+
+    data = {}
+
+    assert orig_sample_data.num_sites == err_sample_data.num_sites
+
+    
+    data['true_trees'] = {
+        'nmuts': np.zeros(ts.num_sites, dtype=int),
+        'rm_nmuts': np.zeros((ts.num_sites, ntips_below_err_muts), dtype=int),
+    }
+    
+    tree_iter = ts.trees()
+    tree = next(tree_iter)
+    for v_err, v in zip(err_sample_data.variants(), ts.variants()):
+        while v_err.site.position >= tree.interval.right:
+            tree = next(tree_iter)
+        anc_state, muts = tree.map_mutations(
+            genotypes=v_err.genotypes,
+            alleles=v_err.alleles,
+            ancestral_state=v_err.site.ancestral_state,
+        )
+        num_mutations = len(muts)
+        data['true_trees']['nmuts'][v_err.site.id] = num_mutations
+        for n in range(ntips_below_err_muts):
+            if num_mutations < 2:
+                data['true_trees']['rm_nmuts'][v_err.site.id, n] = num_mutations
+            else:
+                mutation_parents = set([tskit.NULL])
+                to_delete = []
+                for m in muts:
+                    if tree.num_samples(m.node) > n+1:
+                        mutation_parents.add(m.parent)
+                        data['true_trees']['rm_nmuts'][v_err.site.id, n] += 1
+                    else:
+                        to_delete.append(m)
+                # Here we could loop over to_delete and collect information about
+                # whether deleting this mutation corrects an error in v.genotypes
+                # e.g. for mut in [m for m in to_delete if m.parent in mutation_parents]:
+
+    data['inf_trees'] = {
+        'nmuts': np.zeros(inferred_ts.num_sites, dtype=int),
+        'rm_nmuts': np.zeros((inferred_ts.num_sites, ntips_below_err_muts), dtype=int),
+    }    
+    
+    assert inferred_ts.num_sites == ts.num_sites
+    
+    vars_iter = ts.variants()
+    err_vars_iter = inferred_ts.variants()
+    correctly_changed = np.zeros(ntips_below_err_muts)
+    incorrectly_changed = np.zeros(ntips_below_err_muts)
+    unexpected = np.zeros(ntips_below_err_muts)
+    derived_states = [m.derived_state for m in inferred_ts.mutations()]
+    samples = inferred_ts.samples()
+    
+    for tree in inferred_ts.trees():
+        for site in tree.sites():
+            v = next(vars_iter)
+            v_err = next(err_vars_iter)
+            muts = site.mutations
+            num_mutations = len(muts)
+            data['inf_trees']['nmuts'][site.id] = num_mutations
+            for n in range(ntips_below_err_muts):
+                if num_mutations < 2:
+                    data['inf_trees']['rm_nmuts'][site.id, n] = num_mutations
+                else:
+                    mutation_parents = set([tskit.NULL])
+                    to_delete = []
+                    for m in muts:
+                        if tree.num_samples(m.node) > n+1:
+                            mutation_parents.add(m.parent)
+                            data['inf_trees']['rm_nmuts'][site.id, n] += 1
+                        else:
+                            to_delete.append(m)
+                    for mut in [m for m in to_delete if m.parent in mutation_parents]:
+                        if mut.parent == tskit.NULL:
+                            state = site.ancestral_state
+                        else:
+                            state = derived_states[mut.parent]
+                        changed = np.isin(samples, [s for s in tree.samples(mut.node)])
+                        for g, ge in zip(v.genotypes[changed], v_err.genotypes[changed]):
+                            if v.alleles[g] == state and v_err.alleles[ge] != state:
+                                correctly_changed[n] += 1
+                            elif (
+                                v.alleles[g] == mut.derived_state
+                                and v.alleles[g] != state
+                            ):
+                                incorrectly_changed[n] += 1
+                            else:
+                                # this can happen with a mutation over the root
+                                if v.alleles[g] == v_err.alleles[ge]:
+                                    unexpected[n] += 1
+                                else:
+                                    raise ValueError(
+                                        f"Unexpected mutation {mut} at site {v.site}: "
+                                        f"state changed to {state}, was originally "
+                                        f"{v.alleles[g]} inferred as {v_err.alleles[ge]}"
+                                    )
+    for i, percent_correct in enumerate(
+        correctly_changed / (correctly_changed + incorrectly_changed) * 100
+    ):
+        print(
+            percent_correct,
+            "% of mutations above",
+            i+1,
+            "tip(s) in inferred simulation correctly identified as erroneous"
+        )
+                        
+
+    data['hgdp'] = {
+        'nmuts': np.zeros(hgdp_ts.num_sites, dtype=int),
+        'rm_nmuts': np.zeros((hgdp_ts.num_sites, ntips_below_err_muts), dtype=int),
+    }
+    
+    for tree in hgdp_ts.trees():
+        for site in tree.sites():
+            muts = site.mutations
+            num_mutations = len(muts)
+            data['hgdp']['nmuts'][site.id] = num_mutations
+            for n in range(ntips_below_err_muts):
+                if num_mutations < 2:
+                    data['hgdp']['rm_nmuts'][site.id, n] = num_mutations
+                else:
+                    data['hgdp']['rm_nmuts'][site.id, n] = len(
+                        [m for m in muts if tree.num_samples(m.node) > n+1])
+        
+    data['tgp'] = {
+        'nmuts': np.zeros(tgp_ts.num_sites, dtype=int),
+        'rm_nmuts': np.zeros((tgp_ts.num_sites, ntips_below_err_muts), dtype=int),
+    }
+    
+    for tree in tgp_ts.trees():
+        for site in tree.sites():
+            muts = site.mutations
+            num_mutations = len(muts)
+            data['tgp']['nmuts'][site.id] = num_mutations
+            for n in range(ntips_below_err_muts):
+                if num_mutations < 2:
+                    data['tgp']['rm_nmuts'][site.id, n] = num_mutations
+                else:
+                    data['tgp']['rm_nmuts'][site.id, n] = len(
+                        [m for m in muts if tree.num_samples(m.node) > n+1])
+
+    num_rows = max([v['nmuts'].max() for v in data.values()]) + 1
+
+    tabulated_data = np.zeros((num_rows, 4 * (1 + ntips_below_err_muts)))
+    header = []
+
+    column = 0
+    for k, v in data.items():
+        for i, site_muts in enumerate(itertools.chain([v['nmuts']], v['rm_nmuts'].T)):
+            header += [k + ("_all" if i==0 else f"_{i}_tips_err")]
+            bincount = np.bincount(site_muts)/len(site_muts)
+            tabulated_data[np.arange(len(bincount)), column] = bincount
+            column += 1
+     
+    np.savetxt(
+        f"data/muts_per_site_chr{args.chrom}.csv",
+        tabulated_data,
+        delimiter=",",
+        newline="\n",
+        header=",".join(header),
+        comments="",
+    )
 
 class AncestralGeography:
     def __init__(self, ts):
@@ -464,7 +642,7 @@ class AncestralGeography:
         return self.locations
 
 
-def find_ancestral_geographies(args):
+def calc_ancestral_geographies(args):
     """
     Calculate ancestral geographies for use in Figure 4 and Supplementary Video
     """
@@ -673,7 +851,7 @@ region_remapping = {
 }
 
 
-def get_unified_reference_sets(args):
+def calc_unified_reference_sets(args):
     """
     Returns the reference sets, regions, population names, and reference set maps for
     the unified genealogy
@@ -724,7 +902,7 @@ def get_unified_reference_sets(args):
     np.savetxt("data/unified_ts_reference_set_map.csv", ref_set_map, delimiter=",")
 
 
-def find_ancient_descendants(args):
+def calc_ancient_descendants(args):
     """
     Calculate genomic descent statistic for proxy nodes in the unified genealogy
     """
@@ -872,7 +1050,7 @@ def find_descent(ts, proxy_nodes, descent_cutoff, exclude_pop, ref_set_map, pop_
     return descendants_arr.astype(int), corrcoef_df, high_descendants, sample_desc_sum
 
 
-def find_ancient_descent_haplotypes(args):
+def calc_ancient_descent_haplotypes(args):
     """
     Finds haplotypes descending from the eight ancient individuals in the unified tree
     sequence
@@ -954,7 +1132,7 @@ def find_ancient_descent_haplotypes(args):
     save_descent_files("altai", altai_proxy, 100, "Altai", ref_set_map, pop_names)
 
 
-def find_archaic_relationships(args):
+def calc_archaic_relationships(args):
     """
     Determine relationships between archaic individuals and younger samples
     NOTE: these relationships are different than genomic descent (normalised
@@ -1195,7 +1373,7 @@ def find_archaic_relationships(args):
         file.write(json.dumps(v_descent))
 
 
-def get_tmrcas(args):
+def calc_tmrcas(args):
     ts_fn = os.path.join(
         data_prefix, "hgdp_1kg_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
@@ -1250,16 +1428,17 @@ def redate_delete_sites(args):
 
 def main():
     name_map = {
-        "recurrent_mutations": get_unified_recurrent_mutations,
+        "unified_recurrent_mutations": calc_unified_recurrent_mutations,
+        "simulated_recurrent_mutations": calc_simulated_recurrent_mutations,
         "tgp_dates": tgp_date_estimates,
-        "ancient_constraints": get_ancient_constraints_tgp,
-        "hgdp_sgdp_ancients_ancestral_geography": find_ancestral_geographies,
+        "ancient_constraints": calc_ancient_constraints_tgp,
+        "hgdp_sgdp_ancients_ancestral_geography": calc_ancestral_geographies,
         "average_pop_ancestors_geography": average_population_ancestors_geography,
-        "get_reference_sets": get_unified_reference_sets,
-        "archaic_relationships": find_archaic_relationships,
-        "ancient_descendants": find_ancient_descendants,
-        "ancient_descent_haplotypes": find_ancient_descent_haplotypes,
-        "tmrcas": get_tmrcas,
+        "reference_sets": calc_unified_reference_sets,
+        "archaic_relationships": calc_archaic_relationships,
+        "ancient_descendants": calc_ancient_descendants,
+        "ancient_descent_haplotypes": calc_ancient_descent_haplotypes,
+        "tmrcas": calc_tmrcas,
         "redate_delete_sites": redate_delete_sites,
     }
 
