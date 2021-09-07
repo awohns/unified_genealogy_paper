@@ -124,7 +124,8 @@ def make_sampledata(args):
             "hash": git_hash.decode().strip(),
             "dir": "human-data",
             "notes:": (
-                "Use the Makefile to download and process the upstream data files"),
+                "Use the Makefile to download and process the upstream data files"
+            ),
         }
     except FileNotFoundError:
         git_hash = "Git unavailable"
@@ -353,7 +354,9 @@ class VcfConverter(Converter):
 
     def process_sites(self, vcf_subset=None, show_progress=False, max_sites=None):
         num_data_sites = int(
-            subprocess.check_output(["../tools/bin/bcftools", "index", "--nrecords", self.data_file])
+            subprocess.check_output(
+                ["../tools/bin/bcftools", "index", "--nrecords", self.data_file]
+            )
         )
 
         progress = tqdm.tqdm(total=num_data_sites, disable=not show_progress)

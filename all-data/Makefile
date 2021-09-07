@@ -28,11 +28,11 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 %.missing_binned.samples: %.samples
 		python3 bin_missing.py $^ $@
 
-%_p.missing_binned.samples: %.missing_binned.samples
-		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+%_p.missing_binned.samples: %.missing_binned.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* p centromeres.csv 
 
-%_q.missing_binned.samples: %.missing_binned.samples
-		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
+%_q.missing_binned.samples: %.missing_binned.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* q centromeres.csv 
 
 1kg_chr20.trees: 1kg_chr20.samples
 		python3 ../src/run_inference.py $^ -t ${NUM_THREADS} -A 1 -S 1
@@ -44,7 +44,7 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 
 %.dated.trees: %.trees
 		python3 -m tsdate preprocess $< $*.preprocessed.trees
-		python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS} --ignore-oldest
+		/usr/bin/time -o $*.tsdate.time.txt -f"%M %S %U" python3 -m tsdate date $*.preprocessed.trees $@ 10000 -m 1e-8 -p -t ${NUM_THREADS} --ignore-oldest
 
 %.dated.samples: %.samples %.dated.trees
 		python3 tsutil.py dated_samples $^
@@ -56,13 +56,14 @@ all: 1kg_chr20.dated.trees hgdp_1kg_sgdp_high_cov_ancients_dated_chr20.trees
 		python3 get_dated_sampledata.py $^
 
 
-#############################################
-# Download all prerequisite files
-# #############################################
+################################################################
+# Download all prerequisite files for building unified genealogy
+# ##############################################################
 
 %_download: hg38.fa hg19ToHg38.over.chain.gz homo_sapiens_ancestor_GRCh38.tar.gz \
 		homo_sapiens_ancestor_GRCh37_e71.tar.bz2 plink.%.GRCh37.map \
-		1kg_samples.ped 1kg_%_genotypes.vcf.gz recomb-hg38/ \
+		1kg_samples.ped recomb-hg38/ centromeres.csv \
+		AfanasievoFamily_%.phased.detailed.filtered.vcf.gz \
 		1kg_GRCh38_%_genotypes.vcf.gz sgdp_samples.txt sgdp_%_genotypes.vcf.gz \
 		hgdp_samples.txt hgdp_genotypes.vcf.gz denisovan.%_mq25_mapab100.vcf.gz \
 		vindija.%_mq25_mapab100.vcf.gz altai.%_mq25_mapab100.vcf.gz \
@@ -161,11 +162,21 @@ plink.%.GRCh37.map:
 		unzip plink.GRCh37.map.zip
 
 #############################################
+# Centromere locations for GRCh38 from UCSC
+# #############################################
+CENTROMERES_CSV=centromeres.csv
+${CENTROMERES_CSV}:
+	curl http://hgdownload.cse.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz > cytoband.txt.gz
+	echo "chrom,chromStart,chromEnd" > ${CENTROMERES_CSV}
+	# Start and end coordinates are on different lines, so we merge them.
+	zcat cytoband.txt.gz | grep acen | sort | paste -d " " - - \
+			| cut -f 1,2,7 --output-delim="," >> ${CENTROMERES_CSV}
+
+#############################################
 # 1000 Genomes data.
 #############################################
 
-GENOTYPES_VCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
-GENOTYPES_BCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/bcf_files
+GENOTYPES_VCF_BASE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502
 
 1kg_samples.ped:
 		curl http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/working/20130606_sample_info/20130606_g1k.ped \
@@ -228,7 +239,7 @@ sgdp_%_genotypes.bcf: sgdp_%_genotypes.vcf.gz
 sgdp_%_genotypes_GRCh38.vcf.gz: sgdp_%_genotypes.vcf.gz hg38.fa hg19ToHg38.over.chain.gz
 		gunzip -c sgdp_$*_genotypes.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > sgdp_$*.withchr.vcf
 		java -jar ../tools/picard.jar LiftoverVcf I=sgdp_$*.withchr.vcf O=sgdp_GRCh38_$*.vcf CHAIN=hg19ToHg38.over.chain.gz \
-			REJECT=sgdp_GRCh38_$*.rejected_variants.vcf R=hg38.fa
+			REJECT=sgdp_GRCh38_$*.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.sgdp.$*.log
 		rm sgdp_$*.withchr.vcf
 		../tools/bin/bgzip -c sgdp_GRCh38_$*.vcf > sgdp_$*_genotypes_GRCh38.all.vcf.gz 
 		rm sgdp_GRCh38_$*.vcf
@@ -489,7 +500,7 @@ archaics_phased_GRCh38_%.vcf.gz: altai.%_mq25_mapab100.vcf.gz chagyrskaya.%.noRB
 		java -Xmx100g -jar ../tools/beagle.18May20.d20.jar gt=archaics_merged_$*.snps.only.vcf.gz \
 			out=archaics_phased_$* map=plink.$*.GRCh37.map nthreads=20
 		gunzip -c archaics_phased_$*.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > archaics_phased_$*.withchr.vcf
-		## Liftover to GRCh38
+		# Liftover to GRCh38
 		java -jar ../tools/picard.jar LiftoverVcf I=archaics_phased_$*.withchr.vcf \
 			O=archaics_phased_$*.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz \
 			REJECT=archaics_phased_$*.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.archaics_phased.$*.log
@@ -502,6 +513,29 @@ archaics_phased_GRCh38_%.vcf.gz: altai.%_mq25_mapab100.vcf.gz chagyrskaya.%.noRB
 		rm archaics_phased_$*.GRCh38.all.vcf.gz
 
 archaics_phased_GRCh38_%.samples: archaics_phased_GRCh38_%.vcf.gz %_ancestral_states.fa.fai archaic_metadata.txt hgdp_1kg_sgdp_%.samples
+		python3 convert.py max-planck -p \
+			$< \
+			$*_ancestral_states.fa \
+			-m archaic_metadata.txt \
+			--ancestral-states-url=${ANCESTRAL_STATES_URL} \
+			--reference-name=${REFERENCE_NAME} \
+			--num-threads ${NUM_THREADS} \
+			--target-samples=hgdp_1kg_sgdp_$*.samples \
+			$@ > $@.report
+
+archaics_unphased_GRCh38_%.vcf.gz: archaics_merged_%.vcf.gz plink.%.GRCh37.map
+		../tools/bin/plink --vcf archaics_merged_$*.vcf.gz --snps-only just-acgt --recode vcf bgz --out archaics_merged_$*.snps.only
+		gunzip -c archaics_merged_$*.snps.only.vcf.gz | awk '{if($$0 !~ /^#/) print "chr"$$0; else print $$0}' > archaics_merged_$*.withchr.vcf
+		# Liftover to GRCh38
+		java -jar ../tools/picard.jar LiftoverVcf I=archaics_merged_$*.withchr.vcf \
+			O=archaics_merged_$*.GRCh38.vcf CHAIN=hg19ToHg38.over.chain.gz \
+			REJECT=archaics_merged_$*.GRCh38.rejected_variants.vcf R=hg38.fa RECOVER_SWAPPED_REF_ALT=TRUE &> picard.archaics_merged.$*.log
+		../tools/bin/bgzip -c archaics_merged_$*.GRCh38.vcf > archaics_merged_$*.GRCh38.all.vcf.gz 
+		../tools/bin/tabix -p vcf archaics_merged_$*.GRCh38.all.vcf.gz
+		../tools/bin/bcftools view archaics_merged_$*.GRCh38.all.vcf.gz --regions $* -O z -o $@
+		../tools/bin/tabix -p vcf $@
+
+archaics_unphased_GRCh38_%.samples: archaics_unphased_GRCh38_%.vcf.gz %_ancestral_states.fa.fai archaic_metadata.txt hgdp_1kg_sgdp_%.samples
 		python3 convert.py max-planck -p \
 			$< \
 			$*_ancestral_states.fa \
@@ -578,7 +612,7 @@ v42.4.1240K.vcf.gz: v42.4.1240K.geno
 		../tools/eigensoft/src/convertf -p par.PACKEDANCESTRYMAP.PACKEDPED
 		mv ${REICH_PREFIX}.pedsnp ${REICH_PREFIX}.bim
 		mv ${REICH_PREFIX}.pedind ${REICH_PREFIX}.fam
-		../tools/bin/plink --bfile ${REICH_PREFIX} --recode vcf bgz --out $@
+		../tools/bin/plink --bfile ${REICH_PREFIX} --recode vcf bgz --out ${REICH_PREFIX}
 		../tools/bin/tabix -p vcf $@
 
 v42.4.1240K_chr%.vcf.gz: v42.4.1240K.vcf.gz
@@ -647,27 +681,27 @@ hgdp_1kg_sgdp_all_ancients_%.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples 
 		python3 tsutil.py merge-sampledata-files --input-sampledata $< reich_ancients_GRCh38_$*.subset.samples \
 			ust_ishim_GRCh38_$*.subset.samples loshbour_GRCh38_$*.subset.samples lbk_GRCh38_$*.subset.samples --output $@
 
-hgdp_1kg_sgdp_high_cov_ancients_%_p.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples
-		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+hgdp_1kg_sgdp_high_cov_ancients_%_p.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* p centromeres.csv 
 
-hgdp_1kg_sgdp_high_cov_ancients_%_q.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples
-		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
+hgdp_1kg_sgdp_high_cov_ancients_%_q.samples: hgdp_1kg_sgdp_high_cov_ancients_%.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* q centromeres.csv 
 
-hgdp_1kg_sgdp_all_ancients_%_p.samples: hgdp_1kg_sgdp_all_ancients_%.samples
-		python tsutil.py split-chromosome $^ $@ $* p centromeres.csv 
+hgdp_1kg_sgdp_all_ancients_%_p.samples: hgdp_1kg_sgdp_all_ancients_%.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* p centromeres.csv 
 
-hgdp_1kg_sgdp_all_ancients_%_q.samples: hgdp_1kg_sgdp_all_ancients_%.samples
-		python tsutil.py split-chromosome $^ $@ $* q centromeres.csv 
+hgdp_1kg_sgdp_all_ancients_%_q.samples: hgdp_1kg_sgdp_all_ancients_%.samples centromeres.csv
+		python tsutil.py split-chromosome $< $@ $* q centromeres.csv 
 
 all_ancients_%.samples: 1kg_%.samples reich_ancients_%.samples afanasievo_%.samples denisovan_%.samples vindija_%.samples \
 	chagyrskaya_%.samples altai_%.samples ust_ishim_%.samples loshbour_%.samples lbk_%.samples
 		python3 tsutil.py merge-sampledata-files --input-sampledata $^ --output $@
 
-hgdp_1kg_sgdp_high_cov_ancients_%_dated.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_high_cov_ancients_%.samples \
+hgdp_1kg_sgdp_high_cov_ancients_%_dated.samples: hgdp_1kg_sgdp_%.missing_binned.dated.trees hgdp_1kg_sgdp_%.missing_binned.samples hgdp_1kg_sgdp_high_cov_ancients_%.samples \
 	hgdp_1kg_sgdp_all_ancients_%.samples
-		python3 tsutil.py combined-ts-dated-samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples \
+		python3 tsutil.py combined-ts-dated-samples --modern hgdp_1kg_sgdp_$*.missing_binned.samples --high-cov hgdp_1kg_sgdp_high_cov_ancients_$*.samples \
 			--all-samples hgdp_1kg_sgdp_all_ancients_$*.samples --dated-ts hgdp_1kg_sgdp_$*.missing_binned.dated.trees \
-			--output $@ > hgdp_1kg_sgdp_high_cov_ancients_dated_$*_constrained_variants.txt
+			--output $@ > hgdp_1kg_sgdp_high_cov_ancients_$*_dated_constrained_variants.txt
 
 hgdp_1kg_sgdp_high_cov_ancients_%.dated.trees: hgdp_1kg_sgdp_high_cov_ancients_%_dated.samples recomb-hg38/
 		python3 bin_dates.py $< hgdp_1kg_sgdp_high_cov_ancients_$*_dated.binned.samples

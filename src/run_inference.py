@@ -1,16 +1,14 @@
 import os.path
 import argparse
 import collections
-import re
 import time
-import daiquiri
-import logging
+import subprocess
+import sys
 
 import tskit
-import msprime
-import numpy as np
 import tsinfer
-import stdpopsim
+
+tsinfer_executable = os.path.join("../", "src", "run_tsinfer.py")
 
 # Uncomment to debug output
 # daiquiri.setup(level=logging.DEBUG)
@@ -23,7 +21,7 @@ Params = collections.namedtuple(
 Results = collections.namedtuple(
     "Results",
     "ma_mut, ms_mut, precision, edges, muts, num_trees, "
-    "process_time, ga_process_time, ma_process_time, ms_process_time, ts_size, ts_path",
+    "process_time, ga_cpu_time, ga_memory_use, ma_cpu_time, ma_memory_use, ms_cpu_time, ms_memory_use, ts_size, ts_path",
 )
 
 
@@ -37,81 +35,71 @@ def run(params):
         assert params.sample_data.path.endswith(".samples")
         prefix = params.sample_data.path[0 : -len(".samples")]
     start_time = time.process_time()
-    ga_start_time = time.process_time()
-    # Check if we have created the ancestors file already, if not generate it
-    if not os.path.isfile(prefix + ".ancestors"):
-        anc = tsinfer.generate_ancestors(
-            params.sample_data,
-            num_threads=params.num_threads,
-            path=prefix + ".ancestors",
-            progress_monitor=True,
-        )
-        if np.any(params.sample_data.individuals_time[:] != 0):
-            anc_w_proxy = anc.insert_proxy_samples(
-                params.sample_data, allow_mutation=True
-            )
-            anc = anc_w_proxy.copy(path=prefix + ".proxy.ancestors")
-            anc.finalise()
-        maximum_time = np.max(anc.ancestors_time[:])
-        if maximum_time < 3: # hacky way of checking if we used frequency to order ancestors
-            anc = anc.truncate_ancestors(0.4, 0.6, length_multiplier=1, path=prefix + ".truncated.ancestors")
-        else:
-            upper_time_limit = maximum_time * 0.6
-            lower_time_limit = maximum_time * 0.4
-            anc = anc.truncate_ancestors(lower_time_limit, upper_time_limit, length_multiplier=1, path=prefix + ".truncated.ancestors")
-        print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
-    else:
-        anc = tsinfer.load(prefix + ".truncated.ancestors")
-    ga_process_time = time.process_time() - ga_start_time
+    # Check we have not created any files already
+    if os.path.isfile(prefix + ".ancestors"):
+        raise ValueError(".ancestors file already exists")
+    if os.path.isfile(prefix + ".atrees"):
+        raise ValueError(".atrees file already exists")
+    if os.path.isfile(prefix + ".trees"):
+        raise ValueError(".trees file already exists")
 
-    r_prob, m_prob = get_rho(anc, params.filename)
+    cmd = [
+        sys.executable,
+        tsinfer_executable,
+        params.sample_data.path,
+        "--step",
+        "GA",
+    ]
+    cmd += ["--threads", str(params.num_threads), prefix]
+    ga_cpu_time, ga_memory_use = time_cmd(cmd, prefix + "_GA")
+    print(f"GA done (ma_mut: {params.ma_mut_rate}, ms_mut: {params.ms_mut_rate})")
+
     precision = params.precision
     print(
         f"Starting {params.ma_mut_rate} {params.ms_mut_rate}",
-        f"Recombination probabiltity summary stats:",
-        f"(mean {np.mean(r_prob):.4g} median {np.quantile(r_prob, 0.5):.4g}",
-        f"max {np.max(r_prob):.4g} min {np.min(r_prob):.4g}",
-        f"2.5% quantile {np.quantile(r_prob, 0.025):.4g})",
         f"precision {precision}",
     )
-    ma_start_time = time.process_time()
 
-    # If have not run match ancestors, run it now
-    if not os.path.isfile(prefix + ".atrees"):
-        inferred_anc_ts = tsinfer.match_ancestors(
-            params.sample_data,
-            anc,
-            num_threads=params.num_threads,
-            precision=precision,
-            recombination=r_prob,
-            mismatch=m_prob,
-            progress_monitor=True,
-        )
-        inferred_anc_ts.dump(prefix + ".atrees")
-        print(f"MA done (ma_mut:{params.ma_mut_rate} ms_mut{params.ms_mut_rate})")
-    else:
-        inferred_anc_ts = tskit.load(prefix + ".atrees")
-    ma_process_time = time.process_time() - ma_start_time
-    ms_start_time = time.process_time()
-    if not os.path.isfile(prefix + ".trees"):
-        inferred_ts = tsinfer.match_samples(
-            params.sample_data,
-            inferred_anc_ts,
-            num_threads=params.num_threads,
-            recombination=r_prob,
-            mismatch=m_prob,
-            precision=precision,
-            progress_monitor=True,
-            force_sample_times=True,
-            simplify=False,
-        )
-        print(f"MS done: ms_mut rate = {params.ms_mut_rate})")
-        process_time = time.process_time() - start_time
-        ms_process_time = time.process_time() - ms_start_time
-        ts_path = prefix + ".nosimplify.trees"
-        inferred_ts.dump(ts_path)
-    else:
-        raise ValueError("Inferred tree sequence already present")
+    cmd = [
+        sys.executable,
+        tsinfer_executable,
+        params.sample_data.path,
+        "--step",
+        "MA",
+    ]
+    cmd += [
+        "--precision",
+        str(precision),
+        "--threads",
+        str(params.num_threads),
+        prefix,
+        "--genetic-map",
+        params.genetic_map,
+    ]
+    ma_cpu_time, ma_memory_use = time_cmd(cmd, prefix + "_MA")
+    print(f"MA done (ma_mut:{params.ma_mut_rate} ms_mut{params.ms_mut_rate})")
+
+    cmd = [
+        sys.executable,
+        tsinfer_executable,
+        params.sample_data.path,
+        "--step",
+        "MS",
+    ]
+    cmd += [
+        "--precision",
+        str(precision),
+        "--threads",
+        str(params.num_threads),
+        prefix,
+        "--genetic-map",
+        params.genetic_map,
+    ]
+    ms_cpu_time, ms_memory_use = time_cmd(cmd, prefix + "_MS")
+    inferred_ts = tskit.load(prefix + ".nosimplify.trees")
+    print(f"MS done: ms_mut rate = {params.ms_mut_rate})")
+    process_time = time.process_time() - start_time
+    ts_path = prefix + ".nosimplify.trees"
 
     return Results(
         ma_mut=params.ma_mut_rate,
@@ -121,12 +109,39 @@ def run(params):
         muts=inferred_ts.num_mutations,
         num_trees=inferred_ts.num_trees,
         process_time=process_time,
-        ga_process_time=ga_process_time,
-        ma_process_time=ma_process_time,
-        ms_process_time=ms_process_time,
+        ga_cpu_time=ga_cpu_time,
+        ga_memory_use=ga_memory_use,
+        ma_cpu_time=ma_cpu_time,
+        ma_memory_use=ma_memory_use,
+        ms_cpu_time=ms_cpu_time,
+        ms_memory_use=ms_memory_use,
         ts_size=os.path.getsize(ts_path),
         ts_path=ts_path,
     )
+
+
+def time_cmd(cmd, output):
+    """
+    Runs the specified command line (a list suitable for subprocess.call)
+    and writes the stdout to the specified file object.
+    """
+    output_file = output + ".tsinfer.time.txt"
+    time_cmd = "/usr/bin/time"
+    full_cmd = [time_cmd, "-o", output_file, "-f%M %S %U"] + cmd
+    exit_status = subprocess.call(full_cmd, stderr=sys.stderr, stdout=sys.stdout)
+    f = open(output_file)
+    split = f.readlines()[-1].split()
+    # From the time man page:
+    # M: Maximum resident set size of the process during its lifetime,
+    #    in Kilobytes.
+    # S: Total number of CPU-seconds used by the system on behalf of
+    #    the process (in kernel mode), in seconds.
+    # U: Total number of CPU-seconds that the process used directly
+    #    (in user mode), in seconds.
+    max_memory = int(split[0]) * 1024
+    system_time = float(split[1])
+    user_time = float(split[2])
+    return user_time + system_time, max_memory
 
 
 def setup_sample_file(args):
@@ -142,52 +157,6 @@ def setup_sample_file(args):
         sd,
         filename[: -len(".samples")],
     )
-
-
-def get_rho(ancestors, filename):
-    inference_pos = ancestors.sites_position[:]
-
-    match = re.search(r"(chr\d+)", filename)
-    arm = "_q" in filename
-    sequence_length = None
-    if arm:
-        sequence_length = ancestors.sequence_length 
-    if match is None:
-        raise ValueError("chr must be in filename")
-    chr = match.group(1)
-    map = params.genetic_map
-    if match or map is not None:
-        if map is not None:
-            print(f"Using {chr} from GRCh38 for the recombination map")
-            rmap = msprime.RateMap.read_hapmap(
-                map + chr + ".txt", sequence_length=sequence_length
-            )
-        else:
-            print(f"Using {chr} from HapMapII_GRCh37 for the recombination map")
-            map = stdpopsim.get_species("HomSap").get_genetic_map(id="HapMapII_GRCh37")
-            if not map.is_cached():
-                map.download()
-            map_file = os.path.join(
-                map.map_cache_dir, map.file_pattern.format(id="chr20")
-            )
-            rmap = msprime.RateMap.read_hapmap(
-                map_file, sequence_length=sequence_length
-            )
-        genetic_dists = tsinfer.Matcher.recombination_rate_to_dist(rmap, inference_pos)
-        recombination = tsinfer.Matcher.recombination_dist_to_prob(genetic_dists)
-        # Set 0 probability recombination positions to small value
-        recombination[recombination == 0] = 1e-20
-        # Hardcoded mismatch ratio to 1 since that's all we use in paper
-        mismatch_ratio = 1
-        num_alleles = 2
-        mismatch = np.full(
-            len(inference_pos),
-            tsinfer.Matcher.mismatch_ratio_to_prob(mismatch_ratio, np.median(genetic_dists), num_alleles),
-        )
-    else:
-        raise ValueError("must provide a recombination map")
-
-    return recombination, mismatch
 
 
 if __name__ == "__main__":
@@ -240,11 +209,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m",
         "--genetic_map",
-        default=None,
+        default="None",
         help="An alternative genetic map to be used for this analysis, in the format"
         "expected by msprime.RateMap.read_hapmap",
     )
-        
+
     args = parser.parse_args()
     # We only use mismatch ratio of 1 and precision of 15 in the paper
     assert args.match_ancestors_mrate == args.match_samples_mrate == 1
