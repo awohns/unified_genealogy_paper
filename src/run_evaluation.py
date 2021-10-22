@@ -606,6 +606,7 @@ class Chr20Sims(NeutralSims):
         self.remove_ancient_mutations = False
         self.ancient_times = None
         self.geva_genetic_map = False
+        self.use_genetic_map = True
 
     def setup(self):
         row_data = dict.fromkeys(self.sim_cols)
@@ -622,7 +623,10 @@ class Chr20Sims(NeutralSims):
         def simulate_func(params):
             seed = params[1]
             species = stdpopsim.get_species("HomSap")
-            contig = species.get_contig("20", genetic_map="HapMapII_GRCh37")
+            if self.use_genetic_map:
+                contig = species.get_contig("20", genetic_map="HapMapII_GRCh37")
+            else:
+                contig = species.get_contig("20")
             model = species.get_demographic_model("OutOfAfrica_3G09")
             yri_samples = [
                 msprime.Sample(population=0, time=0)
@@ -753,6 +757,7 @@ class Chr20AncientIteration(Chr20Sims):
         self.ancient_sample_size = 40
         self.ancient_times = "empirical_age_distribution"
         self.make_vcf = False
+        self.use_genetic_map = False
 
     def inference(self, row_data, num_threads=16):
         index = row_data[0]
