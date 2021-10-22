@@ -24,7 +24,7 @@ relatefileformat_executable = os.path.join(
 )
 relate_popsize_executable = os.path.join(
     "tools",
-    "relate_v1.1.2_x86_64_dynamic",
+    "relate",
     "scripts",
     "EstimatePopulationSize",
     "EstimatePopulationSize.sh",
@@ -429,6 +429,22 @@ def run_tsinfer(
             cmd.extend(
                 ["--inject-real-ancestors-from-ts", inject_real_ancestors_from_ts_fn]
             )
+        cpu_time, memory_use = time_cmd(cmd)
+        ts_simplified = tskit.load(ts_out.name)
+    return ts_simplified, cpu_time, memory_use
+
+
+def run_tsinfer_mismatch(
+    sample_fn,
+    length,
+    num_threads=1,
+    inject_real_ancestors_from_ts_fn=None,
+    rho=None,
+    error_probability=None,
+):
+    with tempfile.NamedTemporaryFile("w+") as ts_out:
+        cmd = [tsinfer_executable, ts_out.name, "-s", "infer", sample_fn]
+        # cmd += ["--threads", str(num_threads), ts_out.name]
         cpu_time, memory_use = time_cmd(cmd)
         ts_simplified = tskit.load(ts_out.name)
     return ts_simplified, cpu_time, memory_use

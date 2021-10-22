@@ -3,21 +3,14 @@ Various utilities for manipulating tree sequences and running tsinfer.
 """
 import argparse
 import csv
-import time
-import collections
 import re
 import json
-import os.path
 
 import tskit
 import tsinfer
 import tsdate
 import daiquiri
 import numpy as np
-import pandas as pd
-import tqdm
-import humanize
-import cyvcf2
 
 
 def run_simplify(args):
@@ -34,342 +27,6 @@ def run_get_dated_samples(args):
     copy = samples.copy(prefix + ".dated.samples")
     copy.sites_time[:] = tsdate.get_sites_time(ts)
     copy.finalise()
-
-
-def run_augment(sample_data, ancestors_ts, subset, num_threads):
-    progress_monitor = tsinfer.cli.ProgressMonitor(enabled=True, augment_ancestors=True)
-    return tsinfer.augment_ancestors(
-        sample_data,
-        ancestors_ts,
-        subset,
-        num_threads=num_threads,
-        progress_monitor=progress_monitor,
-    )
-
-
-def run_match_samples(sample_data, ancestors_ts, num_threads):
-    progress_monitor = tsinfer.cli.ProgressMonitor(enabled=True, match_samples=True)
-    return tsinfer.match_samples(
-        sample_data,
-        ancestors_ts,
-        num_threads=num_threads,
-        simplify=False,
-        progress_monitor=progress_monitor,
-    )
-
-
-def run_sequential_augment(args):
-
-    base = ".".join(args.input.split(".")[:-1])
-
-    sample_data = tsinfer.load(args.input)
-    num_samples = sample_data.num_samples
-    ancestors_ts = tskit.load(base + ".ancestors.trees")
-
-    # Compute the total samples required.
-    n = 2
-    total = 0
-    while n < num_samples // 4:
-        total += n
-        n *= 2
-
-    np.random.seed(args.seed)
-    samples = np.random.choice(np.arange(num_samples), size=total, replace=False)
-    np.save(base + ".augmented_samples.npy", samples)
-
-    n = 2
-    j = 0
-    while n < num_samples // 4:
-        augmented_file = base + ".augmented_{}.ancestors.trees".format(n)
-        final_file = base + ".augmented_{}.nosimplify.trees".format(n)
-        subset = samples[j : j + n]
-        subset.sort()
-        ancestors_ts = run_augment(sample_data, ancestors_ts, subset, args.num_threads)
-        ancestors_ts.dump(augmented_file)
-        j += n
-        n *= 2
-
-    final_ts = run_match_samples(sample_data, ancestors_ts, args.num_threads)
-    final_ts.dump(final_file)
-
-
-def run_benchmark_tskit(args):
-
-    before = time.perf_counter()
-    ts = tskit.load(args.input)
-    duration = time.perf_counter() - before
-    print("Loaded in {:.2f}s".format(duration))
-
-    print("num_nodes = ", ts.num_nodes)
-    print("num_edges = ", ts.num_edges)
-    print("num_trees = ", ts.num_trees)
-    print("size = ", humanize.naturalsize(os.path.getsize(args.input), binary=True))
-
-    before = time.perf_counter()
-    j = 0
-    for tree in ts.trees(sample_counts=False):
-        j += 1
-    assert j == ts.num_trees
-    duration = time.perf_counter() - before
-    print("Iterated over trees in {:.2f}s".format(duration))
-
-    before = time.perf_counter()
-    num_variants = 0
-    # As of msprime 0.6.1, it's a little bit more efficient to specify the full
-    # samples and use the tree traversal based decoding algorithm than the full
-    # sample-lists for UKBB trees. This'll be fixed in the future.
-    for var in ts.variants(samples=ts.samples()):
-        if num_variants == args.num_variants:
-            break
-        num_variants += 1
-    duration = time.perf_counter() - before
-    total_genotypes = (ts.num_samples * num_variants) / 10 ** 6
-    print(
-        "Iterated over {} variants in {:.2f}s @ {:.2f} M genotypes/s".format(
-            num_variants, duration, total_genotypes / duration
-        )
-    )
-
-
-def run_benchmark_vcf(args):
-
-    before = time.perf_counter()
-    records = cyvcf2.VCF(args.input)
-    duration = time.perf_counter() - before
-    print("Read BCF header in {:.2f} seconds".format(duration))
-    before = time.perf_counter()
-    count = 0
-    for record in records:
-        count += 1
-    duration = time.perf_counter() - before
-    print("Read {} VCF records in {:.2f} seconds".format(count, duration))
-
-
-def get_augmented_samples(tables):
-    # Shortcut. Iterating over all the IDs is very slow here.
-    # Note that we don't necessarily recover all of the samples that were
-    # augmented here because they might have been simplified out.
-    # return np.load("ukbb_chr20.augmented_samples.npy")
-    nodes = tables.nodes
-    ids = np.where(nodes.flags == tsinfer.NODE_IS_SAMPLE_ANCESTOR)[0]
-    sample_ids = np.zeros(len(ids), dtype=int)
-    for j, node_id in enumerate(tqdm.tqdm(ids)):
-        offset = nodes.metadata_offset[node_id : node_id + 2]
-        buff = bytearray(nodes.metadata[offset[0] : offset[1]])
-        md = json.loads(buff.decode())
-        sample_ids[j] = md["sample"]
-    return sample_ids
-
-
-def run_compute_ukbb_gnn(args):
-    ts = tskit.load(args.input)
-    tables = ts.tables
-    before = time.time()
-    augmented_samples = set(get_augmented_samples(tables))
-    duration = time.time() - before
-    print("Got augmented:", len(augmented_samples), "in ", duration)
-
-    reference_sets_map = collections.defaultdict(list)
-
-    ind_metadata = [None for _ in range(ts.num_individuals)]
-    all_samples = []
-    for ind in ts.individuals():
-        md = json.loads(ind.metadata.decode())
-        ind_metadata[ind.id] = md
-        for node in ind.nodes:
-            if node not in augmented_samples:
-                reference_sets_map[md["CentreName"]].append(node)
-                all_samples.append(node)
-    reference_set_names = list(reference_sets_map.keys())
-    reference_sets = [reference_sets_map[key] for key in reference_set_names]
-
-    cols = {
-        "centre": [
-            ind_metadata[ts.node(u).individual]["CentreName"] for u in all_samples
-        ],
-        "sample_id": [
-            ind_metadata[ts.node(u).individual]["SampleID"] for u in all_samples
-        ],
-        "ethnicity": [
-            ind_metadata[ts.node(u).individual]["Ethnicity"] for u in all_samples
-        ],
-    }
-    print("Computing GNNs for ", len(all_samples), "samples")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        all_samples, reference_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    for j, name in enumerate(reference_set_names):
-        cols[name] = A[:, j]
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
-
-
-def run_compute_1kg_gnn(args):
-    ts = tskit.load(args.input)
-
-    population_name = []
-    region_name = []
-
-    for population in ts.populations():
-        md = json.loads(population.metadata.decode())
-        name = md["name"]
-        population_name.append(name)
-        if "super_population" in md:
-            region_name.append(md["super_population"])
-        elif "region" in md:
-            region_name.append(md["region"])
-        elif "name" in md:
-            region_name.append(md["name"])
-
-    population = []
-    region = []
-    individual = []
-    for j, u in enumerate(ts.samples()):
-        node = ts.node(u)
-        ind = json.loads(ts.individual(node.individual).metadata.decode())
-        if "individual_id" in ind:
-            individual.append(ind["individual_id"])
-        elif "name" in ind:
-            individual.append(ind["name"])
-        population.append(population_name[node.population])
-        region.append(region_name[node.population])
-
-    sample_sets = [ts.samples(pop) for pop in range(ts.num_populations)]
-    print("Computing GNNs")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        ts.samples(), sample_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    cols = {population_name[j]: A[:, j] for j in range(ts.num_populations)}
-    cols["population"] = population
-    cols["region"] = region
-    cols["individual"] = individual
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
-
-
-def run_compute_sgdp_gnn(args):
-    ts = tskit.load(args.input)
-
-    population_name = []
-    region_name = []
-
-    for population in ts.populations():
-        md = json.loads(population.metadata.decode())
-        name = md["name"]
-        population_name.append(name)
-        region_name.append(md["region"])
-
-    population = []
-    region = []
-    individual = []
-    for j, u in enumerate(ts.samples()):
-        node = ts.node(u)
-        ind = json.loads(ts.individual(node.individual).metadata.decode())
-        individual.append(ind["sgdp_id"])
-        population.append(population_name[node.population])
-        region.append(region_name[node.population])
-
-    sample_sets = [ts.samples(pop) for pop in range(ts.num_populations)]
-    print("Computing GNNs")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        ts.samples(), sample_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    cols = {population_name[j]: A[:, j] for j in range(ts.num_populations)}
-    cols["population"] = population
-    cols["region"] = region
-    cols["individual"] = individual
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
-
-
-def run_compute_hgdp_gnn(args):
-    ts = tskit.load(args.input)
-
-    population_name = []
-    region_name = []
-
-    for population in ts.populations():
-        md = json.loads(population.metadata.decode())
-        name = md["name"]
-        population_name.append(name)
-        region_name.append(md["region"])
-
-    population = []
-    region = []
-    individual = []
-    for j, u in enumerate(ts.samples()):
-        node = ts.node(u)
-        ind = json.loads(ts.individual(node.individual).metadata.decode())
-        individual.append(ind["sample"])
-        population.append(population_name[node.population])
-        region.append(region_name[node.population])
-
-    sample_sets = [ts.samples(pop) for pop in range(ts.num_populations)]
-    print("Computing GNNs")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        ts.samples(), sample_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    cols = {population_name[j]: A[:, j] for j in range(ts.num_populations)}
-    cols["population"] = population
-    cols["region"] = region
-    cols["individual"] = individual
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
-
-
-def run_compute_hgdp_1kg_sgdp_gnn(args):
-    ts = tskit.load(args.input)
-
-    population_name = []
-    region_name = []
-
-    for population in ts.populations():
-        md = json.loads(population.metadata.decode())
-        name = md["name"]
-        population_name.append(name)
-
-        if "super_population" in md:
-            region_name.append(md["super_population"])
-        elif "region" in md:
-            region_name.append(md["region"])
-
-    population = []
-    region = []
-    for j, u in enumerate(ts.samples()):
-        node = ts.node(u)
-        population.append(population_name[node.population])
-        region.append(region_name[node.population])
-
-    sample_sets = [ts.samples(pop) for pop in range(ts.num_populations)]
-    print("Computing GNNs")
-    before = time.time()
-    A = ts.genealogical_nearest_neighbours(
-        ts.samples(), sample_sets, num_threads=args.num_threads
-    )
-    duration = time.time() - before
-    print("Done in {:.2f} mins".format(duration / 60))
-
-    cols = {population_name[j]: A[:, j] for j in range(ts.num_populations)}
-    cols["population"] = population
-    cols["region"] = region
-    df = pd.DataFrame(cols)
-    df.to_csv(args.output)
 
 
 def make_sampledata_compatible(args):
@@ -532,6 +189,21 @@ def delete_site_mutations(tables, site_ids, record_provenance=True):
     return tables
 
 
+def get_transversions(samples):
+    transversions = np.full(samples.num_sites, True, dtype=bool)
+    for site_id, alleles in enumerate(samples.sites_alleles[:]):
+        if (
+            (alleles[0].upper() == "A" and alleles[1].upper() == "G")
+            or (alleles[0].upper() == "C" and alleles[1].upper() == "T")
+            or (alleles[0] == "G" and alleles[1].upper() == "A")
+            or (alleles[0].upper() == "T" and alleles[1].upper() == "C")
+        ):
+            transversions[site_id] = False
+        else:
+            transversions[site_id] = True
+    return transversions
+
+
 def combined_ts_constrained_samples(args):
     modern_samples = tsinfer.load(args.modern)
     high_cov_samples = tsinfer.load(args.high_cov)
@@ -567,6 +239,10 @@ def combined_ts_constrained_samples(args):
 
     # Set time of non-biallelic sites to 0
     all_ancient_samples_bound[~alleles_equal] = 0
+    # If args.transversions_only is True, set time of all transversions to 0
+    if args.transversions_only:
+        transversions = get_transversions(all_ancient_samples)
+        all_ancient_samples_bound[~transversions] = 0
     # Constrain the estimated ages from tree sequence with ancient bounds
     constrained_sites_time = np.maximum(sites_time, all_ancient_samples_bound)
     # Add constrained times to sampledata file with moderns and high cov ancients
@@ -791,62 +467,6 @@ def main():
     subparser.add_argument("ts", type=str, help="Input dated tree sequence")
     subparser.set_defaults(func=run_get_dated_samples)
 
-    subparser = subparsers.add_parser("sequential-augment")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("--num-threads", type=int, default=0)
-    subparser.add_argument("--seed", type=int, default=1)
-    subparser.set_defaults(func=run_sequential_augment)
-
-    subparser = subparsers.add_parser("benchmark-tskit")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument(
-        "--num-variants",
-        type=int,
-        default=None,
-        help="Number of variants to benchmark genotypes decoding performance on",
-    )
-    subparser.set_defaults(func=run_benchmark_tskit)
-
-    subparser = subparsers.add_parser("benchmark-vcf")
-    subparser.add_argument("input", type=str, help="Input VCF")
-    subparser.add_argument(
-        "--num-variants",
-        type=int,
-        default=None,
-        help="Number of variants to benchmark genotypes decoding performance on",
-    )
-    subparser.set_defaults(func=run_benchmark_vcf)
-
-    subparser = subparsers.add_parser("compute-ukbb-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_ukbb_gnn)
-
-    subparser = subparsers.add_parser("compute-1kg-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_1kg_gnn)
-
-    subparser = subparsers.add_parser("compute-sgdp-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_sgdp_gnn)
-
-    subparser = subparsers.add_parser("compute-hgdp-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_hgdp_gnn)
-
-    subparser = subparsers.add_parser("compute-hgdp-1kg-sgdp-gnn")
-    subparser.add_argument("input", type=str, help="Input tree sequence")
-    subparser.add_argument("output", type=str, help="Filename to write CSV to.")
-    subparser.add_argument("--num-threads", type=int, default=16)
-    subparser.set_defaults(func=run_compute_hgdp_1kg_sgdp_gnn)
-
     subparser = subparsers.add_parser("make-sampledata-compatible")
     subparser.add_argument(
         "--input-sampledata",
@@ -907,6 +527,11 @@ def main():
         type=str,
         help="HGDP + 1kg + SGDP Dated Tree Sequence.",
     )
+    subparser.add_argument(
+        "--transversions_only",
+        action="store_true",
+        help="Only constrain ancient site ages at transversions.",
+    )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)
 
@@ -923,7 +548,7 @@ def main():
     subparser = subparsers.add_parser("combine-chromosome")
     subparser.add_argument("p_arm", type=str, help="Input p Arm")
     subparser.add_argument("q_arm", type=str, help="Input q Arm")
-    subparser.add_argument("output", type=str, help="Output SampleData")
+    subparser.add_argument("output", type=str, help="Output filename")
     subparser.set_defaults(func=combine_chromosome_arms)
 
     daiquiri.setup(level="INFO")

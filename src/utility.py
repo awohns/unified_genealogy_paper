@@ -9,9 +9,7 @@ import tskit
 import tsdate
 
 
-def sites_time_from_ts(
-    tree_sequence, *, node_selection="child", exclude_root=True
-):
+def sites_time_from_ts(tree_sequence, *, node_selection="child", exclude_root=True):
     if tree_sequence.num_sites < 1:
         raise ValueError("Invalid tree sequence: no sites present")
     if node_selection not in ["arithmetic", "geometric", "child", "parent", "msprime"]:
@@ -45,9 +43,13 @@ def sites_time_from_ts(
     return sites_time
 
 
-def get_mut_pos_df(ts, name, node_dates, node_selection="arithmetic", exclude_root=False):
+def get_mut_pos_df(
+    ts, name, node_dates, node_selection="arithmetic", exclude_root=False
+):
     if node_selection == "msprime":
-        sites_time = sites_time_from_ts(ts, node_selection="msprime", exclude_root=False)
+        sites_time = sites_time_from_ts(
+            ts, node_selection="msprime", exclude_root=False
+        )
     else:
         if exclude_root:
             sites_time = sites_time_from_ts(
@@ -127,4 +129,3 @@ def add_grand_mrca(ts):
         )
     tables.sort()
     return tables.tree_sequence()
-

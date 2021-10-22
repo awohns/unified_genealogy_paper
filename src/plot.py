@@ -31,6 +31,8 @@ from mpl_toolkits.axes_grid1.inset_locator import (
     zoomed_inset_axes,
 )
 import matplotlib.colors as mplc
+import matplotlib.ticker as mticker
+import matplotlib.gridspec as gridspec
 import cartopy
 import cartopy.crs as ccrs
 
@@ -316,7 +318,7 @@ class Figure(object):
             return self._main_ts
         except AttributeError:
             self._main_ts = tskit.load(
-                "all-data/hgdp_1kg_sgdp_high_cov_ancients_chr" + chrom + ".dated.trees"
+                "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + chrom + ".dated.trees"
             )
             return self._main_ts
 
@@ -336,9 +338,9 @@ class Figure(object):
         if animation is not None:
             animation.save("figures/{}.mp4".format(figure_name), dpi=300)
         else:
-            # plt.savefig(
-            #    "figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400
-            # )
+            plt.savefig(
+                "figures/{}.pdf".format(figure_name), bbox_inches="tight", dpi=400
+            )
             plt.savefig(
                 "figures/{}.png".format(figure_name), bbox_inches="tight", dpi=400
             )
@@ -372,13 +374,13 @@ class Figure(object):
         if label is not None:
             ax.set_title(label, fontsize=24, color=cmap[:-1])
         assert len(x) == len(y)
-        ax.text(0.05, 0.9, str(len(x)) + " mutations", transform=ax.transAxes, size=14)
+        ax.text(0.05, 0.9, str(len(x)) + " mutations", transform=ax.transAxes, size=12)
         ax.text(
             0.05,
             0.85,
             "RMSLE: " + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
@@ -386,21 +388,21 @@ class Figure(object):
             "Pearson's r: "
             + "{0:.2f}".format(scipy.stats.pearsonr(np.log(x), np.log(y))[0]),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
             0.75,
             "Spearman's $\\rho$: " + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
             0.7,
             "Bias:" + "{0:.2f}".format(np.mean(y - x)),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         if kc_distance_0 is not None:
             ax.text(
@@ -408,7 +410,7 @@ class Figure(object):
                 0.11,
                 "KC Dist. ($\lambda$=0):" + "{:.2E}".format(kc_distance_0),
                 transform=ax.transAxes,
-                size=14,
+                size=12,
             )
         if kc_distance_1 is not None:
             ax.text(
@@ -416,14 +418,14 @@ class Figure(object):
                 0.03,
                 "KC Dist. ($\lambda$=1):" + "{:.2E}".format(kc_distance_1),
                 transform=ax.transAxes,
-                size=14,
+                size=12,
             )
         return hb
 
 
 class TsdateNeutralSims(Figure):
     """
-    Figure 1b: accuracy of tsdate on simulated data under a neutral model.
+    Figure 1c: accuracy of tsdate on simulated data under a neutral model.
     Compares age of mutations: simulated time vs. tsdate estimation using
     simulated topology and tsdate using tsinfer inferred topologies.
     """
@@ -478,332 +480,9 @@ class TsdateNeutralSims(Figure):
         self.save(self.name)
 
 
-class Mismatch(Figure):
-    data_path = "data"
-    focal_ma = 1
-    focal_ms = 1
-    cmap = "viridis_r"
-    linestyles = {
-        "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
-        "ms_mis_ratio": dict(linestyle=":"),
-    }
-    mut_label_rel_pos = 0.32
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.d = self.data[0].sort_values(["ma_mis_ratio", "ms_mis_ratio"])
-
-        self.d["edges1000"] = self.d["edges"] / 1000
-        self.d["muts1000"] = self.d["muts"] / 1000
-        try:
-            self.d["min_num_muts1000"] = self.d["min_num_muts"] / 1000
-        except (KeyError, TypeError):
-            pass
-        self.d["edges_muts_1000"] = self.d["edges1000"] + self.d["muts1000"]
-        assert np.allclose(np.diff(self.d["num_sites"]), 0)
-        self.num_sites = np.mean(self.d["num_sites"])
-
-    def plot(self):
-        unique_vals = {
-            "ma_mis_ratio": np.unique(self.d["ma_mis_ratio"]),
-            "ms_mis_ratio": np.unique(self.d["ms_mis_ratio"]),
-        }
-
-        ma_map = {v: i for i, v in enumerate(unique_vals["ma_mis_ratio"])}
-        ms_map = {v: i for i, v in enumerate(unique_vals["ms_mis_ratio"])}
-
-        fig, axs = plt.subplots(2, len(self.metrics), figsize=self.figsize)
-        plt.subplots_adjust(wspace=0.25)
-
-        legend = False
-        for i, (metric, metric_lab) in enumerate(self.metrics.items()):
-            # Top (heatmap) plot
-            Z = np.zeros((len(ms_map), len(ma_map)))
-            for _, row in self.d.iterrows():
-                Z[ms_map[row.ms_mis_ratio], ma_map[row.ma_mis_ratio]] = row[metric]
-            ax_top = axs[0, i]
-            cs = ax_top.contour(
-                unique_vals["ma_mis_ratio"],
-                unique_vals["ms_mis_ratio"],
-                Z,
-                10,
-                colors="gray",
-            )
-            ax_top.contourf(cs, cmap=self.cmap)
-            ax_top.clabel(cs, inline=0, colors=["k"], fmt="%g")
-            ax_top.axvline(self.focal_ma, c="k", **self.linestyles["ms_mis_ratio"])
-            ax_top.axhline(self.focal_ms, c="k", **self.linestyles["ma_mis_ratio"])
-            if i == 0:
-                ax_top.set_ylabel(r"Sample mismatch ratio")
-            ax_top.set_xlabel(r"Ancestor mismatch ratio")
-            ax_top.set_title(metric_lab[0], pad=15, fontsize="x-large")
-            ax_top.set_xscale("log")
-            ax_top.set_yscale("log")
-
-            # Bottom (line) plot(s)
-            ma_mask = self.d["ma_mis_ratio"] == self.focal_ma
-            ms_mask = self.d["ms_mis_ratio"] == self.focal_ms
-            ax_bottom = axs[1, i]
-            if metric == "edges_muts_1000":
-                # Edges vs muts plot is different
-                gs = ax_bottom.get_gridspec()
-                ax_bottom.set_ylabel(metric_lab[-1], labelpad=35)
-                ax_bottom.xaxis.set_visible(False)  # make this subplot x axis invisible
-                plt.setp(ax_bottom.spines.values(), visible=False)  # make box invisible
-                ax_bottom.tick_params(
-                    left=False, labelleft=False
-                )  # remove ticks+labels
-                gs_sub = gs[1, i].subgridspec(2, 1, hspace=0.5)
-                for i, (mm_lab, mask, title) in enumerate(
-                    [
-                        ("ma_mis_ratio", ms_mask, "Ancestor"),
-                        ("ms_mis_ratio", ma_mask, "Sample"),
-                    ]
-                ):
-                    ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
-                    mm = self.d[mm_lab][mask]
-                    ax_sub_bottom.fill_between(
-                        mm, 0, self.d["muts1000"][mask], color="orange"
-                    )
-                    ax_sub_bottom.fill_between(
-                        mm,
-                        self.d["muts1000"][mask],
-                        self.d["edges_muts_1000"][mask],
-                        color="tab:brown",
-                    )
-                    ax_sub_bottom.plot(
-                        mm,
-                        self.d[metric][mask],
-                        c="k",
-                        **self.linestyles[mm_lab]
-                    )
-                    ax_sub_bottom.text(
-                        np.mean(unique_vals[mm_lab][-2:]),
-                        # np.mean(self.d['muts1000'][mask]/1.5),
-                        (self.num_sites / 1000) * self.mut_label_rel_pos,
-                        "Mutations",
-                        ha="right",
-                        va="bottom",
-                        bbox=dict(boxstyle='square,pad=0.2', facecolor="w", alpha=0.9, ec="none"),
-                    )
-                    ax_sub_bottom.text(
-                        np.mean(unique_vals[mm_lab][-2:]),
-                        np.mean(
-                            (
-                                self.d["muts1000"][ma_mask] * 2
-                                + self.d["edges1000"][ma_mask]
-                            )
-                            / 2
-                        ),
-                        "Edges",
-                        ha="right",
-                        va="bottom",
-                        bbox=dict(boxstyle='square,pad=0.1', facecolor="w", alpha=0.9, ec="none"),
-                    )
-                    ax_sub_bottom.set_xlabel(title + r" mismatch ratio")
-                    ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
-                    ax_sub_bottom.set_ylim(0)
-                    ax_sub_bottom.set_xscale("log")
-                    ax_sub_bottom.axhline(self.num_sites / 1000, c="grey")
-                    ax_sub_bottom.text(
-                        unique_vals[mm_lab][1],
-                        (self.num_sites / 1000) * 0.95,
-                        "Number of sites",
-                        va="center",
-                        color="k",
-                        bbox=dict(
-                            boxstyle="square,pad=0",
-                            facecolor="orange",
-                            alpha=0.9,
-                            ec="none",
-                        ),
-                    )
-                    if self.is_simulated and self.has_error:
-                        y_pos = 156156 # np.mean(self.d["min_num_muts1000"][mask])
-                        ax_sub_bottom.axhline(y_pos / 1000, c="darkgrey")
-                        ax_sub_bottom.text(
-                            unique_vals[mm_lab][1],
-                            (y_pos / 1000) * 0.95,
-                            "Min number of mutations",
-                            va="center",
-                            color="k",
-                            bbox=dict(
-                                boxstyle="square,pad=0",
-                                facecolor="orange",
-                                alpha=0.9,
-                                ec="none",
-                            ),
-                        )
-            else:
-                for i, (mm_lab, mask, title) in enumerate(
-                    [
-                        ("ma_mis_ratio", ms_mask, "Ancestor"),
-                        ("ms_mis_ratio", ma_mask, "Sample"),
-                    ]
-                ):
-                    ax_bottom.plot(
-                        self.d[mm_lab][mask],
-                        self.d[metric][mask],
-                        c="k",
-                        label=title + " mismatch",
-                        **self.linestyles[mm_lab]
-                    )
-                if not legend:
-                    ax_bottom.legend(loc="upper center")
-                    legend = True
-                ax_bottom.set_xlabel(r"Mismatch ratio")
-                ax_bottom.set_xlim(
-                    np.min(np.concatenate(list(unique_vals.values()))),
-                    np.max(np.concatenate(list(unique_vals.values()))),
-                )
-                ax_bottom.set_ylabel(metric_lab[-1])
-                ax_bottom.set_xscale("log")
-            if metric == "rel_ts_size":
-                ax_bottom.set_ylim(ax_bottom.get_ylim()[0] - 0.002)
-                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(7))
-            else:
-                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(6))
-
-            for tick in ax_bottom.get_yticklabels():
-                tick.set_rotation(90)
-                tick.set_verticalalignment("center")
-
-        self.save(self.name)
-
-
-class MismatchSimulation(Mismatch):
-    figsize = (28, 10)
-    is_simulated = True
-    metrics = {
-        "edges_muts_1000": ["Edge + mutation count (1000's)"],
-        "rel_ts_size": ["Filesize", "Filesize (relative to simulated tree sequence)"],
-        "KCpoly": ["Accuracy (KC metric)", "Relative Kendall-Colijn distance"],
-        "KCsplit": [
-            "Accuracy (KC, no polytomies)",
-            "Relative KC distance, polytomies randomly split",
-        ],
-        "RFsplit": [
-            "Accuracy (RF, no polytomies)",
-            "Relative RF distance, polytomies randomly split",
-        ],
-        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
-    }
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.d["rel_ts_size"] = self.d["ts_bytes"] / self.d["sim_ts_min_bytes"]
-        assert np.allclose(np.diff(self.d["kc_max"][np.isfinite(self.d["kc_max"])]), 0)
-        kc_max = np.mean(self.d["kc_max"][np.isfinite(self.d["kc_max"])])
-        assert np.allclose(
-            np.diff(self.d["kc_max_split"][np.isfinite(self.d["kc_max_split"])]), 0
-        )
-        kc_max_split = np.mean(
-            self.d["kc_max_split"][np.isfinite(self.d["kc_max_split"])]
-        )
-
-        self.d["KCpoly"] = self.d["kc_poly"] / kc_max
-        self.d["KCsplit"] = self.d["kc_split"] / kc_max_split
-        #Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
-        self.d["RFsplit"] = self.d["RFsplit"] / (2 * self.d["n"] - 4)
-
-class MismatchSimulationNoError(MismatchSimulation):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_simulated_noerr"
-    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_results_plus_RF"]
-    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
-    has_error = False
-
-
-class MismatchSimulationWithError(MismatchSimulation):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_simulated_err"
-    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
-    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
-    mut_label_rel_pos = 1.35
-    has_error = True
-
-class MismatchRealData(Mismatch):
-    figsize = (14, 10)
-    metrics = {
-        "edges_muts_1000": ["Edge + mutation count (1000's)"],
-        "ts_size_Mb": ["Filesize", "Filesize (Mb)"],
-        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
-    }
-    is_simulated = False
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.d["ts_size_Mb"] = self.d["ts_bytes"] / 1e6
-
-
-class MismatchRealDataTGP(MismatchRealData):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_tgp"
-    filename = ["1kg_chr20_1000000-1100000_results"]
-    plt_title = "Effect of mismatch parameters on inference of TGP data"
-
-
-class MismatchRealDataHGDP(MismatchRealData):
-    # Create the files (takes a day or so) using the Makefile in ../data/
-    name = "mismatch_parameter_chr20_hgdp"
-    filename = ["hgdp_chr20_1000000-1100000_results"]
-    plt_title = "Effect of mismatch parameters on inference of HGDP data"
-
-
-class MultipleMutationDistributions(Figure):
-    """
-    Plot the "histogram" of numbers of mutations for each site, for simulated and
-    small TGP/HGDP inferred tree sequences
-    """
-    name = "multiple_mutation_distributions"
-    data_path = "data"
-    filename = ["muts_per_site_chr20"]
-
-    def plot(self):
-        max_tips_err = 1  # The number of lines to plot as dashed
-        
-        df = self.data[0][1:] # Omit sites with 0 mutations
-        
-        plt.figure(figsize=(12, 5))
-        for data_type, lab, col in [
-            ("true_trees", "True trees from infinite-sites simulation with overlaid error", "tab:green"),
-            ("inf_trees", "Inferred trees from same simulation (mismatch ratios of 1)", "tab:blue"),
-            ("tgp", "Inferred TGP trees (mismatch ratios of 1)", "tab:red"),
-            ("hgdp", "Inferred HGDP trees (mismatch ratios of 1)", "tab:orange"),
-        ]:
-            column_name = data_type + "_all"
-            plt.plot(
-                df.index.to_numpy(), df[column_name].to_numpy(), color=col, label=lab)
-            for dotted_line in [f"{n}_tips_err" for n in range(1, max_tips_err+ 1)]:
-                column_name = data_type + "_" + dotted_line
-                plt.plot(
-                    df.index.to_numpy(), df[column_name].to_numpy(), color=col, ls=":")
-        
-        # Plot a line for the legent
-        line = Line2D([0,1],[0,1],linestyle='-', color='r')
-
-        plt.xlabel('Number of "mutations" per site')
-        plt.ylabel("Percent of sites")
-        plt.yscale("log")
-        plt.xscale("log")
-        plt.xlim(1, 800)
-        plt.ylim(0.5e-5, 1)
-        xticks = list(range(1, 6)) + list(range(10, 60, 10)) + list(range(100, 600, 100))
-        plt.xticks(ticks=xticks, labels=xticks, rotation=90)
-        yticks = [1, 0.1, 0.01, 0.001, 0.0001, 0.00001]
-        yticklabs = [f"{y*100:g}%" for y in yticks]
-        plt.yticks(ticks=yticks, labels=yticklabs)
-        handles, labels = plt.gca().get_legend_handles_labels()
-        handles += [Line2D([0,1],[0,1],linestyle=':', c="k")]
-        labels += [" as above, removing mutations above samples at multiple-mutation sites"]
-        plt.legend(handles,labels)
-
-        self.save(self.name)
-
-
 class Chr20AncientIteration(Figure):
     """
-    Figure 1d. Accuracy of increasing number of ancient samples.
+    Figure 1d: Accuracy of increasing number of ancient samples.
     """
 
     name = "chr20_ancient_iteration"
@@ -819,7 +498,17 @@ class Chr20AncientIteration(Figure):
         "chr20_ancient_iteration_amh_spearman",
         "chr20_ancient_iteration_amh_kc",
     ]
-    header = ["infer", "infer", "infer", "infer", "infer", "infer", "infer", "infer", "infer"]
+    header = [
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+        "infer",
+    ]
     plt_title = "iteration_ancients"
 
     def __init__(self, args):
@@ -852,10 +541,16 @@ class Chr20AncientIteration(Figure):
         df = msle
         comb_df = pd.concat([msle, msle_ooa, msle_amh])
         sns.boxplot(
-            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_inferred"], orient="v", ax=ax[0, 0],
+            x=np.zeros(comb_df["tsdate_inferred"].shape),
+            y=comb_df["tsdate_inferred"],
+            orient="v",
+            ax=ax[0, 0],
         )
         sns.boxplot(
-            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_iterate"], orient="v", ax=ax[0, 1], 
+            x=np.zeros(comb_df["tsdate_inferred"].shape),
+            y=comb_df["tsdate_iterate"],
+            orient="v",
+            ax=ax[0, 1],
         )
         plt.setp(ax[0, 0].artists, edgecolor="k", facecolor=(0.93, 0.13, 0.05))
         plt.setp(ax[0, 1].artists, edgecolor="k", facecolor=(0.38, 0.85, 0.21))
@@ -925,10 +620,16 @@ class Chr20AncientIteration(Figure):
         comb_df = pd.concat([spearman, spearman_ooa, spearman_amh])
 
         sns.boxplot(
-            x=np.zeros(comb_df["tsdate_inferred"].shape), y=comb_df["tsdate_inferred"], orient="v", ax=ax[1, 0],
+            x=np.zeros(comb_df["tsdate_inferred"].shape),
+            y=comb_df["tsdate_inferred"],
+            orient="v",
+            ax=ax[1, 0],
         )
         sns.boxplot(
-            x=np.zeros(comb_df["tsdate_iterate"].shape), y=comb_df["tsdate_iterate"], orient="v", ax=ax[1, 1],
+            x=np.zeros(comb_df["tsdate_iterate"].shape),
+            y=comb_df["tsdate_iterate"],
+            orient="v",
+            ax=ax[1, 1],
         )
         plt.setp(ax[1, 0].artists, edgecolor="k", facecolor=(0.93, 0.13, 0.05))
         plt.setp(ax[1, 1].artists, edgecolor="k", facecolor=(0.38, 0.85, 0.21))
@@ -1019,7 +720,7 @@ class TmrcaClustermap(Figure):
 
     name = "tmrcas"
     data_path = "data"
-    filename = ["hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
+    filename = ["hgdp_tgp_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
 
     def make_symmetric(self, df):
         """
@@ -1192,7 +893,7 @@ class InsetTmrcaHistograms(Figure):
 
     name = "inset_tmrca_histograms"
     data_path = "data"
-    filename = ["hgdp_1kg_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
+    filename = ["hgdp_tgp_sgdp_high_cov_ancients_chr20.dated.20nodes_all.tmrcas"]
 
     def __init__(self, args):
         base_name = self.filename[0]
@@ -1365,13 +1066,20 @@ class InsetTmrcaHistograms(Figure):
 
 class AncientConstraints(Figure):
     """
-    Figure 3: Ancient Constraints on Age of Mutations from 1000 Genomes Project
+    Figure 3A: Ancient Constraints on Age of Mutations from 1000 Genomes Project
+    To generate data for this figure, run:
+    `make tgp_chr20.dated.trees` and
+    `make all_ancients_chr20.samples` in all-data/
+    Then run: `make relate_ages` and `make geva_ages.csv.gz` in data/, and then
+    `python src/analyze_data.py tgp_dates` and
+    `python src/analyze_data.py ancient_constraints`
+
     """
 
     name = "ancient_constraints_tgp"
     data_path = "data"
     filename = ["tgp_muts_constraints"]
-    plt_title = "ancient_constraint_1kg"
+    plt_title = "ancient_constraint_tgp"
 
     def jitter(self, array, log=True):
         max_min = np.max(array) - np.min(array)
@@ -1439,7 +1147,8 @@ class AncientConstraints(Figure):
         scatter_size = 0.2
         scatter_alpha = 0.2
         shading_alpha = 0.2
-        # Plot each method. Relate has estimates for each population, so plot all estimates
+        # Plot each method. Relate has estimates for each population,
+        # so plot all estimates
         for i, method in enumerate(
             [
                 # Hack the titles with extra spaces to centre properly, as it's too
@@ -1617,9 +1326,1359 @@ class AncientConstraints(Figure):
         self.save(self.name)
 
 
+class DenisovanRegionDescent(Figure):
+    """
+    Figure 3B: Denisovan Descent by Region on Chromosome 20
+    """
+
+    name = "denisovan_descent_boxplot_chr20"
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["unified_ts_chr20_regions_ancient_descendants"]
+        super().__init__(args)
+
+    def plot(self):
+        fig, ax = plt.subplots(figsize=(10, 7))
+        chr20_descent = self.data[0].set_index(self.data[0].columns[0])
+        # Exclude ancients column
+        chr20_descent = chr20_descent.iloc[:, :-1]
+        # Arrange in alphabetical order
+        chr20_descent = chr20_descent.reindex(sorted(chr20_descent.columns), axis=1)
+        sns.barplot(
+            x=chr20_descent.columns,
+            y=np.sum(chr20_descent.loc["Denisovan"], axis=0),
+            palette=region_colors,
+        )
+        ax.set_ylabel(
+            "Chromosome 20 proportion descending \n from sampled Denisovan Haplotypes",
+            size=20,
+        )
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=30, size=15)
+        fig.show()
+        fig.tight_layout()
+        self.save(self.name)
+
+
+class plot_sample_locations(Figure):
+    """
+    Figure 4A: Plot the locations of samples
+    """
+
+    name = "sample_locations"
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
+        self.delimiter = " "
+        self.header = [None]
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
+
+    def plot(self):
+        # Remove samples in tgp
+        hgdp_sgdp_ancients = self.ts.simplify(
+            np.where(
+                ~np.isin(
+                    self.ts.tables.nodes.population[self.ts.samples()],
+                    np.arange(54, 80),
+                )
+            )[0]
+        )
+        tgp_hgdp_sgdp_ancestor_locations = self.data[0]
+
+        _ = plt.figure(figsize=(15, 6))
+        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
+        ax.coastlines(linewidth=0.1)
+        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
+        ax.set_global()
+
+        def jitter(array):
+            max_min = np.max(array) - np.min(array)
+            return array + np.random.randn(len(array)) * (max_min * 0.009)
+
+        unique_hgdp_locations = np.unique(
+            tgp_hgdp_sgdp_ancestor_locations[
+                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(0, 54))
+            ],
+            axis=0,
+            return_counts=True,
+        )
+        unique_sgdp_locations = np.unique(
+            tgp_hgdp_sgdp_ancestor_locations[
+                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(54, 184))
+            ],
+            axis=0,
+            return_counts=True,
+        )
+        unique_ancient_locations = np.unique(
+            tgp_hgdp_sgdp_ancestor_locations[
+                np.isin(
+                    hgdp_sgdp_ancients.tables.nodes.population,
+                    np.arange(184, hgdp_sgdp_ancients.num_populations),
+                )
+            ],
+            axis=0,
+            return_counts=True,
+        )
+
+        ax.scatter(
+            unique_hgdp_locations[0][:, 1],
+            unique_hgdp_locations[0][:, 0],
+            transform=ccrs.PlateCarree(),
+            s=unique_hgdp_locations[1] * 2,
+            label="HGDP",
+            alpha=0.85,
+            zorder=3,
+        )
+        ax.scatter(
+            jitter(unique_sgdp_locations[0][:, 1]),
+            jitter(unique_sgdp_locations[0][:, 0]),
+            transform=ccrs.PlateCarree(),
+            s=unique_sgdp_locations[1] * 2,
+            marker="s",
+            label="SGDP",
+            alpha=0.85,
+            zorder=3,
+        )
+        ax.scatter(
+            unique_ancient_locations[0][:, 1],
+            unique_ancient_locations[0][:, 0],
+            transform=ccrs.PlateCarree(),
+            s=unique_ancient_locations[1] * 2,
+            marker="*",
+            label="Ancient",
+            alpha=0.85,
+            zorder=3,
+        )
+
+        lgnd = ax.legend(loc="lower left", fontsize=15)
+        lgnd.legendHandles[0]._sizes = [200]
+        lgnd.legendHandles[1]._sizes = [200]
+        lgnd.legendHandles[2]._sizes = [200]
+        self.save(self.name)
+
+
+class PopulationAncestors(Figure):
+    """
+    Figure 4B: Plot average position of ancestors of each population
+    """
+
+    name = "population_ancestors"
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        self.filename = [
+            "avg_pop_ancestral_location_LATS_chr" + self.chrom,
+            "avg_pop_ancestral_location_LONGS_chr" + self.chrom,
+            "num_ancestral_lineages_chr" + self.chrom,
+        ]
+        self.delimiter = ","
+        self.header = [None, None, None]
+        super().__init__(args)
+
+    def colorline(self, x, y, z, transform, cmap, norm, ax, linewidth=3, alpha=1.0):
+        """
+        This function is from:
+        http://nbviewer.ipython.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
+        http://matplotlib.org/examples/pylab_examples/multicolored_line.html
+
+        Plot a colored line with coordinates x and y
+        Optionally specify colors in the array z
+        Optionally specify a colormap, a norm function and a line width
+        """
+
+        # Default colors equally spaced on [0,1]:
+        if z is None:
+            z = np.linspace(0.0, 1.0, len(x))
+
+        # Special case if a single number:
+        if not hasattr(z, "__iter__"):  # to check for numerical input -- this is a hack
+            z = np.array([z])
+
+        z = np.asarray(z)
+
+        segments = self.make_segments(x, y)
+
+        lc = matplotlib.collections.LineCollection(
+            segments,
+            array=z,
+            cmap=cmap,
+            norm=norm,
+            linewidth=linewidth,
+            alpha=alpha,
+            transform=transform,
+        )
+
+        ax.add_collection(lc)
+
+        return lc
+
+    def make_segments(self, x, y):
+        """
+        This function is from:
+            https://nbviewer.jupyter.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
+        http://matplotlib.org/examples/pylab_examples/multicolored_line.html
+
+        Create list of line segments from x and y coordinates, in the correct format
+        for LineCollection: an array of the form numlines x (points per line) x 2 (x
+        and y) array
+        """
+
+        points = np.array([x, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        return segments
+
+    def plot(self):
+        lat_list = self.data[0].to_numpy()
+        long_list = self.data[1].to_numpy()
+        num_ancestral_lineages = self.data[2].to_numpy()
+        # Remove samples in tgp
+        hgdp_sgdp_ancients = self.ts.simplify(
+            np.where(
+                ~np.isin(
+                    self.ts.tables.nodes.population[self.ts.samples()],
+                    np.arange(54, 80),
+                )
+            )[0]
+        )
+        fig = plt.figure(figsize=(16, 10))
+        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
+        ax.coastlines(linewidth=0.1)
+        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
+        ax.set_global()
+        # ax.set_extent([-159, 200, -40, 90], crs=ccrs.Geodetic())
+        time_windows = np.concatenate(
+            [
+                np.array([0]),
+                np.logspace(
+                    3.5, np.log(np.max(self.ts.tables.nodes.time)), num=40, base=2.718
+                ),
+            ]
+        )
+        # time_windows = np.concatenate([np.array([0]), np.exp(np.geomspace(np.log(1.1), np.log(np.max(self.ts.tables.nodes.time)), 40))])
+        for population in np.arange(0, 55):
+            pop_size = np.sum(hgdp_sgdp_ancients.tables.nodes.population == population)
+            result_colorline = self.colorline(
+                long_list[population],
+                lat_list[population],
+                np.linspace(0, 1, len(long_list)),
+                cmap=plt.get_cmap("plasma_r"),
+                norm=plt.Normalize(0.0, 1.0),
+                linewidth=0.002 * (num_ancestral_lineages[population] / pop_size),
+                transform=ccrs.Geodetic(),
+                ax=ax,
+            )
+        cax = fig.add_axes(
+            [ax.get_position().x0, ax.get_position().y0 - 0.1, 0.78, 0.05],
+        )
+        cbar = fig.colorbar(result_colorline, cax=cax, orientation="horizontal")
+
+        cbar.set_label(label="Time in Years", size=20)
+        cbar.ax.set_xticklabels(
+            (
+                constants.GENERATION_TIME
+                * np.round(time_windows[[0, 8, 16, 24, 32, 40]]).astype(int)
+            )
+        )
+        self.save(self.name)
+
+
+class WorldDensity(Figure):
+    """
+    Figure 4C: World map with all ancestors plotted at six timepoints
+    """
+
+    name = "world_density"
+
+    def __init__(self, args):
+        self.data_path = "data"
+        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
+        self.delimiter = " "
+        self.header = [None]
+        self.chrom = args.chrom
+        self.ts = self.main_ts(self.chrom)
+        super().__init__(args)
+
+    def plot(self):
+        locations = self.data[0].to_numpy()
+        # Remove samples in tgp
+        ts = self.ts.simplify(
+            np.where(
+                ~np.isin(
+                    self.ts.tables.nodes.population[self.ts.samples()],
+                    np.arange(54, 80),
+                )
+            )[0]
+        )
+        times = ts.tables.nodes.time[:]
+        for time in [100, 1000, 2240, 5600, 11200, 33600]:
+            _ = plt.figure(figsize=(15, 6))
+            ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
+            ax.coastlines(linewidth=0.1)
+            ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
+            ax.set_global()
+            ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
+            edges = np.logical_and(
+                times[ts.tables.edges.child] <= time,
+                times[ts.tables.edges.parent] > time,
+            )
+            time_slice_child = ts.tables.edges.child[edges]
+            time_slice_parent = ts.tables.edges.parent[edges]
+            edge_lengths = times[time_slice_parent] - times[time_slice_child]
+            weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
+            weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
+            lat_arr = np.vstack(
+                [locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]
+            ).T
+            long_arr = np.vstack(
+                [locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]
+            ).T
+            weights = np.vstack([weight_parent, weight_child]).T
+            lats, longs = utility.vectorized_weighted_geographic_center(
+                lat_arr, long_arr, weights
+            )
+            avg_locations = np.array([lats, longs]).T
+            xynps = ax.projection.transform_points(
+                ccrs.Geodetic(), avg_locations[:, 1], avg_locations[:, 0]
+            )
+            h = ax.hist2d(
+                xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.7, cmin=10
+            )
+            _ = plt.colorbar(h[3], ax=ax, shrink=0.7, format="%.1f", pad=0.02)
+            ax.set_global()
+            plt.title(str(xynps.shape[0]) + " Ancestral Lineages", fontsize=20)
+            self.save(self.name + "_" + str(time))
+
+
+class Mismatch(Figure):
+    """
+    Code for Figures S11 and S12
+    """
+
+    data_path = "data"
+    focal_ma = 1
+    focal_ms = 1
+    cmap = "viridis_r"
+    linestyles = {
+        "ma_mis_ratio": dict(linestyle="--", dashes=(10, 2)),
+        "ms_mis_ratio": dict(linestyle=":"),
+    }
+    mut_label_rel_pos = 0.32
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.d = self.data[0].sort_values(["ma_mis_ratio", "ms_mis_ratio"])
+
+        self.d["edges1000"] = self.d["edges"] / 1000
+        self.d["muts1000"] = self.d["muts"] / 1000
+        try:
+            self.d["min_num_muts1000"] = self.d["min_num_muts"] / 1000
+        except (KeyError, TypeError):
+            pass
+        self.d["edges_muts_1000"] = self.d["edges1000"] + self.d["muts1000"]
+        assert np.allclose(np.diff(self.d["num_sites"]), 0)
+        self.num_sites = np.mean(self.d["num_sites"])
+
+    def plot(self):
+        unique_vals = {
+            "ma_mis_ratio": np.unique(self.d["ma_mis_ratio"]),
+            "ms_mis_ratio": np.unique(self.d["ms_mis_ratio"]),
+        }
+
+        ma_map = {v: i for i, v in enumerate(unique_vals["ma_mis_ratio"])}
+        ms_map = {v: i for i, v in enumerate(unique_vals["ms_mis_ratio"])}
+
+        fig, axs = plt.subplots(2, len(self.metrics), figsize=self.figsize)
+        plt.subplots_adjust(wspace=0.25)
+
+        legend = False
+        for i, (metric, metric_lab) in enumerate(self.metrics.items()):
+            # Top (heatmap) plot
+            Z = np.zeros((len(ms_map), len(ma_map)))
+            for _, row in self.d.iterrows():
+                Z[ms_map[row.ms_mis_ratio], ma_map[row.ma_mis_ratio]] = row[metric]
+            ax_top = axs[0, i]
+            cs = ax_top.contour(
+                unique_vals["ma_mis_ratio"],
+                unique_vals["ms_mis_ratio"],
+                Z,
+                10,
+                colors="gray",
+            )
+            ax_top.contourf(cs, cmap=self.cmap)
+            ax_top.clabel(cs, inline=0, colors=["k"], fmt="%g")
+            ax_top.axvline(self.focal_ma, c="k", **self.linestyles["ms_mis_ratio"])
+            ax_top.axhline(self.focal_ms, c="k", **self.linestyles["ma_mis_ratio"])
+            if i == 0:
+                ax_top.set_ylabel(r"Sample mismatch ratio")
+            ax_top.set_xlabel(r"Ancestor mismatch ratio")
+            ax_top.set_title(metric_lab[0], pad=15, fontsize="x-large")
+            ax_top.set_xscale("log")
+            ax_top.set_yscale("log")
+
+            # Bottom (line) plot(s)
+            ma_mask = self.d["ma_mis_ratio"] == self.focal_ma
+            ms_mask = self.d["ms_mis_ratio"] == self.focal_ms
+            ax_bottom = axs[1, i]
+            if metric == "edges_muts_1000":
+                # Edges vs muts plot is different
+                gs = ax_bottom.get_gridspec()
+                ax_bottom.set_ylabel(metric_lab[-1], labelpad=35)
+                ax_bottom.xaxis.set_visible(False)  # make this subplot x axis invisible
+                plt.setp(ax_bottom.spines.values(), visible=False)  # make box invisible
+                ax_bottom.tick_params(
+                    left=False, labelleft=False
+                )  # remove ticks+labels
+                gs_sub = gs[1, i].subgridspec(2, 1, hspace=0.5)
+                for i, (mm_lab, mask, title) in enumerate(
+                    [
+                        ("ma_mis_ratio", ms_mask, "Ancestor"),
+                        ("ms_mis_ratio", ma_mask, "Sample"),
+                    ]
+                ):
+                    ax_sub_bottom = fig.add_subplot(gs_sub[i, 0])
+                    mm = self.d[mm_lab][mask]
+                    ax_sub_bottom.fill_between(
+                        mm, 0, self.d["muts1000"][mask], color="orange"
+                    )
+                    ax_sub_bottom.fill_between(
+                        mm,
+                        self.d["muts1000"][mask],
+                        self.d["edges_muts_1000"][mask],
+                        color="tab:brown",
+                    )
+                    ax_sub_bottom.plot(
+                        mm, self.d[metric][mask], c="k", **self.linestyles[mm_lab]
+                    )
+                    ax_sub_bottom.text(
+                        np.mean(unique_vals[mm_lab][-2:]),
+                        # np.mean(self.d['muts1000'][mask]/1.5),
+                        (self.num_sites / 1000) * self.mut_label_rel_pos,
+                        "Mutations",
+                        ha="right",
+                        va="bottom",
+                        bbox=dict(
+                            boxstyle="square,pad=0.2",
+                            facecolor="w",
+                            alpha=0.9,
+                            ec="none",
+                        ),
+                    )
+                    ax_sub_bottom.text(
+                        np.mean(unique_vals[mm_lab][-2:]),
+                        np.mean(
+                            (
+                                self.d["muts1000"][ma_mask] * 2
+                                + self.d["edges1000"][ma_mask]
+                            )
+                            / 2
+                        ),
+                        "Edges",
+                        ha="right",
+                        va="bottom",
+                        bbox=dict(
+                            boxstyle="square,pad=0.1",
+                            facecolor="w",
+                            alpha=0.9,
+                            ec="none",
+                        ),
+                    )
+                    ax_sub_bottom.set_xlabel(title + r" mismatch ratio")
+                    ax_sub_bottom.set_xlim(np.min(mm), np.max(mm))
+                    ax_sub_bottom.set_ylim(0)
+                    ax_sub_bottom.set_xscale("log")
+                    ax_sub_bottom.axhline(self.num_sites / 1000, c="grey")
+                    ax_sub_bottom.text(
+                        unique_vals[mm_lab][1],
+                        (self.num_sites / 1000) * 0.95,
+                        "Number of sites",
+                        va="center",
+                        color="k",
+                        bbox=dict(
+                            boxstyle="square,pad=0",
+                            facecolor="orange",
+                            alpha=0.9,
+                            ec="none",
+                        ),
+                    )
+                    if self.is_simulated and self.has_error:
+                        y_pos = 156156  # np.mean(self.d["min_num_muts1000"][mask])
+                        ax_sub_bottom.axhline(y_pos / 1000, c="darkgrey")
+                        ax_sub_bottom.text(
+                            unique_vals[mm_lab][1],
+                            (y_pos / 1000) * 0.95,
+                            "Min number of mutations",
+                            va="center",
+                            color="k",
+                            bbox=dict(
+                                boxstyle="square,pad=0",
+                                facecolor="orange",
+                                alpha=0.9,
+                                ec="none",
+                            ),
+                        )
+            else:
+                for _, (mm_lab, mask, title) in enumerate(
+                    [
+                        ("ma_mis_ratio", ms_mask, "Ancestor"),
+                        ("ms_mis_ratio", ma_mask, "Sample"),
+                    ]
+                ):
+                    ax_bottom.plot(
+                        self.d[mm_lab][mask],
+                        self.d[metric][mask],
+                        c="k",
+                        label=title + " mismatch",
+                        **self.linestyles[mm_lab],
+                    )
+                if not legend:
+                    ax_bottom.legend(loc="upper center")
+                    legend = True
+                ax_bottom.set_xlabel(r"Mismatch ratio")
+                ax_bottom.set_xlim(
+                    np.min(np.concatenate(list(unique_vals.values()))),
+                    np.max(np.concatenate(list(unique_vals.values()))),
+                )
+                ax_bottom.set_ylabel(metric_lab[-1])
+                ax_bottom.set_xscale("log")
+            if metric == "rel_ts_size":
+                ax_bottom.set_ylim(ax_bottom.get_ylim()[0] - 0.002)
+                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(7))
+            else:
+                ax_bottom.yaxis.set_major_locator(plt.MaxNLocator(6))
+
+            for tick in ax_bottom.get_yticklabels():
+                tick.set_rotation(90)
+                tick.set_verticalalignment("center")
+
+        self.save(self.name)
+
+
+class MismatchSimulation(Mismatch):
+    figsize = (28, 10)
+    is_simulated = True
+    metrics = {
+        "edges_muts_1000": ["Edge + mutation count (1000's)"],
+        "rel_ts_size": ["Filesize", "Filesize (relative to simulated tree sequence)"],
+        "KCpoly": ["Accuracy (KC metric)", "Relative Kendall-Colijn distance"],
+        "KCsplit": [
+            "Accuracy (KC, no polytomies)",
+            "Relative KC distance, polytomies randomly split",
+        ],
+        "RFsplit": [
+            "Accuracy (RF, no polytomies)",
+            "Relative RF distance, polytomies randomly split",
+        ],
+        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
+    }
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.d["rel_ts_size"] = self.d["ts_bytes"] / self.d["sim_ts_min_bytes"]
+        assert np.allclose(np.diff(self.d["kc_max"][np.isfinite(self.d["kc_max"])]), 0)
+        kc_max = np.mean(self.d["kc_max"][np.isfinite(self.d["kc_max"])])
+        assert np.allclose(
+            np.diff(self.d["kc_max_split"][np.isfinite(self.d["kc_max_split"])]), 0
+        )
+        kc_max_split = np.mean(
+            self.d["kc_max_split"][np.isfinite(self.d["kc_max_split"])]
+        )
+
+        self.d["KCpoly"] = self.d["kc_poly"] / kc_max
+        self.d["KCsplit"] = self.d["kc_split"] / kc_max_split
+        # Rough RF max given by 2 * num_internal_nodes - 2 - if bifurcating, 2 * num_tips - 4
+        self.d["RFsplit"] = self.d["RFsplit"] / (2 * self.d["n"] - 4)
+
+
+class MismatchSimulationNoError(MismatchSimulation):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_simulated_noerr"
+    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_results_plus_RF"]
+    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
+    has_error = False
+
+
+class MismatchSimulationWithError(MismatchSimulation):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_simulated_err"
+    filename = ["OutOfAfrica_3G09_chr20_n1500_seed1_ae0.01_results_plus_RF"]
+    plt_title = "Effect of mismatch parameters on inference accuracy via simulation"
+    mut_label_rel_pos = 1.35
+    has_error = True
+
+
+class MismatchRealData(Mismatch):
+    figsize = (14, 10)
+    metrics = {
+        "edges_muts_1000": ["Edge + mutation count (1000's)"],
+        "ts_size_Mb": ["Filesize", "Filesize (Mb)"],
+        "arity_mean": ["Node arity", "Mean node arity over tree sequence"],
+    }
+    is_simulated = False
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.d["ts_size_Mb"] = self.d["ts_bytes"] / 1e6
+
+
+class MismatchRealDataTGP(MismatchRealData):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_tgp"
+    filename = ["tgp_chr20_1000000-1100000_results"]
+    plt_title = "Effect of mismatch parameters on inference of TGP data"
+
+
+class MismatchRealDataHGDP(MismatchRealData):
+    # Create the files (takes a day or so) using the Makefile in ../data/
+    name = "mismatch_parameter_chr20_hgdp"
+    filename = ["hgdp_chr20_1000000-1100000_results"]
+    plt_title = "Effect of mismatch parameters on inference of HGDP data"
+
+
+class MultipleMutationDistributions(Figure):
+    """
+    Figure S14: Plot the "histogram" of numbers of mutations for each site, for simulated
+    and small TGP/HGDP inferred tree sequences
+    """
+
+    name = "multiple_mutation_distributions"
+    data_path = "data"
+    filename = ["muts_per_site_chr20"]
+
+    def plot(self):
+        max_tips_err = 1  # The number of lines to plot as dashed
+
+        df = self.data[0][1:]  # Omit sites with 0 mutations
+
+        plt.figure(figsize=(12, 5))
+        for data_type, lab, col in [
+            (
+                "true_trees",
+                "True trees from infinite-sites simulation with overlaid error",
+                "tab:green",
+            ),
+            (
+                "inf_trees",
+                "Inferred trees from same simulation (mismatch ratios of 1)",
+                "tab:blue",
+            ),
+            ("tgp", "Inferred TGP trees (mismatch ratios of 1)", "tab:red"),
+            ("hgdp", "Inferred HGDP trees (mismatch ratios of 1)", "tab:orange"),
+        ]:
+            column_name = data_type + "_all"
+            plt.plot(
+                df.index.to_numpy(), df[column_name].to_numpy(), color=col, label=lab
+            )
+            for dotted_line in [f"{n}_tips_err" for n in range(1, max_tips_err + 1)]:
+                column_name = data_type + "_" + dotted_line
+                plt.plot(
+                    df.index.to_numpy(), df[column_name].to_numpy(), color=col, ls=":"
+                )
+
+        # Plot a line for the legend
+        line = Line2D([0, 1], [0, 1], linestyle="-", color="r")
+
+        plt.xlabel('Number of "mutations" per site')
+        plt.ylabel("Percent of sites")
+        plt.yscale("log")
+        plt.xscale("log")
+        plt.xlim(1, 800)
+        plt.ylim(0.5e-5, 1)
+        xticks = (
+            list(range(1, 6)) + list(range(10, 60, 10)) + list(range(100, 600, 100))
+        )
+        plt.xticks(ticks=xticks, labels=xticks, rotation=90)
+        yticks = [1, 0.1, 0.01, 0.001, 0.0001, 0.00001]
+        yticklabs = [f"{y*100:g}%" for y in yticks]
+        plt.yticks(ticks=yticks, labels=yticklabs)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        handles += [Line2D([0, 1], [0, 1], linestyle=":", c="k")]
+        labels += [
+            " as above, removing mutations above samples at multiple-mutation sites"
+        ]
+        plt.legend(handles, labels)
+
+        self.save(self.name)
+
+
+class PriorEvaluation(Figure):
+    """
+    Figure S13: Evaluating the Lognormal Prior
+    To generate data for this figure, run:
+    `python src/run_evaluation.py prior_evaluation --inference`
+    """
+
+    name = "prior_evaluation"
+    data_path = "simulated-data"
+    filename = "prior_evaluation"
+    plt_title = "prior_evaluation"
+
+    def __init__(self, args):
+        datafile_name = os.path.join(self.data_path, self.filename + ".csv")
+        self.data = pickle.load(open(datafile_name, "rb"))
+
+    def plot(self):
+        fig, ax = plt.subplots(2, 2, figsize=(16, 12), sharex=True, sharey=True)
+        axes = ax.ravel()
+        plt.xscale("log")
+        plt.yscale("log")
+        plt.xlim(1.8, 1050)
+        plt.ylim(1e-3, 4e5)
+        all_results = self.data
+
+        for index, ((_, result), mixtures) in enumerate(
+            zip(all_results.items(), [False, False, False, False])
+        ):
+            num_tips_all = np.concatenate(result["num_tips"]).ravel()
+            num_tips_all_int = num_tips_all.astype(int)
+            only_mixtures = np.full(len(num_tips_all), True)
+            if mixtures:
+                only_mixtures = np.where((num_tips_all - num_tips_all_int) != 0)[0]
+
+            upper_bound_all = np.concatenate(result["upper_bound"]).ravel()[
+                only_mixtures
+            ]
+            lower_bound_all = np.concatenate(result["lower_bound"]).ravel()[
+                only_mixtures
+            ]
+            expectations_all = np.concatenate(result["expectations"]).ravel()[
+                only_mixtures
+            ]
+
+            real_ages_all = np.concatenate(result["real_ages"]).ravel()[only_mixtures]
+            num_tips_all = num_tips_all[only_mixtures]
+            yerr = [
+                expectations_all - lower_bound_all,
+                upper_bound_all - expectations_all,
+            ]
+
+            # Smoothed average of true times
+            num_bins = 100
+            df = pd.DataFrame(real_ages_all, index=np.log(num_tips_all))
+            df["bins"] = pd.cut((df.index), num_bins)
+            smoothed_mean_df = df.groupby("bins").mean()
+            smoothed_mean_df["bin_mean"] = np.exp(
+                smoothed_mean_df.index.map(attrgetter("right"))
+            )
+            smoothed_mean_df = smoothed_mean_df.dropna()
+
+            axes[index].errorbar(
+                num_tips_all,
+                expectations_all,
+                ls="none",
+                yerr=yerr,
+                elinewidth=0.3,
+                alpha=0.4,
+                color="grey",
+                zorder=1,
+                label="95% credible interval of the prior",
+            )
+            axes[index].scatter(
+                num_tips_all,
+                real_ages_all,
+                s=0.5,
+                alpha=0.1,
+                zorder=2,
+                color="royalblue",
+                label="True time",
+            )
+            axes[index].scatter(
+                num_tips_all,
+                expectations_all,
+                s=0.5,
+                color="red",
+                zorder=3,
+                label="Expected time",
+                alpha=0.5,
+            )
+            axes[index].plot(
+                smoothed_mean_df["bin_mean"].astype(float).values,
+                smoothed_mean_df[0].values,
+                alpha=0.5,
+                color="blue",
+                label="Moving average of true time",
+                zorder=4,
+            )
+
+            coverage = np.sum(
+                np.logical_and(
+                    real_ages_all < upper_bound_all, real_ages_all > lower_bound_all
+                )
+            ) / len(expectations_all)
+            axes[index].text(
+                0.35,
+                0.25,
+                "Overall Coverage Probability:" + "{0:.3f}".format(coverage),
+                size=10,
+                ha="center",
+                va="center",
+                transform=axes[index].transAxes,
+            )
+            less5_tips = np.where(num_tips_all < 5)[0]
+            coverage = np.sum(
+                np.logical_and(
+                    real_ages_all[less5_tips] < upper_bound_all[less5_tips],
+                    (real_ages_all[less5_tips] > lower_bound_all[less5_tips]),
+                )
+                / len(expectations_all[less5_tips])
+            )
+            axes[index].text(
+                0.35,
+                0.21,
+                "<5 Tips Coverage Probability:" + "{0:.3f}".format(coverage),
+                size=10,
+                ha="center",
+                va="center",
+                transform=axes[index].transAxes,
+            )
+            mrcas = np.where(num_tips_all == 1000)[0]
+            coverage = np.sum(
+                np.logical_and(
+                    real_ages_all[mrcas] < upper_bound_all[mrcas],
+                    (real_ages_all[mrcas] > lower_bound_all[mrcas]),
+                )
+                / len(expectations_all[mrcas])
+            )
+            axes[index].text(
+                0.35,
+                0.17,
+                "MRCA Coverage Probability:" + "{0:.3f}".format(coverage),
+                size=10,
+                ha="center",
+                va="center",
+                transform=axes[index].transAxes,
+            )
+            axins = zoomed_inset_axes(
+                axes[index],
+                2.7,
+                loc=4,
+                bbox_to_anchor=(0.95, 0.1),
+                bbox_transform=axes[index].transAxes,
+            )
+            axins.errorbar(
+                num_tips_all,
+                expectations_all,
+                ls="none",
+                yerr=yerr,
+                elinewidth=0.7,
+                alpha=0.1,
+                color="grey",
+                # solid_capstyle="projecting",
+                # capsize=4,
+                label="95% credible interval of the prior",
+                zorder=1,
+            )
+            axins.scatter(
+                num_tips_all,
+                real_ages_all,
+                s=2,
+                color="royalblue",
+                alpha=0.1,
+                label="True time",
+                zorder=2,
+            )
+            axins.scatter(
+                num_tips_all,
+                expectations_all,
+                s=2,
+                color="red",
+                label="Expected time",
+                alpha=0.1,
+                zorder=3,
+            )
+            axins.plot(
+                smoothed_mean_df["bin_mean"].astype(int).values,
+                smoothed_mean_df[0].values,
+                alpha=0.8,
+                color="blue",
+                label="Moving average of true time",
+                zorder=4,
+            )
+
+            x1, x2, y1, y2 = 970, 1050, 5e3, 3e5
+            axins.set_xlim(x1, x2)
+            axins.set_ylim(y1, y2)
+            axins.set_xscale("log")
+            axins.set_yscale("log")
+            axins.set_xticks([], minor=True)
+            axins.set_yticks([], minor=True)
+            mark_inset(axes[index], axins, loc1=2, loc2=1, fc="none", ec="0.5")
+        lgnd = axes[3].legend(loc=4, prop={"size": 12}, bbox_to_anchor=(1, -0.3))
+        lgnd.legendHandles[0]._sizes = [30]
+        lgnd.legendHandles[1]._sizes = [30]
+        lgnd.legendHandles[2]._linewidths = [2]
+        fig.text(0.5, 0.04, "Number of Tips", ha="center", size=15)
+        fig.text(
+            0.04,
+            0.5,
+            "Node Age (Generations)",
+            va="center",
+            rotation="vertical",
+            size=15,
+        )
+        axes[0].set_title("$\it{r}$=0", size=14)
+        axes[1].set_title("$\it{r}$=1e-8", size=14)
+        axes[1].text(
+            1.03,
+            0.2,
+            "Lognormal Distribution",
+            rotation=90,
+            color="Black",
+            transform=axes[1].transAxes,
+            size=14,
+        )
+        axes[3].text(
+            1.03,
+            0.2,
+            "Gamma Distribution",
+            rotation=90,
+            color="Black",
+            transform=axes[3].transAxes,
+            size=14,
+        )
+
+        self.save(self.name)
+
+
+class TsdateAccuracy(Figure):
+    """
+    Figure S1: Evaluating tsdate's accuracy at various mutation rates
+    """
+
+    name = "tsdate_accuracy"
+    data_path = "simulated-data"
+    filename = "tsdate_accuracy.mutation_ages.kc_distances"
+    plt_title = "tsdate_accuracy"
+
+    def __init__(self, args):
+        datafile_name = os.path.join(self.data_path, self.filename + ".csv")
+        self.data = pickle.load(open(datafile_name, "rb"))
+
+    def plot(self):
+        (
+            sim,
+            io,
+            maxed,
+            inf_io,
+            inf_maxed,
+            io_kc,
+            max_kc,
+            inf_io_kc,
+            inf_maxed_kc,
+        ) = self.data
+        f, axes = plt.subplots(
+            nrows=3,
+            ncols=4,
+            sharex=True,
+            sharey=True,
+            gridspec_kw={
+                "wspace": 0.1,
+                "hspace": 0.1,
+                "height_ratios": [1, 1, 1],
+                "width_ratios": [1, 1, 1, 1],
+            },
+            figsize=(20, 15),
+        )
+        axes[0, 0].set_xscale("log")
+        axes[0, 0].set_yscale("log")
+        axes[0, 0].set_xlim(2e-1, 2e5)
+        axes[0, 0].set_ylim(2e-1, 2e5)
+        x0, x1 = axes[0, 0].get_xlim()
+        y0, y1 = axes[0, 0].get_ylim()
+
+        parameter_arr = [1e-9, 1e-8, 1e-7]
+
+        for index, param in enumerate(parameter_arr):
+            true_ages = sim[index]["Simulated Age"].values
+            inside_outside = io[index]["IO Age"].values
+            maximized = maxed[index]["Max Age"].values
+            inferred_inside_outside = inf_io[index]["IO Age"].values
+            inferred_maximized = inf_maxed[index]["Max Age"].values
+
+            for i, (method, kc) in enumerate(
+                zip(
+                    [
+                        inside_outside,
+                        maximized,
+                        inferred_inside_outside,
+                        inferred_maximized,
+                    ],
+                    [io_kc, max_kc, inf_io_kc, inf_maxed_kc],
+                )
+            ):
+                self.mutation_accuracy(
+                    axes[index, i], true_ages, method, "", kc_distance_1=kc[index]
+                )
+            axes[index, 3].text(
+                3.25,
+                0.15,
+                "Mutation Rate: " + str(param),
+                rotation=90,
+                transform=axes[index, 1].transAxes,
+                size=20,
+            )
+
+        axes[0, 0].set_title("Inside-Outside", size=20, color="Black")
+        axes[0, 1].set_title("Maximization", size=20, color="Black")
+        axes[0, 2].set_title("Inside-Outside", size=20, color="Black")
+        axes[0, 3].set_title("Maximization", size=20, color="Black")
+
+        f.text(0.5, 0.05, "True Time", ha="center", size=25)
+        f.text(0.08, 0.5, "Estimated Time", va="center", rotation="vertical", size=25)
+        f.text(0.31, 0.92, "tsdate using True Topologies", ha="center", size=25)
+        f.text(0.71, 0.92, "tsdate using tsinfer Topologies", ha="center", size=25)
+
+        self.save(self.name)
+
+
+class NeutralSims(Figure):
+    """
+    Figure S2: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
+    on a neutral coalescent simulation.
+    """
+
+    name = "neutral_simulated_mutation_accuracy"
+    data_path = "simulated-data"
+    filename = [
+        "neutral_simulated_mutation_accuracy_mutations",
+        "neutral_simulated_mutation_accuracy_kc_distances",
+    ]
+    header = ["infer", "infer"]
+
+    def plot(self):
+        df = self.data[0]
+        kc_distances = self.data[1]
+        kc_distances = kc_distances.set_index(kc_distances.columns[0])
+        # error_df = self.data[1]
+        # anc_error_df = self.data[2]
+        f, ax = plt.subplots(
+            nrows=2,
+            ncols=2,
+            sharex=True,
+            sharey=True,
+            gridspec_kw={"wspace": 0.1, "hspace": 0.1},
+            figsize=(12, 12),
+        )
+
+        ax[0, 0].set_xscale("log")
+        ax[0, 0].set_yscale("log")
+        ax[0, 0].set_xlim(1, 2e5)
+        ax[0, 0].set_ylim(1, 2e5)
+
+        # for row, (df, kc_distance) in enumerate(zip(no_error_df, kc_distances)):
+        # We can only plot comparable mutations, so remove all rows where NaNs exist
+        df = df[df["simulated_ts"] > 0]
+        df = df[np.all(df > 0, axis=1)]
+
+        # tsdate on true tree
+        self.mutation_accuracy(
+            ax[0, 0],
+            df["simulated_ts"][df["tsdate"] > 0],
+            df["tsdate"][df["tsdate"] > 0],
+            "tsdate (using true topology)",
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
+        )
+
+        # tsdate on inferred tree
+        self.mutation_accuracy(
+            ax[0, 1],
+            df["simulated_ts"][df["tsdate_iterate"] > 0],
+            df["tsdate_iterate"][df["tsdate_iterate"] > 0],
+            "tsinfer + tsdate \n (with one round of iteration)",
+            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_iterate"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_iterate"]),
+        )
+
+        df = df[df["relate"] > 0]
+        # Relate accuracy
+        self.mutation_accuracy(
+            ax[1, 1],
+            df["simulated_ts"][~np.isnan(df["relate"])],
+            df["relate"][~np.isnan(df["relate"])],
+            "Relate",
+            cmap="Greens",
+            kc_distance_0=np.mean(kc_distances.loc[0]["relate"]),
+            kc_distance_1=np.mean(kc_distances.loc[1]["relate"]),
+        )
+
+        # GEVA accuracy
+        self.mutation_accuracy(
+            ax[1, 0],
+            df["simulated_ts"][~np.isnan(df["geva"])],
+            df["geva"][~np.isnan(df["geva"])],
+            "GEVA",
+            cmap="Reds",
+        )
+
+        f.text(0.5, 0.05, "True Time", ha="center", size=25)
+        f.text(0.05, 0.5, "Estimated Time", va="center", rotation="vertical", size=25)
+
+        self.save(self.name)
+
+
+class TsdateChr20Accuracy(Figure):
+    """
+    Figure S3: Evaluating tsdate's accuracy on Simulated Chromosome 20
+    """
+
+    name = "tsdate_accuracy_chr20"
+    data_path = "simulated-data"
+    filename = [
+        "tsdate_accuracy_chr20_mutations",
+        "tsdate_accuracy_chr20_error_mutations",
+        "tsdate_accuracy_chr20_anc_error_mutations",
+        "tsdate_accuracy_chr20_kc_distances",
+        "tsdate_accuracy_chr20_error_kc_distances",
+        "tsdate_accuracy_chr20_anc_error_kc_distances",
+    ]
+    header = np.repeat("infer", len(filename))
+
+    plt_title = "tsdate_accuracy_chr20"
+
+    def plot(self):
+        df = self.data[0]
+        error_df = self.data[1]
+        anc_error_df = self.data[2]
+        kc_distances = self.data[3]
+        kc_distances = kc_distances.set_index(kc_distances.columns[0])
+        error_kc_distances = self.data[4]
+        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
+        anc_error_kc_distances = self.data[5]
+        anc_error_kc_distances = anc_error_kc_distances.set_index(
+            anc_error_kc_distances.columns[0]
+        )
+
+        f, axes = plt.subplots(
+            ncols=3,
+            nrows=6,
+            sharex=True,
+            sharey=True,
+            gridspec_kw={
+                "wspace": 0.1,
+                "hspace": 0.05,
+                "width_ratios": [0.8, 0.8, 0.8],
+                "height_ratios": [1.2, 0.05, 1.2, 1.2, 1.2, 1.2],
+            },
+            figsize=(15, 20),
+        )
+        axes[0, 0].axis("off")
+        axes[0, 2].axis("off")
+        axes[1, 0].axis("off")
+        axes[1, 1].axis("off")
+        axes[1, 2].axis("off")
+
+        axes[0, 0].set_xscale("log")
+        axes[0, 0].set_yscale("log")
+        axes[0, 0].set_xlim(1, 2e5)
+        axes[0, 0].set_ylim(1, 2e5)
+        x0, x1 = axes[0, 0].get_xlim()
+        y0, y1 = axes[0, 0].get_ylim()
+        row_labels = [
+            "tsdate",
+            "",
+            "tsinfer + tsdate",
+            "tsinfer (mismatch) \n+ tsdate",
+            "tsinfer (mismatch) \n+ tsdate + reinfer (mismatch)",
+            "tsinfer (mismatch)+ tsdate + reinfer \n (mismatch) + redate",
+        ]
+        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2, 2]):
+            axes[i, j].set_ylabel(name, rotation=90, size=14)
+            axes[i, j].yaxis.set_label_position("right")
+
+        sim = df["simulated_ts"]
+        methods = [
+            "tsdate_inferred",
+            "tsdate_mismatch_inferred",
+            "tsdate_iterate_frommismatch_undated",
+            "tsdate_iterate_frommismatch",
+        ]
+        comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
+        self.mutation_accuracy(
+            axes[0, 1],
+            sim[comparable_sites],
+            df["tsdate"][comparable_sites],
+            "",
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
+        )
+        for col, prefix, (mut_df, kc_df) in zip(
+            range(3),
+            ["", "error_", "anc_error_"],
+            [
+                (df, kc_distances),
+                (error_df, error_kc_distances),
+                (anc_error_df, anc_error_kc_distances),
+            ],
+        ):
+            mut_df = mut_df.dropna(axis=1, how="all")
+            mut_df = mut_df[np.all(mut_df > 0, axis=1)]
+            for row, method, cmap in zip(
+                [2, 3, 4, 5], methods, ["Blues", "Blues", "Blues", "Blues"]
+            ):
+                method = prefix + method
+                result = mut_df[method]
+                comparable_sites = np.logical_and(
+                    mut_df["simulated_ts"] > 0, result > 0
+                )
+                cur_true_ages = mut_df["simulated_ts"][comparable_sites]
+                cur_results = result[comparable_sites]
+                self.mutation_accuracy(
+                    axes[row, col],
+                    cur_true_ages,
+                    cur_results,
+                    "",
+                    cmap=cmap,
+                    kc_distance_0=np.mean(kc_df.loc[0][method]),
+                    kc_distance_1=np.mean(kc_df.loc[1][method]),
+                )
+        axes[0, 1].set_title("tsdate using Simulated Topology")
+        axes[2, 0].set_title("No Error")
+        axes[2, 1].set_title("Empirical Error")
+        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
+        f.text(0.5, 0.08, "True Time", ha="center", size=25)
+        f.text(0.08, 0.4, "Estimated Time", va="center", rotation="vertical", size=25)
+        self.save(self.name)
+
+
+class Chr20Sims(Figure):
+    """
+    Figure S4: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
+    Chromosome 20 snippets
+    """
+
+    name = "chr20_sims"
+    data_path = "simulated-data"
+    filename = [
+        "chr20_sims_mutations",
+        "chr20_sims_error_mutations",
+        "chr20_sims_anc_error_mutations",
+        "chr20_sims_kc_distances",
+        "chr20_sims_error_kc_distances",
+        "chr20_sims_anc_error_kc_distances",
+    ]
+    header = np.repeat("infer", len(filename))
+    plt_title = "simulated_accuracy_chr20"
+
+    def plot(self):
+        df = self.data[0]
+        error_df = self.data[1]
+        anc_error_df = self.data[2]
+        kc_distances = self.data[3]
+        kc_distances = kc_distances.set_index(kc_distances.columns[0])
+        error_kc_distances = self.data[4]
+        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
+        anc_error_kc_distances = self.data[5]
+        anc_error_kc_distances = anc_error_kc_distances.set_index(
+            anc_error_kc_distances.columns[0]
+        )
+
+        f, axes = plt.subplots(
+            ncols=3,
+            nrows=5,
+            sharex=True,
+            sharey=True,
+            gridspec_kw={
+                "wspace": 0.1,
+                "hspace": 0.1,
+                "width_ratios": [1, 1, 1],
+                "height_ratios": [1, 0.1, 1, 1, 1],
+            },
+            figsize=(15, 20),
+        )
+        axes[0, 0].axis("off")
+        axes[0, 2].axis("off")
+        axes[1, 0].axis("off")
+        axes[1, 1].axis("off")
+        axes[1, 2].axis("off")
+
+        axes[0, 0].set_xscale("log")
+        axes[0, 0].set_yscale("log")
+        axes[0, 0].set_xlim(1, 2e5)
+        axes[0, 0].set_ylim(1, 2e5)
+        x0, x1 = axes[0, 0].get_xlim()
+        y0, y1 = axes[0, 0].get_ylim()
+        row_labels = [
+            "tsdate",
+            "",
+            "mismatch tsinfer + tsdate \n(iteration)",
+            "Relate",
+            "GEVA",
+        ]
+        for (i, name), j, color in zip(
+            enumerate(row_labels),
+            [1, 2, 2, 2, 2],
+            [
+                constants.colors["tsdate"],
+                "",
+                constants.colors["tsdate"],
+                constants.colors["relate"],
+                constants.colors["geva"],
+            ],
+        ):
+            axes[i, j].set_ylabel(name, rotation=90, color=color, size=20)
+            axes[i, j].yaxis.set_label_position("right")
+
+        sim = df["simulated_ts"]
+        methods = ["tsdate_iterate", "relate_iterate", "geva"]
+        df = df[np.all(df > 0, axis=1)]
+        self.mutation_accuracy(
+            axes[0, 1],
+            df["simulated_ts"],
+            df["tsdate"],
+            "",
+            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
+        )
+        for col, (mut_df, kc_df) in zip(
+            range(3),
+            [
+                (df, kc_distances),
+                (error_df, error_kc_distances),
+                (anc_error_df, anc_error_kc_distances),
+            ],
+        ):
+            for row, method, cmap in zip(
+                [2, 3, 4], methods, ["Blues", "Greens", "Reds"]
+            ):
+                result = mut_df[method]
+                mut_df = mut_df[np.all(mut_df > 0, axis=1)]
+                cur_true_ages = mut_df["simulated_ts"]
+                cur_results = mut_df[method]
+                kc_0 = np.mean(kc_df.loc[0][method])
+                kc_1 = np.mean(kc_df.loc[1][method])
+                if np.isnan(kc_0) or np.isnan(kc_1):
+                    self.mutation_accuracy(
+                        axes[row, col], cur_true_ages, cur_results, "", cmap=cmap
+                    )
+                else:
+                    self.mutation_accuracy(
+                        axes[row, col],
+                        cur_true_ages,
+                        cur_results,
+                        "",
+                        cmap=cmap,
+                        kc_distance_0=kc_0,
+                        kc_distance_1=kc_1,
+                    )
+
+        axes[0, 1].set_title("tsdate using Simulated Topology", color="black", size=20)
+        axes[2, 0].set_title("No Error", color="black", size=20)
+        axes[2, 1].set_title("Empirical Error", color="black", size=20)
+        axes[2, 2].set_title(
+            "Empirical Error + 1% Ancestral State Error", color="black"
+        )
+        f.text(0.5, 0.06, "True Time", ha="center", size=25)
+        f.text(0.06, 0.4, "Estimated Time", va="center", rotation="vertical", size=25)
+
+        self.save(self.name)
+
+
 class ScalingFigure(Figure):
     """
-    Figure S9: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
+    Figure S5: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
     With both samples and length of sequence.
     """
 
@@ -1885,1165 +2944,612 @@ class ScalingFigure(Figure):
         self.save(self.name)
 
 
-class TgpMutEstsFrequency(Figure):
+class MisspecifySampleTimes(Figure):
     """
-    Figure S19: Figure showing TGP mutation age estimates from tsdate,
-    Relate, GEVA vs. frequency.
-    """
-
-    name = "tgp_muts_frequency"
-    data_path = "data"
-    filename = ["tgp_mutations"]
-    plt_title = "TGP Mutation Age vs Frequency"
-
-    def plot(self):
-        df = self.data[0]
-        relate_estimates = [c for c in df.columns if "est_" in c]
-        comparable_mutations = df[
-            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
-        ]
-
-        comparable_mutations = comparable_mutations[
-            comparable_mutations["tsdate_age"] > 0
-        ]
-        frequency = comparable_mutations["tsdate_frequency"]
-        fig, ax = plt.subplots(
-            nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
-        )
-
-        ax[0].hexbin(
-            frequency,
-            comparable_mutations["tsdate_age"],
-            xscale="log",
-            yscale="log",
-            bins="log",
-            cmap="Blues",
-            mincnt=1,
-        )
-
-        ax[2].hexbin(
-            frequency,
-            comparable_mutations["AgeMean_Jnt"],
-            xscale="log",
-            yscale="log",
-            bins="log",
-            cmap="Reds",
-            mincnt=1,
-        )
-        comparable_mutations = comparable_mutations.melt(
-            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
-            var_name="relate_est",
-            value_name="relate_age",
-        )
-        ax[1].hexbin(
-            comparable_mutations["tsdate_frequency"],
-            comparable_mutations["relate_age"],
-            xscale="log",
-            yscale="log",
-            bins="log",
-            cmap="Greens",
-            mincnt=1,
-        )
-        plt.xlim(3e-3, 1.05)
-        plt.ylim(10, 5e5)
-        ax[0].set_title("Frequency vs. tsdate Estimated Allele Age")
-        ax[1].set_title("Frequency vs. Relate Estimated Allele Age")
-        ax[2].set_title("Frequency vs. GEVA Estimated Allele Age")
-        ax[0].set_xlabel("TGP Frequency")
-        ax[1].set_xlabel("TGP Frequency")
-        ax[2].set_xlabel("TGP Frequency")
-        ax[0].set_ylabel("Estimated Age by tsdate (generations)")
-        ax[1].set_ylabel("Estimated Age by Relate (generations)")
-        ax[2].set_ylabel("Estimated Age by GEVA (generations)")
-        plt.tight_layout()
-
-        self.save(self.name)
-
-
-class TgpMutationAgeComparisons(Figure):
-    """
-    Figure S21: Comparing TGP mutation age estimates from tsdate, Relate,
-    and GEVA.
+    Figure S17: Measuring the effect of misspecifying sample times
     """
 
-    name = "tgp_dates_comparison"
-    data_path = "data"
-    filename = ["tgp_mutations"]
-    plt_title = "Compare Mutation Age Estimates"
-
-    def plot(self):
-        df = self.data[0]
-        relate_estimates = [c for c in df.columns if "est_" in c]
-        comparable_mutations = df[
-            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
-        ]
-        fig, ax = plt.subplots(
-            nrows=1,
-            ncols=3,
-            figsize=(17, 5),
-            sharey=True,
-            sharex=True,
-        )
-        hexbin = ax[0].hexbin(
-            comparable_mutations["tsdate_age"],
-            comparable_mutations["AgeMean_Jnt"],
-            xscale="log",
-            yscale="log",
-            mincnt=1,
-            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
-        )
-        comparable_mutations = comparable_mutations.melt(
-            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
-            var_name="relate_est",
-            value_name="relate_age",
-        )
-        hexbin = ax[1].hexbin(
-            comparable_mutations["tsdate_age"],
-            comparable_mutations["relate_age"],
-            xscale="log",
-            yscale="log",
-            mincnt=1,
-            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
-        )
-
-        hexbin = ax[2].hexbin(
-            comparable_mutations["relate_age"],
-            comparable_mutations["AgeMean_Jnt"],
-            xscale="log",
-            yscale="log",
-            mincnt=1,
-            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
-        )
-
-        plt.xlim(5, 6e5)
-        plt.ylim(5, 6e5)
-        ax[0].set_title("tsdate vs. GEVA Estimated Allele Age")
-        ax[1].set_title("tsdate vs. Relate Estimated Allele Age")
-        ax[2].set_title("Relate vs. GEVA Estimated Allele Age")
-        ax[0].set_xlabel("Estimated Age by tsdate (generations)")
-        ax[0].set_ylabel("Estimated Age by GEVA (generations)")
-        ax[1].set_xlabel("Estimated Age by tsdate (generations)")
-        ax[1].set_ylabel("Estimated Age by Relate (generations)")
-        ax[2].set_xlabel("Estimated Age by Relate (generations)")
-        ax[2].set_ylabel("Estimated Age by GEVA (generations)")
-        for i in range(3):
-            ax[i].plot(ax[i].get_xlim(), ax[i].get_ylim(), c="black")
-        cax = fig.add_axes(
-            [0.95, 0.05, 0.02, 0.95]
-        )  # this locates the axis that is used for your colorbar. It is scaled 0 - 1.
-        cbar = plt.colorbar(hexbin, cax, orientation="vertical")
-        # plt.tight_layout()
-        self.save(self.name)
-
-
-class TgpMutationAverageAge(Figure):
-    """
-    Figure S20: Compare mutation age estimates from tsdate, Relate, and
-    GEVA for tgp chromosome 20.
-    """
-
-    name = "mutation_average_age"
-    data_path = "data"
-    filename = ["tgp_mutations"]
-    plt_title = "Average TGP Mutation Age"
-
-    def plot(self):
-        df = self.data[0]
-        relate_estimates = [c for c in df.columns if "est_" in c]
-        comparable_mutations = df[["tsdate_age", "AgeMean_Jnt"] + relate_estimates]
-        comparable_mutations = comparable_mutations[
-            comparable_mutations["tsdate_age"] > 0
-        ]
-        relate_ages = comparable_mutations.melt(
-            id_vars=["tsdate_age", "AgeMean_Jnt"],
-            var_name="relate_est",
-            value_name="relate_age",
-        ).dropna()
-        ax = plt.boxplot(
-            [
-                comparable_mutations["tsdate_age"],
-                relate_ages["relate_age"],
-                comparable_mutations["AgeMean_Jnt"],
-            ],
-            widths=0.75,
-            patch_artist=True,
-        )
-        plt.xticks([1, 2, 3], ["tsdate", "Relate", "GEVA"])
-        colors = ["blue", "green", "red"]
-        for patch, color in zip(ax["boxes"], colors):
-            patch.set_facecolor(color)
-
-        plt.yscale("log")
-        plt.ylabel("Estimated Allele Age (generations)")
-        plt.title(
-            "Estimated TGP Allele Ages \n {} Variant Sites on Chromosome 20".format(
-                comparable_mutations.shape[0]
-            )
-        )
-        self.save(self.name)
-
-
-class PriorEvaluation(Figure):
-    """
-    Figure S4: Evaluating the Lognormal Prior
-    """
-
-    name = "prior_evaluation"
+    name = "misspecify_sample_times"
     data_path = "simulated-data"
-    filename = "prior_evaluation"
-    plt_title = "prior_evaluation"
-
-    def __init__(self, args):
-        datafile_name = os.path.join(self.data_path, self.filename + ".csv")
-        self.data = pickle.load(open(datafile_name, "rb"))
+    filename = [
+        "misspecify_sample_times",
+    ]
+    header = ["infer"]
 
     def plot(self):
-        fig, ax = plt.subplots(2, 2, figsize=(16, 12), sharex=True, sharey=True)
-        axes = ax.ravel()
-        plt.xscale("log")
-        plt.yscale("log")
-        plt.xlim(1.8, 1050)
-        plt.ylim(1e-3, 4e5)
-        all_results = self.data
+        df = self.data[0].iloc[0:5, 1:]
+        wrong_perc_1 = list()
+        wrong_perc_2 = list()
+        timepoints = np.geomspace(100, 8000, 5)
+        for index, i in enumerate(timepoints):
+            assert np.sum(df.iloc[index] <= i) / np.sum(~df.iloc[index].isna()) == 0
+            wrong_perc_1.append(
+                100
+                * np.sum(df.iloc[index] <= (i + (i * 0.1)))
+                / np.sum(~df.iloc[index].isna())
+            )
+            wrong_perc_2.append(
+                100
+                * np.sum(df.iloc[index] <= (i + (i * 0.25)))
+                / np.sum(~df.iloc[index].isna())
+            )
+        heights = [2, 0.07, 0.5]
+        widths = [1, 1, 1, 1, 1]
+        gs_kw = dict(width_ratios=widths, height_ratios=heights)
+        fig = plt.figure(constrained_layout=True, figsize=(10, 7))
+        spec = gridspec.GridSpec(
+            ncols=5, nrows=3, figure=fig, height_ratios=heights, width_ratios=widths
+        )
 
-        for index, ((_, result), mixtures) in enumerate(
-            zip(all_results.items(), [False, False, False, False])
+        label_format = "{:,.0f}"
+        for r, _ in enumerate(heights):
+            for c, _ in enumerate(widths):
+                if r == 0:
+                    if c == 0:
+                        ax = fig.add_subplot(spec[r, c])
+                        target_ax = ax
+                        ax.set_ylabel(
+                            "Age of mutations carried by ancient sample (generations)"
+                        )
+                    else:
+                        ax = fig.add_subplot(
+                            spec[r, c], sharex=target_ax, sharey=target_ax
+                        )
+
+                    min_val = np.min(df.iloc[c, :])
+                    max_val = np.max(df.iloc[c, :])
+                    ax.hist(
+                        df.iloc[c, :],
+                        bins=10
+                        ** np.linspace(np.log10(min_val), np.log10(max_val), 50),
+                        color="grey",
+                        orientation="horizontal",
+                    )
+                    ax.axhline(timepoints[c], c="green")
+                    ax.axhline(timepoints[c] + (0.25 * timepoints[c]), c="y")
+                    ax.axhline(timepoints[c] + (0.5 * timepoints[c]), c="r")
+                    ax.set_yscale("log")
+                    ax.set_title(
+                        "Sample at "
+                        + label_format.format(timepoints[c])
+                        + "\n generations"
+                    )
+                    if c != 0:
+                        plt.setp(ax.get_yticklabels(), visible=False)
+                elif r == 2:
+                    if c == 0:
+                        ax = fig.add_subplot(spec[r, c])
+                        target_ax = ax
+                        ax.set_ylabel(
+                            "$\%$ mutations conflicting\n with misspecified age"
+                        )
+                    else:
+                        ax = fig.add_subplot(spec[r, c], sharey=target_ax)
+                    ax.bar(
+                        [
+                            str(timepoints[c] + (timepoints[c] * 0.25)),
+                            str(timepoints[c] + (timepoints[c] * 0.5)),
+                        ],
+                        [wrong_perc_1[c], wrong_perc_2[c]],
+                        color=["y", "r"],
+                    )
+                    ticks_loc = ax.get_xticks()
+                    ax.xaxis.set_major_locator(mticker.FixedLocator(ticks_loc))
+                    ax.set_xticklabels(
+                        [
+                            label_format.format(x)
+                            for x in [
+                                (timepoints[c] + (timepoints[c] * 0.25)),
+                                (timepoints[c] + (timepoints[c] * 0.5)),
+                            ]
+                        ]
+                    )
+                    if c != 0:
+                        plt.setp(ax.get_yticklabels(), visible=False)
+
+        fig.text(0.4, 0.26, "Number of variants")
+        fig.text(0.4, 0.005, "Misspecified sample times (generations)")
+        fig.tight_layout()
+        self.save(self.name)
+
+
+class ArchaicDescentSimsEvaluation(Figure):
+    """
+    Figure 15: Simulated evaluation of descent from sampled archaic
+    individuals.
+    """
+
+    name = "archaic_descent_evaluation"
+    data_path = "simulated-data"
+    filename = []
+    header = np.repeat("infer", len(filename))
+
+    def get_smoothed_means(self, a_arrs, v_arrs, d_arrs):
+        dfs = list()
+        smoothed_dfs = list()
+        for arrs, start_time in zip([a_arrs, v_arrs, d_arrs], [3794, 1726, 2204]):
+            threshold_times = np.tile(
+                np.linspace(start_time, 15090, 10).astype(int), 10
+            )
+            precision_arr = [item for sublist in arrs[0] for item in sublist]
+            recall_arr = [item for sublist in arrs[1] for item in sublist]
+            df = pd.DataFrame([threshold_times, recall_arr, precision_arr]).T
+            df.columns = ["Times", "Recall", "Precision"]
+            smoothed_mean = df.groupby("Times").mean()
+            dfs.append(df)
+            smoothed_dfs.append(smoothed_mean)
+        return dfs, smoothed_dfs
+
+    def get_precision_recall_arrs(self, suffix):
+        a_arrs = list()
+        v_arrs = list()
+        d_arrs = list()
+        for arrs, pop in zip(
+            [a_arrs, v_arrs, d_arrs], ["altai", "vindija", "denisovan"]
         ):
-            num_tips_all = np.concatenate(result["num_tips"]).ravel()
-            num_tips_all_int = num_tips_all.astype(int)
-            only_mixtures = np.full(len(num_tips_all), True)
-            if mixtures:
-                only_mixtures = np.where((num_tips_all - num_tips_all_int) != 0)[0]
+            means = pd.read_csv(
+                "simulated-data/archaic_descent_evaluation_" + pop + "_results.csv",
+                index_col=0,
+            )
+            precision_arr = means[
+                [
+                    col
+                    for col in means.columns
+                    if "precision_" + suffix in col and col[-1:].isdigit()
+                ]
+            ].values
+            recall_arr = means[
+                [
+                    col
+                    for col in means.columns
+                    if "recall_" + suffix in col and col[-1:].isdigit()
+                ]
+            ].values
+            arrs.append(precision_arr)
+            arrs.append(recall_arr)
+        return self.get_smoothed_means(a_arrs, v_arrs, d_arrs)
 
-            upper_bound_all = np.concatenate(result["upper_bound"]).ravel()[
-                only_mixtures
-            ]
-            lower_bound_all = np.concatenate(result["lower_bound"]).ravel()[
-                only_mixtures
-            ]
-            expectations_all = np.concatenate(result["expectations"]).ravel()[
-                only_mixtures
-            ]
+    def plot(self):
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dfs, smoothed_dfs = self.get_precision_recall_arrs("introgressed")
+        colors = [plt.cm.Dark2(i) for i in range(20)]
+        for i, pop in zip(range(3), ["Altai", "Vindija", "Denisovan"]):
+            ax.scatter(dfs[i]["Recall"], dfs[i]["Precision"], s=0.5, color=colors[i])
+            ax.plot(
+                smoothed_dfs[i]["Recall"],
+                smoothed_dfs[i]["Precision"],
+                "--",
+                color=colors[i],
+            )
+        ax.set_ylabel("Precision", fontsize=20)
+        ax.set_xlabel("Recall", fontsize=20)
+        # Set limits of shared ancestry in introgression plot
+        for i, pop in enumerate(["altai", "vindija", "denisovan"]):
+            means = pd.read_csv(
+                "simulated-data/archaic_descent_evaluation_" + pop + "_results.csv",
+                index_col=0,
+            )
+            ax.axvline(
+                means["neaden_shared_intro_recall"].mean(),
+                linestyle="dotted",
+                color=colors[i],
+                label=pop.title() + " common ancestry \n % of introgression",
+            )
+            ax.scatter(
+                means["recall_introgressed_descent_inf"].mean(),
+                means["precision_introgressed_descent_inf"].mean(),
+                color=colors[i],
+                marker="x",
+                s=120,
+            )
+        ax.set_ylim(0, 1)
+        ax.set_xlim(0, 1)
+        legend = ax.legend(loc="lower left", fontsize=12)
+        # plt.savefig("archaic_precision_recall_introgressed.pdf", bbox_inches="tight")
+        self.save(self.name + "_introgressed")
 
-            real_ages_all = np.concatenate(result["real_ages"]).ravel()[only_mixtures]
-            num_tips_all = num_tips_all[only_mixtures]
-            yerr = [
-                expectations_all - lower_bound_all,
-                upper_bound_all - expectations_all,
-            ]
+        fig, ax = plt.subplots(figsize=(8, 8))
+        dfs, smoothed_dfs = self.get_precision_recall_arrs("shared")
+        colors = [plt.cm.Dark2(i) for i in range(20)]
+        for i, pop in zip(range(3), ["Altai", "Vindija", "Denisovan"]):
+            ax.scatter(dfs[i]["Recall"], dfs[i]["Precision"], s=0.5, color=colors[i])
+            ax.plot(
+                smoothed_dfs[i]["Recall"],
+                smoothed_dfs[i]["Precision"],
+                "--",
+                label="Shared " + pop,
+                color=colors[i],
+            )
+        ax.set_ylabel("Precision", fontsize=20)
+        ax.set_xlabel("Recall", fontsize=20)
+        # Set limits of shared ancestry in introgression plot
+        for i, pop in enumerate(["altai", "vindija", "denisovan"]):
+            means = pd.read_csv(
+                "simulated-data/archaic_descent_evaluation_" + pop + "_results.csv",
+                index_col=0,
+            )
+            ax.scatter(
+                means["recall_shared_descent_inf"].mean(),
+                means["precision_shared_descent_inf"].mean(),
+                color=colors[i],
+                marker="x",
+                s=120,
+                label=pop.title() + " Descent",
+            )
+        ax.set_ylim(0, 1)
+        ax.set_xlim(0, 1)
 
-            # Smoothed average of true times
-            num_bins = 100
-            df = pd.DataFrame(real_ages_all, index=np.log(num_tips_all))
-            df["bins"] = pd.cut((df.index), num_bins)
-            smoothed_mean_df = df.groupby("bins").mean()
-            smoothed_mean_df["bin_mean"] = np.exp(smoothed_mean_df.index.map(attrgetter("right")))
-            smoothed_mean_df = smoothed_mean_df.dropna()
+        legend = ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=15)
 
-            axes[index].errorbar(
-                num_tips_all,
-                expectations_all,
-                ls="none",
-                yerr=yerr,
-                elinewidth=0.3,
-                alpha=0.4,
-                color="grey",
-                zorder=1,
-                label="95% credible interval of the prior",
-            )
-            axes[index].scatter(
-                num_tips_all,
-                real_ages_all,
-                s=0.5,
-                alpha=0.1,
-                zorder=2,
-                color="royalblue",
-                label="True time",
-            )
-            axes[index].scatter(
-                num_tips_all,
-                expectations_all,
-                s=0.5,
-                color="red",
-                zorder=3,
-                label="Expected time",
-                alpha=0.5,
-            )
-            axes[index].plot(
-                smoothed_mean_df["bin_mean"].astype(float).values,
-                smoothed_mean_df[0].values,
-                alpha=0.5,
-                color="blue",
-                label="Moving average of true time",
-                zorder=4,
-            )
+        self.save(
+            self.name + "_shared"
+        )  # ("archaic_precision_recall_shared.pdf", bbox_extra_artists=(legend,), bbox_inches='tight')
 
-            coverage = np.sum(
-                np.logical_and(
-                    real_ages_all < upper_bound_all, real_ages_all > lower_bound_all
-                )
-            ) / len(expectations_all)
-            axes[index].text(
-                0.35,
-                0.25,
-                "Overall Coverage Probability:" + "{0:.3f}".format(coverage),
-                size=10,
-                ha="center",
-                va="center",
-                transform=axes[index].transAxes,
+
+class GeographicEvaluation(Figure):
+    """
+    Figure S9: Evaluation of geographic estimator.
+    Generate data with:
+    `python src/run_evaluation.py geographic_evaluation --setup --inference`
+    """
+
+    name = "geographic_evaluation"
+    data_path = "simulated-data"
+    filename = [
+        "geographic_evaluation_true_pops",
+        "geographic_evaluation_sim_locations",
+        "geographic_evaluation_inferred_locations",
+        "geographic_evaluation_pre_out_of_africa",
+    ]
+    header = ["infer", "infer", "infer", "infer"]
+
+    def jitter(self, array):
+        max_min = np.max(array) - np.min(array)
+        return array + np.random.randn(len(array))
+
+    def plot_map(self, ax):
+        centre_point = [34, 42]
+        southwest = [13, -5]
+        southeast = [-6, 76]
+        northeast = [64, 58]
+
+        ax.coastlines(linewidth=0.1)
+        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
+        ax.set_extent([-5, 87, -2, 52], crs=ccrs.Geodetic())
+        ax.plot(
+            [southwest[1], centre_point[1]],
+            [southwest[0], centre_point[0]],
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            marker="o",
+            markersize=3,
+            transform=ccrs.PlateCarree(),
+        )
+        ax.plot(
+            [southeast[1], centre_point[1]],
+            [southeast[0], centre_point[0]],
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            marker="o",
+            markersize=3,
+            transform=ccrs.PlateCarree(),
+        )
+        ax.plot(
+            [centre_point[1], northeast[1]],
+            [centre_point[0], northeast[0]],
+            color="black",
+            linestyle="--",
+            linewidth=1,
+            marker="o",
+            markersize=3,
+            transform=ccrs.PlateCarree(),
+        )
+        return ax
+
+    def plot(self):
+        true_pops = self.data[0][["Populations"]].to_numpy().transpose()[0]
+        sim_locs = self.data[1][["latitude", "longitude"]].to_numpy()
+        inferred_locs = self.data[2][["latitude", "longitude"]].to_numpy()
+        pre_out_of_africa = self.data[3][["0"]].to_numpy().transpose()[0]
+        colours = [
+            sns.color_palette("Wistia", 3)[0],
+            sns.color_palette("Blues", 1)[0],
+            sns.color_palette("Greens", 2)[1],
+            "salmon",
+        ]
+        fig = plt.figure(figsize=(20, 15))
+        ax1 = plt.subplot(2, 2, 1, projection=ccrs.PlateCarree(central_longitude=41))
+
+        for index, color, population in zip(
+            range(1, 5), colours, ["YRI", "CEU", "CHB", '"Out of Africa"']
+        ):
+            ax = plt.subplot(
+                2, 2, index, projection=ccrs.PlateCarree(central_longitude=41)
             )
-            less5_tips = np.where(num_tips_all < 5)[0]
-            coverage = np.sum(
-                np.logical_and(
-                    real_ages_all[less5_tips] < upper_bound_all[less5_tips],
-                    (real_ages_all[less5_tips] > lower_bound_all[less5_tips]),
-                )
-                / len(expectations_all[less5_tips])
-            )
-            axes[index].text(
-                0.35,
-                0.21,
-                "<5 Tips Coverage Probability:" + "{0:.3f}".format(coverage),
-                size=10,
-                ha="center",
-                va="center",
-                transform=axes[index].transAxes,
-            )
-            mrcas = np.where(num_tips_all == 1000)[0]
-            coverage = np.sum(
-                np.logical_and(
-                    real_ages_all[mrcas] < upper_bound_all[mrcas],
-                    (real_ages_all[mrcas] > lower_bound_all[mrcas]),
-                )
-                / len(expectations_all[mrcas])
-            )
-            axes[index].text(
-                0.35,
-                0.17,
-                "MRCA Coverage Probability:" + "{0:.3f}".format(coverage),
-                size=10,
-                ha="center",
-                va="center",
-                transform=axes[index].transAxes,
-            )
-            axins = zoomed_inset_axes(
-                axes[index],
-                2.7,
-                loc=4,
-                bbox_to_anchor=(0.95, 0.1),
-                bbox_transform=axes[index].transAxes,
-            )
-            axins.errorbar(
-                num_tips_all,
-                expectations_all,
-                ls="none",
-                yerr=yerr,
-                elinewidth=0.7,
-                alpha=0.1,
-                color="grey",
-                # solid_capstyle="projecting",
-                #capsize=4,
-                label="95% credible interval of the prior",
-                zorder=1,
-            )
-            axins.scatter(
-                num_tips_all,
-                real_ages_all,
-                s=2,
-                color="royalblue",
-                alpha=0.1,
-                label="True time",
-                zorder=2,
-            )
-            axins.scatter(
-                num_tips_all,
-                expectations_all,
-                s=2,
-                color="red",
-                label="Expected time",
-                alpha=0.1,
-                zorder=3,
-            )
-            axins.plot(
-                smoothed_mean_df["bin_mean"].astype(int).values,
-                smoothed_mean_df[0].values,
+            ax = self.plot_map(ax)
+            ax.scatter(
+                self.jitter(sim_locs[:, 1][true_pops == (index - 1)]),
+                self.jitter(sim_locs[:, 0][true_pops == index - 1]),
+                s=0.7,
                 alpha=0.8,
-                color="blue",
-                label="Moving average of true time",
-                zorder=4
+                color=color,
+                transform=ccrs.PlateCarree(),
+                label=population,
             )
-
-            x1, x2, y1, y2 = 970, 1050, 5e3, 3e5
-            axins.set_xlim(x1, x2)
-            axins.set_ylim(y1, y2)
-            axins.set_xscale("log")
-            axins.set_yscale("log")
-            axins.set_xticks([], minor=True)
-            axins.set_yticks([], minor=True)
-            mark_inset(axes[index], axins, loc1=2, loc2=1, fc="none", ec="0.5")
-        lgnd = axes[3].legend(loc=4, prop={"size": 12}, bbox_to_anchor=(1, -0.3))
-        lgnd.legendHandles[0]._sizes = [30]
-        lgnd.legendHandles[1]._sizes = [30]
-        lgnd.legendHandles[2]._linewidths = [2]
-        fig.text(0.5, 0.04, "Number of Tips", ha="center", size=15)
-        fig.text(
-            0.04,
-            0.5,
-            "Node Age (Generations)",
-            va="center",
-            rotation="vertical",
-            size=15,
-        )
-        axes[0].set_title("$\it{r}$=0", size=14)
-        axes[1].set_title("$\it{r}$=1e-8", size=14)
-        axes[1].text(
-            1.03,
-            0.2,
-            "Lognormal Distribution",
-            rotation=90,
-            color="Black",
-            transform=axes[1].transAxes,
-            size=14,
-        )
-        axes[3].text(
-            1.03,
-            0.2,
-            "Gamma Distribution",
-            rotation=90,
-            color="Black",
-            transform=axes[3].transAxes,
-            size=14,
-        )
-
-        self.save(self.name)
-
-
-class TsdateAccuracy(Figure):
-    """
-    Figure S5: Evaluating tsdate's accuracy at various mutation rates
-    """
-
-    name = "tsdate_accuracy"
-    data_path = "simulated-data"
-    filename = "tsdate_accuracy.mutation_ages.kc_distances"
-    plt_title = "tsdate_accuracy"
-
-    def __init__(self, args):
-        datafile_name = os.path.join(self.data_path, self.filename + ".csv")
-        self.data = pickle.load(open(datafile_name, "rb"))
-
-    def plot(self):
-        (
-            sim,
-            io,
-            maxed,
-            inf_io,
-            inf_maxed,
-            io_kc,
-            max_kc,
-            inf_io_kc,
-            inf_maxed_kc,
-        ) = self.data
-        f, axes = plt.subplots(
-            nrows=3,
-            ncols=4,
-            sharex=True,
-            sharey=True,
-            gridspec_kw={
-                "wspace": 0.1,
-                "hspace": 0.1,
-                "height_ratios": [1, 1, 1],
-                "width_ratios": [1, 1, 1, 1],
-            },
-            figsize=(20, 15),
-        )
-        axes[0, 0].set_xscale("log")
-        axes[0, 0].set_yscale("log")
-        axes[0, 0].set_xlim(2e-1, 2e5)
-        axes[0, 0].set_ylim(2e-1, 2e5)
-        x0, x1 = axes[0, 0].get_xlim()
-        y0, y1 = axes[0, 0].get_ylim()
-
-        parameter_arr = [1e-9, 1e-8, 1e-7]
-
-        for index, param in enumerate(parameter_arr):
-            true_ages = sim[index]["Simulated Age"].values
-            inside_outside = io[index]["IO Age"].values
-            maximized = maxed[index]["Max Age"].values
-            inferred_inside_outside = inf_io[index]["IO Age"].values
-            inferred_maximized = inf_maxed[index]["Max Age"].values
-
-            for i, (method, kc) in enumerate(
-                zip(
-                    [
-                        inside_outside,
-                        maximized,
-                        inferred_inside_outside,
-                        inferred_maximized,
-                    ],
-                    [io_kc, max_kc, inf_io_kc, inf_maxed_kc],
-                )
-            ):
-                self.mutation_accuracy(
-                    axes[index, i], true_ages, method, "", kc_distance_1=kc[index]
-                )
-            axes[index, 3].text(
-                3.25,
-                0.15,
-                "Mutation Rate: " + str(param),
-                rotation=90,
-                transform=axes[index, 1].transAxes,
-                size=20,
+            ax.set_title(
+                "{}".format(np.sum(true_pops == index - 1))
+                + " "
+                + population
+                + " ancestors",
+                fontsize=20,
             )
+        self.save(self.name + "_simulated")
 
-        axes[0, 0].set_title("Inside-Outside", size=20, color="Black")
-        axes[0, 1].set_title("Maximization", size=20, color="Black")
-        axes[0, 2].set_title("Inside-Outside", size=20, color="Black")
-        axes[0, 3].set_title("Maximization", size=20, color="Black")
+        fig = plt.figure(figsize=(20, 15))
+        ax = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=41))
+        ax = self.plot_map(ax)
+        ax.scatter(
+            self.jitter(inferred_locs[:, 1][pre_out_of_africa]),
+            self.jitter(inferred_locs[:, 0][pre_out_of_africa]),
+            alpha=0.8,
+            s=0.7,
+            transform=ccrs.PlateCarree(),
+            color=colours[0],
+        )
+        self.save(self.name + "_inferred")
 
-        f.text(0.5, 0.05, "True Time", ha="center", size=25)
-        f.text(0.08, 0.5, "Estimated Time", va="center", rotation="vertical", size=25)
-        f.text(0.31, 0.92, "tsdate using True Topologies", ha="center", size=25)
-        f.text(0.71, 0.92, "tsdate using tsinfer Topologies", ha="center", size=25)
 
-        self.save(self.name)
-
-
-class NeutralSims(Figure):
+class SimulatedAfricanAncestors(Figure):
     """
-    Figure S6: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
-    on a neutral coalescent simulation.
+    Figure S16. Plot proportion of simulated ancestors closer to Eurasia than Africa
+    Generate data with same command as previous figure.
     """
 
-    name = "neutral_simulated_mutation_accuracy"
+    name = "simulated_african_ancestors"
     data_path = "simulated-data"
     filename = [
-        "neutral_simulated_mutation_accuracy_mutations",
-        "neutral_simulated_mutation_accuracy_kc_distances",
+        "geographic_evaluation_inferred_locations",
     ]
-    header = ["infer", "infer"]
+    header = ["infer"]
+
+    def plot(self):
+        # locs = pd.read_csv("simulated-data/geographic_evaluation_inferred_locations.csv", index_col=0)
+        locs = self.data[0]
+        less_than = []
+        for i in np.linspace(0, np.max(locs["time"]) - 1, 20):
+            less_than.append(
+                np.sum(locs[locs["time"] > i]["inferred_pop"] != 0)
+                / np.sum(locs["time"] > i)
+            )
+
+        widths = [1]
+        heights = [1, 2]
+        gs_kw = dict(width_ratios=widths, height_ratios=heights)
+        fig, ax = plt.subplots(2, 1, figsize=(12, 10), sharex=True, gridspec_kw=gs_kw)
+        ax[0].hist(
+            locs["time"],
+            bins=np.linspace(0, np.max(locs["time"]) - 1, 20),
+            label="Simulated",
+            color="Blue",
+        )
+        ax[1].set_xlabel("Ancestor time (generations)")
+        ax[0].set_ylabel("Total number of ancestors")
+        ax[1].set_ylabel(
+            'Percentage of all ancestors $>$ time \n that are "outside" of Africa'
+        )
+        ax[1].plot(
+            np.linspace(0, np.max(locs["time"]) - 1, 20), less_than, color="Blue"
+        )
+        ax[0].axvline(
+            x=5600, ymin=-1.2, ymax=1, c="red", linewidth=2, zorder=2, clip_on=False
+        )
+        ax[1].axvline(
+            x=5600, ymin=0, ymax=1.2, c="red", linewidth=2, zorder=2, clip_on=False
+        )
+        fig.text(0.22, 0.9, 'Time of "Out of Africa" event in simulation')
+        fig.legend()
+        self.save(self.name)
+
+
+class SiteLinkageAndQuality(Figure):
+    """
+    Figure S6. Plot proportion of sites with low quality or linkage as a function of the
+    number of mutations at those sites.
+    To generate tree sequence for this plot, run:
+    `make hgdp_tgp_sgdp_high_cov_ancients_chr20.dated.trees`
+    and in the data/ directory, run:
+    `make 20160622.chr20.mask.fasta`
+    """
+
+    name = "ld_quality_by_mutations"
+
+    def __init__(self, args):
+        self.ts = self.main_ts(args.chrom)
+        super().__init__(args)
+
+    def gen_log_space(self, limit, n):
+        result = [1]
+        ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
+        while len(result) < n:
+            next_value = result[-1] * ratio
+            if next_value - result[-1] >= 1:
+                # desired state - next_value will be a different integer
+                result.append(next_value)
+            else:
+                # problem! same integer. we need to find next_value by artificially incrementing previous value
+                result.append(result[-1] + 1)
+                # recalculate the ratio so that the remaining values will scale correctly
+                ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
+        # round, re-adjust to 0 indexing
+        return np.array(list(map(lambda x: round(x) - 1, result)), dtype=np.uint64)
+
+    def plot(self):
+
+        client = dask.distributed.Client(
+            dashboard_address="localhost:22222",
+            processes=False,
+        )
+
+        haploid = self.ts.genotype_matrix()
+        haploid = da.from_array(haploid, chunks=(10000, haploid.shape[1]))
+        # Convert to bi-allelic
+        haploid[haploid > 1] = 1
+
+        # Calculate AF
+        alt_count = (haploid == 1).sum(axis=1)
+        af = (alt_count / haploid.shape[1]).astype(np.float32)
+        af = af.compute()
+
+        # Filter sites by AF
+        sites_to_keep = np.logical_and(af >= 0.01, af <= 0.99)
+        f_haploid_gt = haploid[sites_to_keep]
+
+        @numba.jit(nopython=True, nogil=True, fastmath=True)
+        def ld(site_a, site_b):
+            rr, ra, ar, aa = (0, 0, 0, 0)
+            for j in range(len(site_a)):
+                f = site_a[j]
+                c = site_b[j]
+                if f == 0:
+                    if c == 0:
+                        rr += 1
+                    elif c == 1:
+                        ra += 1
+                elif f == 1:
+                    if c == 0:
+                        ar += 1
+                    elif c == 1:
+                        aa += 1
+            s = rr + ra + ar + aa
+            if s > 0:
+                rr = rr / s
+                ra = ra / s
+                ar = ar / s
+                aa = aa / s
+                D = (rr * aa) - (ra * ar)
+                # D_max = min((r0 * a1), (r1 * a0))
+                # D_prime = D / D_max
+                m = (rr + ra) * (rr + ar) * (aa + ar) * (aa + ra)
+                if m > 0:
+                    r_squared = (D / math.sqrt(m)) ** 2
+                    return r_squared
+            return np.nan
+
+        # For a given region sum the LD for each site in a 100-site window around that site
+        @numba.guvectorize(
+            ["void(int8[:,:], float32[:])"],
+            "(variants,samples)->(variants)",
+            nopython=True,
+        )
+        def ld_window_sum(region, ld_out):
+            for i in range(len(region)):
+                ld_out[i] = 0
+            for i in range(len(region) - 50):
+                for j in range(50):
+                    ld_ij = ld(region[i], region[i + j])
+                    ld_out[i] = ld_out[i] + ld_ij
+                    ld_out[i + j] = ld_out[i + j] + ld_ij
+
+        window_ld = da.overlap.map_overlap(
+            ld_window_sum,
+            f_haploid_gt.rechunk((9995, f_haploid_gt.chunks[1])),
+            depth=50,
+            boundary=np.nan,
+            drop_axis=1,
+            dtype=np.float32,
+        ).compute()
+
+        ld = np.full((len(haploid),), np.nan)
+        ld[sites_to_keep] = window_ld
+
+        # From https://www.internationalgenome.org/announcements/genome-accessibility-masks/
+        mask_chr20 = SeqIO.index("data/20160622.chr20.mask.fasta", "fasta")["chr20"].seq
+        mask = []
+        for site in self.ts.tables.sites:
+            mask.append(mask_chr20[int(site.position) - 1])
+        mask = np.asarray(mask, dtype="U1")
+
+        muts_per_site = np.unique(self.ts.tables.mutations.site, return_counts=True)[1]
+
+        masked = mask != "P"
+        low_ld = ld < 10
+        no_ld = np.isnan(ld)
+
+        total_hist, bin_edges = np.histogram(
+            muts_per_site,
+            bins=self.gen_log_space(1000, 50)[1:],
+        )
+        masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
+        prop_masked_hist = masked_hist / total_hist
+        ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
+        prop_ld_hist = ld_hist / total_hist
+        neither_hist, bins = np.histogram(
+            muts_per_site[np.logical_and(~masked, ~low_ld)],
+            bins=bin_edges,
+        )
+        prop_neither_hist = neither_hist / total_hist
+
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor("white")
+        ax.plot(
+            bin_edges[:-1],
+            prop_masked_hist,
+            drawstyle="steps",
+            label="Low quality",
+            color="red",
+        )
+        ax.plot(
+            bin_edges[:-1],
+            prop_ld_hist,
+            drawstyle="steps",
+            label="Low linkage",
+            color="orange",
+        )
+        ax.plot(
+            bin_edges[:-1],
+            prop_neither_hist,
+            drawstyle="steps",
+            label="Neither",
+            color="green",
+        )
+        ax.legend(prop={"size": 10})
+        ax.set_ylabel("Proportion of sites")
+        ax.set_xlabel("Number of mutations at site")
+        ax.set_xlim(0, 500)
+        fig.savefig("figures/ld_quality_by_mutations.eps")
+
+
+class DeletedSitesChr20(Figure):
+    """
+    Figure S10. Evaluating the effect of deleting sites with > 100 mutations in the
+    inferred tree sequence of the long arm of Chromosome 20.
+    To generate data for this plot, run:
+    `python src/analyze_data.py redate_delete_sites`
+    """
+
+    name = "redate_delete_sites"
+    data_path = "data"
+    filename = ["hgdp_tgp_sgdp_chr20_q.deleted_site_times"]
 
     def plot(self):
         df = self.data[0]
-        kc_distances = self.data[1]
-        kc_distances = kc_distances.set_index(kc_distances.columns[0])
-        # error_df = self.data[1]
-        # anc_error_df = self.data[2]
-        f, ax = plt.subplots(
-            nrows=2,
-            ncols=2,
-            sharex=True,
-            sharey=True,
-            gridspec_kw={"wspace": 0.1, "hspace": 0.1},
-            figsize=(12, 12),
+        fig, ax = plt.subplots(figsize=(6, 6), sharex=True, sharey=True)
+        x = df["original_age"]
+        y = df["deleted_age"]
+        ax.set_xlim(1, 2e5)
+        ax.set_ylim(1, 2e5)
+        plotted_axis = self.mutation_accuracy(ax, x, y, None, cmap=None)
+        fig.subplots_adjust(right=0.9)
+        colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
+        cb = fig.colorbar(plotted_axis, cax=colorbar_ax)
+        cb.set_label("Number of Mutations")
+        ax.set_ylabel(
+            "Site age estimates (generations), deleting sites with > 100 mutations"
         )
-
-        ax[0, 0].set_xscale("log")
-        ax[0, 0].set_yscale("log")
-        ax[0, 0].set_xlim(1, 2e5)
-        ax[0, 0].set_ylim(1, 2e5)
-
-        # for row, (df, kc_distance) in enumerate(zip(no_error_df, kc_distances)):
-        # We can only plot comparable mutations, so remove all rows where NaNs exist
-        df = df[df["simulated_ts"] > 0]
-        df = df[np.all(df > 0, axis=1)]
-
-        # tsdate on true tree
-        self.mutation_accuracy(
-            ax[0, 0],
-            df["simulated_ts"][df["tsdate"] > 0],
-            df["tsdate"][df["tsdate"] > 0],
-            "tsdate (using true topology)",
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
-        )
-
-        # tsdate on inferred tree
-        self.mutation_accuracy(
-            ax[0, 1],
-            df["simulated_ts"][df["tsdate_iterate"] > 0],
-            df["tsdate_iterate"][df["tsdate_iterate"] > 0],
-            "tsinfer + tsdate \n (with one round of iteration)",
-            kc_distance_0=np.mean(kc_distances.loc[0]["tsdate_iterate"]),
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate_iterate"]),
-        )
-
-        df = df[df["relate"] > 0]
-        # Relate accuracy
-        self.mutation_accuracy(
-            ax[1, 1],
-            df["simulated_ts"][~np.isnan(df["relate"])],
-            df["relate"][~np.isnan(df["relate"])],
-            "Relate",
-            cmap="Greens",
-            kc_distance_0=np.mean(kc_distances.loc[0]["relate"]),
-            kc_distance_1=np.mean(kc_distances.loc[1]["relate"]),
-        )
-
-        # GEVA accuracy
-        self.mutation_accuracy(
-            ax[1, 0],
-            df["simulated_ts"][~np.isnan(df["geva"])],
-            df["geva"][~np.isnan(df["geva"])],
-            "GEVA",
-            cmap="Reds",
-        )
-
-        f.text(0.5, 0.05, "True Time", ha="center", size=25)
-        f.text(0.05, 0.5, "Estimated Time", va="center", rotation="vertical", size=25)
-
+        ax.set_xlabel("Site age estimates (generations) using all sites")
         self.save(self.name)
-
-
-class TsdateChr20Accuracy(Figure):
-    """
-    Figure S7: Evaluating tsdate's accuracy on Simulated Chromosome 20
-    """
-
-    name = "tsdate_accuracy_chr20"
-    data_path = "simulated-data"
-    filename = [
-        "tsdate_chr20_accuracy_mutations",
-        "tsdate_chr20_accuracy_error_mutations",
-        "tsdate_chr20_accuracy_anc_error_mutations",
-        "tsdate_chr20_accuracy_kc_distances",
-        "tsdate_chr20_accuracy_error_kc_distances",
-        "tsdate_chr20_accuracy_anc_error_kc_distances",
-    ]
-
-    plt_title = "tsdate_accuracy_chr20"
-
-    def plot(self):
-        df = self.data[0]
-        error_df = self.data[1]
-        anc_error_df = self.data[2]
-        kc_distances = self.data[3]
-        kc_distances = kc_distances.set_index(kc_distances.columns[0])
-        error_kc_distances = self.data[4]
-        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
-        anc_error_kc_distances = self.data[5]
-        anc_error_kc_distances = anc_error_kc_distances.set_index(
-            anc_error_kc_distances.columns[0]
-        )
-
-        f, axes = plt.subplots(
-            ncols=3,
-            nrows=5,
-            sharex=True,
-            sharey=True,
-            gridspec_kw={
-                "wspace": 0.1,
-                "hspace": 0.1,
-                "width_ratios": [1, 1, 1],
-                "height_ratios": [1, 0.1, 1, 1, 1],
-            },
-            figsize=(15, 20),
-        )
-        axes[0, 0].axis("off")
-        axes[0, 2].axis("off")
-        axes[1, 0].axis("off")
-        axes[1, 1].axis("off")
-        axes[1, 2].axis("off")
-
-        axes[0, 0].set_xscale("log")
-        axes[0, 0].set_yscale("log")
-        axes[0, 0].set_xlim(1, 2e5)
-        axes[0, 0].set_ylim(1, 2e5)
-        x0, x1 = axes[0, 0].get_xlim()
-        y0, y1 = axes[0, 0].get_ylim()
-        row_labels = [
-            "tsdate",
-            "",
-            "tsinfer + tsdate",
-            "tsinfer with mismatch \n+ tsdate",
-            "iteration tsinfer \n+ tsdate",
-        ]
-        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
-            axes[i, j].set_ylabel(name, rotation=90, size=20)
-            axes[i, j].yaxis.set_label_position("right")
-
-        sim = df["simulated_ts"]
-        methods = [
-            "tsdate_inferred",
-            "tsdate_mismatch_inferred",
-            "tsdate_iterate_frommismatch",
-        ]
-        comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
-        self.mutation_accuracy(
-            axes[0, 1],
-            sim[comparable_sites],
-            df["tsdate"][comparable_sites],
-            "",
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
-        )
-        for col, prefix, (mut_df, kc_df) in zip(
-            range(3),
-            ["", "error_", "anc_error_"],
-            [
-                (df, kc_distances),
-                (error_df, error_kc_distances),
-                (anc_error_df, anc_error_kc_distances),
-            ],
-        ):
-            mut_df = mut_df.dropna(axis=1, how="all")
-            mut_df = mut_df[np.all(mut_df > 0, axis=1)]
-            for row, method, cmap in zip(
-                [2, 3, 4], methods, ["Blues", "Blues", "Blues"]
-            ):
-                method = prefix + method
-                result = mut_df[method]
-                # comparable_sites = np.logical_and(sim > 0, result > 0)
-                comparable_sites = np.logical_and(
-                    mut_df["simulated_ts"] > 0, result > 0
-                )
-                # cur_true_ages = sim[comparable_sites]
-                cur_true_ages = mut_df["simulated_ts"][comparable_sites]
-                cur_results = result[comparable_sites]
-                self.mutation_accuracy(
-                    axes[row, col],
-                    cur_true_ages,
-                    cur_results,
-                    "",
-                    cmap=cmap,
-                    kc_distance_0=np.mean(kc_df.loc[0][method]),
-                    kc_distance_1=np.mean(kc_df.loc[1][method]),
-                )
-        axes[0, 1].set_title("tsdate using Simulated Topology")
-        axes[2, 0].set_title("No Error")
-        axes[2, 1].set_title("Empirical Error")
-        axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
-        f.text(0.5, 0.05, "True Time", ha="center", size=25)
-        f.text(0.08, 0.4, "Estimated Time", va="center", rotation="vertical", size=25)
-
-        self.save(self.name)
-
-
-class Chr20Sims(Figure):
-    """
-    Figure S8: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
-    Chromosome 20 snippets
-    """
-
-    name = "chr20_sims"
-    data_path = "simulated-data"
-    filename = [
-        "chr20_sims_mutations",
-        "chr20_sims_error_mutations",
-        "chr20_sims_anc_error_mutations",
-        "chr20_sims_kc_distances",
-        "chr20_sims_error_kc_distances",
-        "chr20_sims_anc_error_kc_distances",
-    ]
-    plt_title = "simulated_accuracy_chr20"
-
-    def plot(self):
-        df = self.data[0]
-        error_df = self.data[1]
-        anc_error_df = self.data[2]
-        kc_distances = self.data[3]
-        kc_distances = kc_distances.set_index(kc_distances.columns[0])
-        error_kc_distances = self.data[4]
-        error_kc_distances = error_kc_distances.set_index(error_kc_distances.columns[0])
-        anc_error_kc_distances = self.data[5]
-        anc_error_kc_distances = anc_error_kc_distances.set_index(
-            anc_error_kc_distances.columns[0]
-        )
-
-        f, axes = plt.subplots(
-            ncols=3,
-            nrows=5,
-            sharex=True,
-            sharey=True,
-            gridspec_kw={
-                "wspace": 0.1,
-                "hspace": 0.1,
-                "width_ratios": [1, 1, 1],
-                "height_ratios": [1, 0.1, 1, 1, 1],
-            },
-            figsize=(15, 20),
-        )
-        axes[0, 0].axis("off")
-        axes[0, 2].axis("off")
-        axes[1, 0].axis("off")
-        axes[1, 1].axis("off")
-        axes[1, 2].axis("off")
-
-        axes[0, 0].set_xscale("log")
-        axes[0, 0].set_yscale("log")
-        axes[0, 0].set_xlim(1, 2e5)
-        axes[0, 0].set_ylim(1, 2e5)
-        x0, x1 = axes[0, 0].get_xlim()
-        y0, y1 = axes[0, 0].get_ylim()
-        row_labels = [
-            "tsdate",
-            "",
-            "mismatch tsinfer + tsdate \n(iteration)",
-            "Relate",
-            "GEVA",
-        ]
-        for (i, name), j, color in zip(
-            enumerate(row_labels),
-            [1, 2, 2, 2, 2],
-            [
-                constants.colors["tsdate"],
-                "",
-                constants.colors["tsdate"],
-                constants.colors["relate"],
-                constants.colors["geva"],
-            ],
-        ):
-            axes[i, j].set_ylabel(name, rotation=90, color=color, size=20)
-            axes[i, j].yaxis.set_label_position("right")
-
-        sim = df["simulated_ts"]
-        methods = ["tsdate_iterate", "relate_iterate", "geva"]
-        comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
-        df = df[np.all(df > 0, axis=1)]
-        self.mutation_accuracy(
-            axes[0, 1],
-            df["simulated_ts"],
-            df["tsdate"],
-            # sim[comparable_sites],
-            # df["tsdate"][comparable_sites],
-            "",
-            kc_distance_1=np.mean(kc_distances.loc[1]["tsdate"]),
-        )
-        for col, (mut_df, kc_df) in zip(
-            range(3),
-            [
-                (df, kc_distances),
-                (error_df, error_kc_distances),
-                (anc_error_df, anc_error_kc_distances),
-            ],
-        ):
-            for row, method, cmap in zip(
-                [2, 3, 4], methods, ["Blues", "Greens", "Reds"]
-            ):
-                result = mut_df[method]
-                comparable_sites = np.logical_and(sim > 0, result > 0)
-                mut_df = mut_df[np.all(mut_df > 0, axis=1)]
-                # cur_true_ages = sim[comparable_sites]
-                # cur_results = result[comparable_sites]
-                cur_true_ages = mut_df["simulated_ts"]
-                cur_results = mut_df[method]
-                kc_0 = np.mean(kc_df.loc[0][method])
-                kc_1 = np.mean(kc_df.loc[1][method])
-                if np.isnan(kc_0) or np.isnan(kc_1):
-                    self.mutation_accuracy(
-                        axes[row, col], cur_true_ages, cur_results, "", cmap=cmap
-                    )
-                else:
-                    self.mutation_accuracy(
-                        axes[row, col],
-                        cur_true_ages,
-                        cur_results,
-                        "",
-                        cmap=cmap,
-                        kc_distance_0=kc_0,
-                        kc_distance_1=kc_1,
-                    )
-
-        axes[0, 1].set_title("tsdate using Simulated Topology", color="black", size=20)
-        axes[2, 0].set_title("No Error", color="black", size=20)
-        axes[2, 1].set_title("Empirical Error", color="black", size=20)
-        axes[2, 2].set_title(
-            "Empirical Error + 1% Ancestral State Error", color="black"
-        )
-        f.text(0.5, 0.06, "True Time", ha="center", size=25)
-        f.text(0.06, 0.4, "Estimated Time", va="center", rotation="vertical", size=25)
-
-        self.save(self.name)
-
-
-class plot_sample_locations(Figure):
-    """
-    Figure 4a: Plot the locations of samples
-    """
-
-    name = "sample_locations"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
-        self.delimiter = " "
-        self.header = [None]
-        self.chrom = args.chrom
-        self.ts = self.main_ts(self.chrom)
-        super().__init__(args)
-
-    def plot(self):
-        # Remove samples in 1kg
-        hgdp_sgdp_ancients = self.ts.simplify(
-            np.where(
-                ~np.isin(
-                    self.ts.tables.nodes.population[self.ts.samples()],
-                    np.arange(54, 80),
-                )
-            )[0]
-        )
-        tgp_hgdp_sgdp_ancestor_locations = self.data[0]
-
-        _ = plt.figure(figsize=(15, 6))
-        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
-        ax.coastlines(linewidth=0.1)
-        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
-        ax.set_global()
-
-        def jitter(array):
-            max_min = np.max(array) - np.min(array)
-            return array + np.random.randn(len(array)) * (max_min * 0.009)
-
-        unique_hgdp_locations = np.unique(
-            tgp_hgdp_sgdp_ancestor_locations[
-                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(0, 54))
-            ],
-            axis=0,
-            return_counts=True,
-        )
-        unique_sgdp_locations = np.unique(
-            tgp_hgdp_sgdp_ancestor_locations[
-                np.isin(hgdp_sgdp_ancients.tables.nodes.population, np.arange(54, 184))
-            ],
-            axis=0,
-            return_counts=True,
-        )
-        unique_ancient_locations = np.unique(
-            tgp_hgdp_sgdp_ancestor_locations[
-                np.isin(
-                    hgdp_sgdp_ancients.tables.nodes.population,
-                    np.arange(184, hgdp_sgdp_ancients.num_populations),
-                )
-            ],
-            axis=0,
-            return_counts=True,
-        )
-
-        ax.scatter(
-            unique_hgdp_locations[0][:, 1],
-            unique_hgdp_locations[0][:, 0],
-            transform=ccrs.PlateCarree(),
-            s=unique_hgdp_locations[1] * 2,
-            label="HGDP",
-            alpha=0.85,
-            zorder=3,
-        )
-        ax.scatter(
-            jitter(unique_sgdp_locations[0][:, 1]),
-            jitter(unique_sgdp_locations[0][:, 0]),
-            transform=ccrs.PlateCarree(),
-            s=unique_sgdp_locations[1] * 2,
-            marker="s",
-            label="SGDP",
-            alpha=0.85,
-            zorder=3,
-        )
-        ax.scatter(
-            unique_ancient_locations[0][:, 1],
-            unique_ancient_locations[0][:, 0],
-            transform=ccrs.PlateCarree(),
-            s=unique_ancient_locations[1] * 2,
-            marker="*",
-            label="Ancient",
-            alpha=0.85,
-            zorder=3,
-        )
-
-        lgnd = ax.legend(loc="lower left", fontsize=15)
-        lgnd.legendHandles[0]._sizes = [200]
-        lgnd.legendHandles[1]._sizes = [200]
-        lgnd.legendHandles[2]._sizes = [200]
-        self.save(self.name)
-
-
-class PopulationAncestors(Figure):
-    """
-    Figure 4b: Plot average position of ancestors of each population
-    """
-
-    name = "population_ancestors"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.chrom = args.chrom
-        self.ts = self.main_ts(self.chrom)
-        self.filename = [
-            "avg_pop_ancestral_location_LATS_chr" + self.chrom,
-            "avg_pop_ancestral_location_LONGS_chr" + self.chrom,
-            "num_ancestral_lineages_chr" + self.chrom,
-        ]
-        self.delimiter = ","
-        self.header = [None, None, None]
-        super().__init__(args)
-
-    def colorline(self, x, y, z, transform, cmap, norm, ax, linewidth=3, alpha=1.0):
-        """
-        This function is from:
-        http://nbviewer.ipython.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
-        http://matplotlib.org/examples/pylab_examples/multicolored_line.html
-
-        Plot a colored line with coordinates x and y
-        Optionally specify colors in the array z
-        Optionally specify a colormap, a norm function and a line width
-        """
-
-        # Default colors equally spaced on [0,1]:
-        if z is None:
-            z = np.linspace(0.0, 1.0, len(x))
-
-        # Special case if a single number:
-        if not hasattr(z, "__iter__"):  # to check for numerical input -- this is a hack
-            z = np.array([z])
-
-        z = np.asarray(z)
-
-        segments = self.make_segments(x, y)
-
-        lc = matplotlib.collections.LineCollection(
-            segments,
-            array=z,
-            cmap=cmap,
-            norm=norm,
-            linewidth=linewidth,
-            alpha=alpha,
-            transform=transform,
-        )
-
-        ax.add_collection(lc)
-
-        return lc
-
-    def make_segments(self, x, y):
-        """
-        This function is from:
-            https://nbviewer.jupyter.org/github/dpsanders/matplotlib-examples/blob/master/colorline.ipynb
-        http://matplotlib.org/examples/pylab_examples/multicolored_line.html
-
-        Create list of line segments from x and y coordinates, in the correct format
-        for LineCollection: an array of the form numlines x (points per line) x 2 (x
-        and y) array
-        """
-
-        points = np.array([x, y]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-
-        return segments
-
-    def plot(self):
-        lat_list = self.data[0].to_numpy()
-        long_list = self.data[1].to_numpy()
-        num_ancestral_lineages = self.data[2].to_numpy()
-        # Remove samples in 1kg
-        hgdp_sgdp_ancients = self.ts.simplify(
-            np.where(
-                ~np.isin(
-                    self.ts.tables.nodes.population[self.ts.samples()],
-                    np.arange(54, 80),
-                )
-            )[0]
-        )
-        fig = plt.figure(figsize=(16, 10))
-        ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
-        ax.coastlines(linewidth=0.1)
-        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
-        ax.set_global()
-        # ax.set_extent([-159, 200, -40, 90], crs=ccrs.Geodetic())
-        time_windows = np.concatenate(
-            [
-                np.array([0]),
-                np.logspace(
-                    3.5, np.log(np.max(self.ts.tables.nodes.time)), num=40, base=2.718
-                ),
-            ]
-        )
-        # time_windows = np.concatenate([np.array([0]), np.exp(np.geomspace(np.log(1.1), np.log(np.max(self.ts.tables.nodes.time)), 40))])
-        for population in np.arange(0, 55):
-            pop_size = np.sum(hgdp_sgdp_ancients.tables.nodes.population == population)
-            result_colorline = self.colorline(
-                long_list[population],
-                lat_list[population],
-                np.linspace(0, 1, len(long_list)),
-                cmap=plt.get_cmap("plasma_r"),
-                norm=plt.Normalize(0.0, 1.0),
-                linewidth=0.002 * (num_ancestral_lineages[population] / pop_size),
-                transform=ccrs.Geodetic(),
-                ax=ax,
-            )
-        cax = fig.add_axes(
-            [ax.get_position().x0, ax.get_position().y0 - 0.1, 0.78, 0.05],
-        )
-        cbar = fig.colorbar(result_colorline, cax=cax, orientation="horizontal")
-
-        cbar.set_label(label="Time in Years", size=20)
-        cbar.ax.set_xticklabels(
-            (25 * np.round(time_windows[[0, 8, 16, 24, 32, 40]]).astype(int))
-        )
-        self.save(self.name)
-
-
-class WorldDensity(Figure):
-    """
-    Figure 4c: World map with all ancestors plotted at six timepoints
-    """
-
-    name = "world_density"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.filename = ["hgdp_sgdp_ancients_ancestor_coordinates_chr" + args.chrom]
-        self.delimiter = " "
-        self.header = [None]
-        self.chrom = args.chrom
-        self.ts = self.main_ts(self.chrom)
-        super().__init__(args)
-
-    def plot(self):
-        locations = self.data[0].to_numpy()
-        # Remove samples in 1kg
-        ts = self.ts.simplify(
-            np.where(
-                ~np.isin(
-                    self.ts.tables.nodes.population[self.ts.samples()],
-                    np.arange(54, 80),
-                )
-            )[0]
-        )
-        times = ts.tables.nodes.time[:]
-        for time in [100, 1000, 2240, 5600, 11200, 33600]:
-            _ = plt.figure(figsize=(15, 6))
-            ax = plt.axes(projection=ccrs.Robinson(central_longitude=41))
-            ax.coastlines(linewidth=0.1)
-            ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
-            ax.set_global()
-            ax.set_extent([-170, 180, -40, 90], crs=ccrs.Geodetic())
-            edges = np.logical_and(
-                times[ts.tables.edges.child] <= time,
-                times[ts.tables.edges.parent] > time,
-            )
-            time_slice_child = ts.tables.edges.child[edges]
-            time_slice_parent = ts.tables.edges.parent[edges]
-            edge_lengths = times[time_slice_parent] - times[time_slice_child]
-            weight_parent = 1 - ((times[time_slice_parent] - time) / edge_lengths)
-            weight_child = 1 - ((time - times[time_slice_child]) / edge_lengths)
-            lat_arr = np.vstack(
-                [locations[time_slice_parent][:, 0], locations[time_slice_child][:, 0]]
-            ).T
-            long_arr = np.vstack(
-                [locations[time_slice_parent][:, 1], locations[time_slice_child][:, 1]]
-            ).T
-            weights = np.vstack([weight_parent, weight_child]).T
-            lats, longs = utility.vectorized_weighted_geographic_center(
-                lat_arr, long_arr, weights
-            )
-            avg_locations = np.array([lats, longs]).T
-            xynps = ax.projection.transform_points(
-                ccrs.Geodetic(), avg_locations[:, 1], avg_locations[:, 0]
-            )
-            h = ax.hist2d(
-                xynps[:, 0], xynps[:, 1], bins=100, zorder=10, alpha=0.7, cmin=10
-            )
-            _ = plt.colorbar(h[3], ax=ax, shrink=0.7, format="%.1f", pad=0.02)
-            ax.set_global()
-            plt.title(str(xynps.shape[0]) + " Ancestral Lineages", fontsize=20)
-            self.save(self.name + "_" + str(time))
 
 
 class AncientDescent(Figure):
@@ -3260,7 +3766,10 @@ class AncientDescent(Figure):
 
 class AfanasievoDescent(AncientDescent):
     """
-    Figure S16. Find Descendants of the Afanasievo Sons
+    Figure S7. Find Descendants of the Afanasievo Sons
+    To generate data for this plot, run:
+    `python src/analyze_data.py ancient_descendants --chrom 20`
+    `python src/analyze_data.py ancient_descent_haplotypes --chrom 20`
     """
 
     name = "afanasievo_descent"
@@ -3282,33 +3791,12 @@ class AfanasievoDescent(AncientDescent):
         super().__init__(args)
 
 
-class VindijaDescent(AncientDescent):
-    """
-    Find Descendants of the Vindija Neanderthal
-    """
-
-    name = "vindija_descent"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.chrom = args.chrom
-        self.filename = [
-            "unified_ts_chr" + self.chrom + "_vindija_descendants",
-            "unified_ts_chr" + self.chrom + "_vindija_corrcoef_df",
-            "unified_ts_chr" + self.chrom + "_vindija_sample_desc_sum",
-            "unified_ts_chr" + self.chrom + "_ancient_descendants",
-        ]
-        self.header = [None, None, None, "infer"]
-        self.plotname = "vindija"
-        self.proxy_time = 2000.01
-        self.exclude_pop_names = ["Vindija"]
-        self.minimum_descent = 0.00004
-        super().__init__(args)
-
-
 class DenisovanDescent(AncientDescent):
     """
-    Figure S17. Find Descendants of the Denisovan
+    Figures 3C and S21. Find Descendants of the Denisovan
+    To generate data for this figure, run:
+    `python src/analyze_data.py reference_sets` and
+    `python src/analyze_data.py ancient_descent_haplotypes`
     """
 
     name = "denisovan_descent"
@@ -3330,54 +3818,14 @@ class DenisovanDescent(AncientDescent):
         super().__init__(args)
 
 
-class ChagyrskayaDescent(AncientDescent):
-    """
-    Find Descendants of the Chagyrskaya
-    """
-
-    name = "chagyrskaya_descent"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.filename = [
-            "unified_ts_chagyrskaya_descendants",
-            "unified_ts_chagyrskaya_corrcoef_df",
-            "unified_ts_chagyrskaya_sample_desc_sum",
-            "unified_ts_ancient_descendants",
-        ]
-        self.header = None
-        self.plotname = "chagyrskaya"
-        self.proxy_time = 3200.01
-        self.exclude_pop_names = ["Chagyrskaya", "Vindija", "Denisovan"]
-        super().__init__(args)
-
-
-class AltaiDescent(AncientDescent):
-    """
-    Find Descendants of the Altai
-    """
-
-    name = "altai_descent"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.chrom = args.chrom
-        self.filename = [
-            "unified_ts_chr" + self.chrom + "_altai_descendants",
-            "unified_ts_chr" + self.chrom + "_altai_corrcoef_df",
-            "unified_ts_chr" + self.chrom + "_altai_sample_desc_sum",
-            "unified_ts_chr" + self.chrom + "_ancient_descendants",
-        ]
-        self.header = None
-        self.plotname = "altai"
-        self.proxy_time = 4400.01
-        self.exclude_pop_names = ["Altai", "Chagyrskaya", "Vindija", "Denisovan"]
-        super().__init__(args)
-
-
 class VindijaRegionDescent(Figure):
     """
-    Figure S18: Vindija Descent Boxplot
+    Figure S8: Vindija Descent Boxplot
+    To generate data for this figure, inferred tree sequences of modern and ancient
+    data is required for each chromosomal arm, generated in all-data/ with:
+    `make hgdp_tgp_sgdp_high_cov_ancients_chr*.dated.trees`. Then run:
+    `python src/analyze_data.py ancient_descendants --chrom *` for each chromosomal
+    arm.
     """
 
     name = "vindija_descent_boxplot"
@@ -3416,205 +3864,208 @@ class VindijaRegionDescent(Figure):
         self.save(self.name)
 
 
-class DenisovanRegionDescent(Figure):
+class TgpMutEstsFrequency(Figure):
     """
-    Part b of Figure 3: Denisovan Descent by Region on Chromosome 20
+    Figure S18: Figure showing TGP mutation age estimates from tsdate,
+    Relate, GEVA vs. frequency.
+    See required data for "ancient_constraints_tgp"
     """
 
-    name = "deniosvan_descent_boxplot_chr20"
-
-    def __init__(self, args):
-        self.data_path = "data"
-        self.filename = ["unified_ts_chr20_regions_ancient_descendants"]
-        super().__init__(args)
+    name = "tgp_muts_frequency"
+    data_path = "data"
+    filename = ["tgp_mutations"]
+    plt_title = "TGP Mutation Age vs Frequency"
 
     def plot(self):
-        fig, ax = plt.subplots(figsize=(10, 7))
-        chr20_descent = self.data[0].set_index(self.data[0].columns[0])
-        # Exclude ancients column
-        chr20_descent = chr20_descent.iloc[:, :-1]
-        sns.barplot(
-            x=chr20_descent.columns,
-            y=np.sum(chr20_descent.loc["Denisovan"], axis=0),
-            palette=region_colors,
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[
+            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
+        ]
+
+        comparable_mutations = comparable_mutations[
+            comparable_mutations["tsdate_age"] > 0
+        ]
+        frequency = comparable_mutations["tsdate_frequency"]
+        fig, ax = plt.subplots(
+            nrows=1, ncols=3, figsize=(15, 5), sharey=True, sharex=True
         )
-        ax.set_ylabel(
-            "Chromosome 20 proportion descending \n from sampled Denisovan Haplotypes",
-            size=20,
+
+        ax[0].hexbin(
+            frequency,
+            comparable_mutations["tsdate_age"],
+            xscale="log",
+            yscale="log",
+            bins="log",
+            cmap="Blues",
+            mincnt=1,
         )
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=30, size=15)
-        fig.show()
-        fig.tight_layout()
+
+        ax[2].hexbin(
+            frequency,
+            comparable_mutations["AgeMean_Jnt"],
+            xscale="log",
+            yscale="log",
+            bins="log",
+            cmap="Reds",
+            mincnt=1,
+        )
+        comparable_mutations = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
+            var_name="relate_est",
+            value_name="relate_age",
+        )
+        ax[1].hexbin(
+            comparable_mutations["tsdate_frequency"],
+            comparable_mutations["relate_age"],
+            xscale="log",
+            yscale="log",
+            bins="log",
+            cmap="Greens",
+            mincnt=1,
+        )
+        plt.xlim(3e-3, 1.05)
+        plt.ylim(10, 5e5)
+        ax[0].set_title("Frequency vs. tsdate Estimated Allele Age")
+        ax[1].set_title("Frequency vs. Relate Estimated Allele Age")
+        ax[2].set_title("Frequency vs. GEVA Estimated Allele Age")
+        ax[0].set_xlabel("TGP Frequency")
+        ax[1].set_xlabel("TGP Frequency")
+        ax[2].set_xlabel("TGP Frequency")
+        ax[0].set_ylabel("Estimated Age by tsdate (generations)")
+        ax[1].set_ylabel("Estimated Age by Relate (generations)")
+        ax[2].set_ylabel("Estimated Age by GEVA (generations)")
+        plt.tight_layout()
+
         self.save(self.name)
 
 
-class SiteLinkageAndQuality(Figure):
+class TgpMutationAverageAge(Figure):
     """
-    Figure S14. Plot proportion of sites with low quality or linkage as a function of the
-    number of mutations at those sites.
+    Figure S19: Compare mutation age estimates from tsdate, Relate, and
+    GEVA for tgp chromosome 20.
+    See required data for "ancient_constraints_tgp"
     """
 
-    name = "ld_quality_by_mutations"
-
-    def __init__(self, args):
-        self.ts = self.main_ts(args.chrom)
-        super().__init__(args)
-
-    def gen_log_space(self, limit, n):
-        result = [1]
-        ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
-        while len(result) < n:
-            next_value = result[-1] * ratio
-            if next_value - result[-1] >= 1:
-                # desired state - next_value will be a different integer
-                result.append(next_value)
-            else:
-                # problem! same integer. we need to find next_value by artificially incrementing previous value
-                result.append(result[-1] + 1)
-                # recalculate the ratio so that the remaining values will scale correctly
-                ratio = (float(limit) / result[-1]) ** (1.0 / (n - len(result)))
-        # round, re-adjust to 0 indexing
-        return np.array(list(map(lambda x: round(x) - 1, result)), dtype=np.uint64)
+    name = "mutation_average_age"
+    data_path = "data"
+    filename = ["tgp_mutations"]
+    plt_title = "Average TGP Mutation Age"
 
     def plot(self):
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[["tsdate_age", "AgeMean_Jnt"] + relate_estimates]
+        comparable_mutations = comparable_mutations[
+            comparable_mutations["tsdate_age"] > 0
+        ]
+        relate_ages = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt"],
+            var_name="relate_est",
+            value_name="relate_age",
+        ).dropna()
+        ax = plt.boxplot(
+            [
+                comparable_mutations["tsdate_age"],
+                relate_ages["relate_age"],
+                comparable_mutations["AgeMean_Jnt"],
+            ],
+            widths=0.75,
+            patch_artist=True,
+        )
+        plt.xticks([1, 2, 3], ["tsdate", "Relate", "GEVA"])
+        colors = ["blue", "green", "red"]
+        for patch, color in zip(ax["boxes"], colors):
+            patch.set_facecolor(color)
 
-        client = dask.distributed.Client(
-            dashboard_address="localhost:22222",
-            processes=False,
+        plt.yscale("log")
+        plt.ylabel("Estimated Allele Age (generations)")
+        plt.title(
+            "Estimated TGP Allele Ages \n {} Variant Sites on Chromosome 20".format(
+                comparable_mutations.shape[0]
+            )
+        )
+        self.save(self.name)
+
+
+class TgpMutationAgeComparisons(Figure):
+    """
+    Figure S20: Comparing TGP mutation age estimates from tsdate, Relate,
+    and GEVA.
+    See required data for "ancient_constraints_tgp"
+    """
+
+    name = "tgp_dates_comparison"
+    data_path = "data"
+    filename = ["tgp_mutations"]
+    plt_title = "Compare Mutation Age Estimates"
+
+    def plot(self):
+        df = self.data[0]
+        relate_estimates = [c for c in df.columns if "est_" in c]
+        comparable_mutations = df[
+            ["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"] + relate_estimates
+        ]
+        fig, ax = plt.subplots(
+            nrows=1,
+            ncols=3,
+            figsize=(17, 5),
+            sharey=True,
+            sharex=True,
+        )
+        hexbin = ax[0].hexbin(
+            comparable_mutations["tsdate_age"],
+            comparable_mutations["AgeMean_Jnt"],
+            xscale="log",
+            yscale="log",
+            mincnt=1,
+            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
+        )
+        comparable_mutations = comparable_mutations.melt(
+            id_vars=["tsdate_age", "AgeMean_Jnt", "tsdate_frequency"],
+            var_name="relate_est",
+            value_name="relate_age",
+        )
+        hexbin = ax[1].hexbin(
+            comparable_mutations["tsdate_age"],
+            comparable_mutations["relate_age"],
+            xscale="log",
+            yscale="log",
+            mincnt=1,
+            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
         )
 
-        haploid = self.ts.genotype_matrix()
-        haploid = da.from_array(haploid, chunks=(10000, haploid.shape[1]))
-        # Convert to bi-allelic
-        haploid[haploid > 1] = 1
-
-        # Calculate AF
-        alt_count = (haploid == 1).sum(axis=1)
-        af = (alt_count / haploid.shape[1]).astype(np.float32)
-        af = af.compute()
-
-        # Filter sites by AF
-        sites_to_keep = np.logical_and(af >= 0.01, af <= 0.99)
-        f_haploid_gt = haploid[sites_to_keep]
-
-        @numba.jit(nopython=True, nogil=True, fastmath=True)
-        def ld(site_a, site_b):
-            rr, ra, ar, aa = (0, 0, 0, 0)
-            for j in range(len(site_a)):
-                f = site_a[j]
-                c = site_b[j]
-                if f == 0:
-                    if c == 0:
-                        rr += 1
-                    elif c == 1:
-                        ra += 1
-                elif f == 1:
-                    if c == 0:
-                        ar += 1
-                    elif c == 1:
-                        aa += 1
-            s = rr + ra + ar + aa
-            if s > 0:
-                rr = rr / s
-                ra = ra / s
-                ar = ar / s
-                aa = aa / s
-                D = (rr * aa) - (ra * ar)
-                # D_max = min((r0 * a1), (r1 * a0))
-                # D_prime = D / D_max
-                m = (rr + ra) * (rr + ar) * (aa + ar) * (aa + ra)
-                if m > 0:
-                    r_squared = (D / math.sqrt(m)) ** 2
-                    return r_squared
-            return np.nan
-
-        # For a given region sum the LD for each site in a 100-site window around that site
-        @numba.guvectorize(
-            ["void(int8[:,:], float32[:])"],
-            "(variants,samples)->(variants)",
-            nopython=True,
+        ax[2].hexbin(
+            comparable_mutations["relate_age"],
+            comparable_mutations["AgeMean_Jnt"],
+            xscale="log",
+            yscale="log",
+            mincnt=1,
+            norm=matplotlib.colors.LogNorm(vmin=1, vmax=4000),
         )
-        def ld_window_sum(region, ld_out):
-            for i in range(len(region)):
-                ld_out[i] = 0
-            for i in range(len(region) - 50):
-                for j in range(50):
-                    ld_ij = ld(region[i], region[i + j])
-                    ld_out[i] = ld_out[i] + ld_ij
-                    ld_out[i + j] = ld_out[i + j] + ld_ij
 
-        window_ld = da.overlap.map_overlap(
-            ld_window_sum,
-            f_haploid_gt.rechunk((9995, f_haploid_gt.chunks[1])),
-            depth=50,
-            boundary=np.nan,
-            drop_axis=1,
-            dtype=np.float32,
-        ).compute()
-
-        ld = np.full((len(haploid),), np.nan)
-        ld[sites_to_keep] = window_ld
-
-        # From https://www.internationalgenome.org/announcements/genome-accessibility-masks/
-        mask_chr20 = SeqIO.index("data/20160622.chr20.mask.fasta", "fasta")["chr20"].seq
-        mask = []
-        for site in self.ts.tables.sites:
-            mask.append(mask_chr20[int(site.position) - 1])
-        mask = np.asarray(mask, dtype="U1")
-
-        muts_per_site = np.unique(self.ts.tables.mutations.site, return_counts=True)[1]
-
-        masked = mask != "P"
-        low_ld = ld < 10
-        no_ld = np.isnan(ld)
-
-        total_hist, bin_edges = np.histogram(
-            muts_per_site,
-            bins=self.gen_log_space(1000, 50)[1:],
-        )
-        masked_hist, bins = np.histogram(muts_per_site[masked], bins=bin_edges)
-        prop_masked_hist = masked_hist / total_hist
-        ld_hist, bins = np.histogram(muts_per_site[low_ld], bins=bin_edges)
-        prop_ld_hist = ld_hist / total_hist
-        neither_hist, bins = np.histogram(
-            muts_per_site[np.logical_and(~masked, ~low_ld)],
-            bins=bin_edges,
-        )
-        prop_neither_hist = neither_hist / total_hist
-
-        fig, ax = plt.subplots()
-        fig.patch.set_facecolor("white")
-        ax.plot(
-            bin_edges[:-1],
-            prop_masked_hist,
-            drawstyle="steps",
-            label="Low quality",
-            color="red",
-        )
-        ax.plot(
-            bin_edges[:-1],
-            prop_ld_hist,
-            drawstyle="steps",
-            label="Low linkage",
-            color="orange",
-        )
-        ax.plot(
-            bin_edges[:-1],
-            prop_neither_hist,
-            drawstyle="steps",
-            label="Neither",
-            color="green",
-        )
-        ax.legend(prop={"size": 10})
-        ax.set_ylabel("Proportion of sites")
-        ax.set_xlabel("Number of mutations at site")
-        ax.set_xlim(0, 500)
-        fig.savefig("figures/ld_quality_by_mutations.eps")
+        plt.xlim(5, 6e5)
+        plt.ylim(5, 6e5)
+        ax[0].set_title("tsdate vs. GEVA Estimated Allele Age")
+        ax[1].set_title("tsdate vs. Relate Estimated Allele Age")
+        ax[2].set_title("Relate vs. GEVA Estimated Allele Age")
+        ax[0].set_xlabel("Estimated Age by tsdate (generations)")
+        ax[0].set_ylabel("Estimated Age by GEVA (generations)")
+        ax[1].set_xlabel("Estimated Age by tsdate (generations)")
+        ax[1].set_ylabel("Estimated Age by Relate (generations)")
+        ax[2].set_xlabel("Estimated Age by Relate (generations)")
+        ax[2].set_ylabel("Estimated Age by GEVA (generations)")
+        for i in range(3):
+            ax[i].plot(ax[i].get_xlim(), ax[i].get_ylim(), c="black")
+        fig.add_axes(
+            [0.95, 0.05, 0.02, 0.95]
+        )  # this locates the axis that is used for your colorbar. It is scaled 0 - 1.
+        self.save(self.name)
 
 
 class AncestryVideo(Figure):
     """
-    Video S1. Geography of all ancestors
+    Movie S1. Geography of all ancestors
     """
 
     name = "ancestry_video"
@@ -3789,7 +4240,7 @@ class AncestryVideo(Figure):
 
 class Timeline(Figure):
     """
-    Video S1. Timeline for Ancestry Map
+    Movie S1. Timeline for Ancestry Map
     """
 
     name = "timeline"
@@ -3837,110 +4288,13 @@ class Timeline(Figure):
                 + " Generations)"
             )
             text.set_position(
-                time_intervals_log[i] + (time_intervals_log[i] * 0.5), 0.5
+                (time_intervals_log[i] - (time_intervals_log[i] * 0.88), 0.5)
             )
 
         anim = FuncAnimation(
             fig, animate, interval=90, frames=len(time_intervals_log), repeat=True
         )
         self.save(self.name, animation=anim)
-
-
-class DeletedSitesChr20(Figure):
-    """
-    Figure S15. Evaluating the effect of deleting sites with > 100 mutations in the inferred tree sequence
-    of Chromosome 20.
-    """
-
-    name = "redate_delete_sites"
-    data_path = "data"
-    filename = ["hgdp_tgp_sgdp_chr20_q.deleted_site_times"]
-
-    def plot(self):
-        df = self.data[0] 
-        fig, ax = plt.subplots(
-            figsize=(6, 6), sharex=True, sharey=True
-        )
-        x = df["original_age"]
-        y = df["deleted_age"]
-        ax.set_xlim(1, 2e5)
-        ax.set_ylim(1, 2e5)
-        plotted_axis = self.mutation_accuracy(
-            ax, x, y, None, cmap=None
-        )
-        fig.subplots_adjust(right=0.9)
-        colorbar_ax = fig.add_axes([0.95, 0.15, 0.05, 0.7])
-        cb = fig.colorbar(plotted_axis, cax=colorbar_ax)
-        cb.set_label("Number of Mutations")
-        ax.set_ylabel("Site age estimates (generations), deleting sites with > 100 mutations")
-        ax.set_xlabel("Site age estimates (generations) using all sites")
-        self.save(self.name)
-
-
-class GeographicEvaluation(Figure):
-    """
-    Figure S12. Evaluation of geographic estimator.
-    """
-
-    name = "geographic_evaluation"
-    data_path = "simulated-data"
-    filename = ["geographic_evaluation_true_pops", "geographic_evaluation_sim_locations",
-                "geographic_evaluation_inferred_locations", "geographic_evaluation_pre_out_of_africa"]
-    header = ["infer", "infer", "infer", "infer"]
-
-    def jitter(self, array):
-        max_min = np.max(array) - np.min(array)
-        return array + np.random.randn(len(array))
-
-    def plot_map(self, ax):
-        centre_point = [34, 42]
-        southwest = [13, -5]
-        southeast = [-6, 76]
-        northeast = [64, 58]
-
-        ax.coastlines(linewidth=0.1)
-        ax.add_feature(cartopy.feature.LAND, facecolor="lightgray")
-        ax.set_extent([-5, 87, -2, 52], crs=ccrs.Geodetic())
-        ax.plot([southwest[1],centre_point[1]],[southwest[0],centre_point[0]],
-                 color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
-                 transform=ccrs.PlateCarree())
-        ax.plot([southeast[1],centre_point[1]],[southeast[0],centre_point[0]],
-                     color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
-                     transform=ccrs.PlateCarree())
-        ax.plot([centre_point[1],northeast[1]],[centre_point[0],northeast[0]],
-                     color='black', linestyle="--", linewidth=1, marker='o', markersize=3,
-                     transform=ccrs.PlateCarree())
-        return ax
-
-
-    def plot(self):
-        true_pops = self.data[0][["Populations"]].to_numpy().transpose()[0]
-        sim_locs = self.data[1][["latitude", "longitude"]].to_numpy()
-        inferred_locs = self.data[2][["latitude", "longitude"]].to_numpy()
-        pre_out_of_africa = self.data[3][["Bool_ooa"]].to_numpy().transpose()[0]
-        colours = [sns.color_palette("Wistia", 3)[0],
-                   sns.color_palette("Blues", 1)[0],sns.color_palette("Greens", 2)[1],"salmon" ]
-        fig = plt.figure(figsize=(20, 15))
-        ax1 = plt.subplot(2, 2, 1, projection=ccrs.PlateCarree(central_longitude=41))
-
-        for index, color, population in zip(range(1, 5), colours, ["YRI", "CEU", "CHB", "\"Out of Africa\""]):
-            ax = plt.subplot(2, 2, index, projection=ccrs.PlateCarree(central_longitude=41))
-            ax = self.plot_map(ax)
-            ax.scatter(self.jitter(sim_locs[:, 1][true_pops==(index-1)]),
-                    self.jitter(sim_locs[:, 0][true_pops==index-1]), s=0.7, alpha=0.8, color=color,
-                       transform=ccrs.PlateCarree(), label=population)
-            ax.set_title("{}".format(np.sum(true_pops==index-1)) + " " + population + " ancestors", fontsize=20)
-        self.save(self.name + "_simulated")
-
-        fig = plt.figure(figsize=(20, 15))
-        ax = plt.subplot(1, 1, 1, projection=ccrs.PlateCarree(central_longitude=41))
-        ax = self.plot_map(ax)
-        ax.scatter(self.jitter(inferred_locs[:, 1][pre_out_of_africa]),
-                    self.jitter(inferred_locs[:, 0][pre_out_of_africa]), alpha=0.8, s=0.7,
-                  transform=ccrs.PlateCarree(), color=colours[0])
-        self.save(self.name + "_inferred")
-
-       
 
 
 ######################################
