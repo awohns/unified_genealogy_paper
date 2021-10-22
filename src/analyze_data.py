@@ -10,6 +10,7 @@ import json
 import itertools
 import operator
 import pickle
+import pysam
 import subprocess
 
 import numpy as np
@@ -681,7 +682,6 @@ def calc_ancestral_geographies(args):
     Calculate ancestral geographies for use in Figures 4, S12, S13 and
     Supplementary Video
     """
-
     tgp_hgdp_sgdp_ancients = tskit.load(
         "all-data/hgdp_tgp_sgdp_high_cov_ancients_chr" + args.chrom + ".dated.trees"
     )
@@ -1198,6 +1198,136 @@ def redate_delete_sites(args):
     chr20_ages.to_csv("data/hgdp_tgp_sgdp_chr20_q.deleted_site_times.csv")
 
 
+def duplicate_samples_analysis(args):
+    """
+    Runs analysis of duplicate samples described in the Supplementary Text.
+    Requires the unified genealogy of modern samples on chromosome 20, as well
+    as the SampleData file of modern samples.
+    """
+    ts = tskit.load("all-data/hgdp_tgp_sgdp_chr20.missing_binned.dated.trees")
+    mapping = np.full(ts.num_nodes, tskit.NULL)
+    mapping[ts.samples()] = ts.samples()
+    samples = tsinfer.load("all-data/hgdp_tgp_sgdp_chr20.missing_binned.samples")
+    assert ts.num_individuals == samples.num_individuals
+
+    ind_ids = []
+    for ind in samples.individuals():
+        metadata = ind.metadata
+        keys = list(metadata.keys())
+        if "sample" in keys:
+            ind_ids.append(metadata["sample"])
+        elif "individual_id" in keys:
+            ind_ids.append(metadata["individual_id"])
+        elif "name" in keys:
+            ind_ids.append(metadata["name"])
+        elif "sample_id" in keys:
+            ind_ids.append(metadata["sample_id"])
+
+    D = collections.defaultdict(list)
+    for i, item in enumerate(ind_ids):
+        D[item].append(i)
+
+    D = {k: v for k, v in D.items() if len(v) > 1}
+
+    genos = samples.sites_genotypes[:]
+
+    switch_error = list()
+    switch_error_adjusted = list()
+    between_chrom_hets = list()
+    incompatible = list()
+    region = list()
+    likeliest = list()
+    for index, d in tqdm(enumerate(D.items())):
+        ind_a = ts.individual(d[1][0])
+        ind_b = ts.individual(d[1][1])
+        if "region" in json.loads(ind_a.metadata):
+            region.append(json.loads(ind_a.metadata)["region"])
+        else:
+            region.append(json.loads(ind_b.metadata)["region"])
+        a1 = ind_a.nodes[0]
+        a2 = ind_a.nodes[1]
+        b1 = ind_b.nodes[0]
+        b2 = ind_b.nodes[1]
+        # Incompatible genotypes: where the two chromosomes sum to a different value
+        # (and there's no missingness)
+        no_missing = np.logical_and(
+            np.logical_and(genos[:, a1] != -1, genos[:, a2] != -1),
+            np.logical_and(genos[:, b1] != -1, genos[:, b2] != -1),
+        )
+        binary = np.logical_and(
+            np.logical_and(genos[:, a1] <= 1, genos[:, a2] <= 1),
+            np.logical_and(genos[:, b1] <= 1, genos[:, b2] <= 1),
+        )
+        binary_no_missing = np.logical_and(no_missing, binary)
+        incompatible.append(
+            np.sum(
+                (genos[:, a1][binary_no_missing] + genos[:, a2][binary_no_missing])
+                != (genos[:, b1][binary_no_missing] + genos[:, b2][binary_no_missing])
+            )
+            / np.sum(binary_no_missing)
+        )
+        # Comparable genotypes: where both are het, site is biallelic and no missingness
+        a1_a2_het = genos[:, a1] != genos[:, a2]
+        b1_b2_het = genos[:, b1] != genos[:, b2]
+        diff_genos = np.logical_and(
+            np.logical_and(a1_a2_het, b1_b2_het), binary_no_missing
+        )
+        # Two possible configurations, first is a1 and b1 match and a2, b2 match
+        config_1 = np.logical_and(
+            genos[:, a1][diff_genos] == genos[:, b1][diff_genos],
+            genos[:, a2][diff_genos] == genos[:, b2][diff_genos],
+        )
+        # Second is a1/b2 and a2/b1 match
+        config_2 = np.logical_and(
+            genos[:, a1][diff_genos] == genos[:, b2][diff_genos],
+            genos[:, a2][diff_genos] == genos[:, b1][diff_genos],
+        )
+        assert (np.sum(config_1) + np.sum(config_2)) == np.sum(diff_genos)
+        # Calculate how often we switch from one config to the other
+        switch_error.append(np.sum(np.diff(config_1)))
+        switch_error_adjusted.append(np.sum(np.diff(config_1)) / np.sum(diff_genos))
+        between_chrom_hets.append(np.sum(diff_genos))
+    print(
+        "Mean number of incompatible genotypes {}, SD is {}".format(
+            np.mean(incompatible), np.std(incompatible)
+        )
+    )
+    print(
+        "Mean number of switches is {}, SD is {}".format(
+            np.mean(switch_error), np.std(switch_error)
+        )
+    )
+    print(
+        "Mean number of adjusted switches is {}, SD is {}".format(
+            np.mean(switch_error_adjusted), np.std(switch_error_adjusted)
+        )
+    )
+    dup_ids = list(D.keys())
+    print(
+        "Max switches in individual {} with value {}".format(
+            dup_ids[np.argmax(switch_error_adjusted)], np.max(switch_error_adjusted)
+        )
+    )
+    print(
+        "Min switches in individual {} with value {}".format(
+            dup_ids[np.argmin(switch_error_adjusted)], np.min(switch_error_adjusted)
+        )
+    )
+    region = np.array([reg.upper() for reg in region])
+    for index, reg in enumerate(region):
+        if reg == "EUROPE":
+            region[index] = "WESTEURASIA"
+        if reg == "EASTASIA":
+            region[index] = "EAST_ASIA"
+
+    for reg in np.unique(region):
+        print(
+            reg,
+            np.sum(region == reg),
+            np.mean(np.array(switch_error_adjusted)[region == reg]),
+        )
+
+
 def main():
     name_map = {
         "unified_recurrent_mutations": calc_unified_recurrent_mutations,
@@ -1211,6 +1341,7 @@ def main():
         "ancient_descent_haplotypes": calc_ancient_descent_haplotypes,
         "tmrcas": calc_tmrcas,
         "redate_delete_sites": redate_delete_sites,
+        "duplicate_samples_analysis": duplicate_samples_analysis,
     }
 
     parser = argparse.ArgumentParser(

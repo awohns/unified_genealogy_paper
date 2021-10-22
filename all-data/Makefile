@@ -703,11 +703,24 @@ hgdp_tgp_sgdp_high_cov_ancients_%_dated.samples: hgdp_tgp_sgdp_%.missing_binned.
 			--all-samples hgdp_tgp_sgdp_all_ancients_$*.samples --dated-ts hgdp_tgp_sgdp_$*.missing_binned.dated.trees \
 			--output $@ > hgdp_tgp_sgdp_high_cov_ancients_$*_dated_constrained_variants.txt
 
+hgdp_tgp_sgdp_high_cov_ancients_%_dated_transversions_only.samples: hgdp_tgp_sgdp_%.missing_binned.dated.trees hgdp_tgp_sgdp_%.missing_binned.samples hgdp_tgp_sgdp_high_cov_ancients_%.samples \
+	hgdp_tgp_sgdp_all_ancients_%.samples
+		python3 tsutil.py combined-ts-dated-samples --modern hgdp_tgp_sgdp_$*.missing_binned.samples --high-cov hgdp_tgp_sgdp_high_cov_ancients_$*.samples \
+			--all-samples hgdp_tgp_sgdp_all_ancients_$*.samples --dated-ts hgdp_tgp_sgdp_$*.missing_binned.dated.trees \
+			--transversions_only \
+			--output $@ > hgdp_tgp_sgdp_high_cov_ancients_$*_dated_constrained_variants_transversions_only.txt
+
 hgdp_tgp_sgdp_high_cov_ancients_%.dated.trees: hgdp_tgp_sgdp_high_cov_ancients_%_dated.samples recomb-hg38/
 		python3 bin_dates.py $< hgdp_tgp_sgdp_high_cov_ancients_$*_dated.binned.samples
 		python3 ../src/run_inference.py hgdp_tgp_sgdp_high_cov_ancients_$*_dated.binned.samples -t ${NUM_THREADS} -A 1 -S 1 \
 			-m recomb-hg38/genetic_map_GRCh38_
 		python3 tsutil.py simplify hgdp_tgp_sgdp_high_cov_ancients_$*_dated.binned.nosimplify.trees $@
+
+hgdp_tgp_sgdp_high_cov_ancients_%_transversions_only.dated.trees: hgdp_tgp_sgdp_high_cov_ancients_%_dated_transversions_only.samples recomb-hg38/
+		python3 bin_dates.py $< hgdp_tgp_sgdp_high_cov_ancients_$*_dated_transversions_only.binned.samples
+		python3 ../src/run_inference.py hgdp_tgp_sgdp_high_cov_ancients_$*_dated_transversions_only.binned.samples -t ${NUM_THREADS} -A 1 -S 1 \
+			-m recomb-hg38/genetic_map_GRCh38_
+		python3 tsutil.py simplify hgdp_tgp_sgdp_high_cov_ancients_$*_dated_transversions_only.binned.nosimplify.trees $@
 
 hgdp_tgp_sgdp_high_cov_ancients_combined_chr%.dated.trees: hgdp_tgp_sgdp_high_cov_ancients_chr%_p.dated.trees hgdp_tgp_sgdp_high_cov_ancients_chr%_q.dated.trees
 		python3 tsutil.py combine-chromosome hgdp_tgp_sgdp_high_cov_ancients_chr$*_p.dated.trees \

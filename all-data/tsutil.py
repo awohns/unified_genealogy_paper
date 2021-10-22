@@ -189,6 +189,21 @@ def delete_site_mutations(tables, site_ids, record_provenance=True):
     return tables
 
 
+def get_transversions(samples):
+    transversions = np.full(samples.num_sites, True, dtype=bool)
+    for site_id, alleles in enumerate(samples.sites_alleles[:]):
+        if (
+            (alleles[0].upper() == "A" and alleles[1].upper() == "G")
+            or (alleles[0].upper() == "C" and alleles[1].upper() == "T")
+            or (alleles[0] == "G" and alleles[1].upper() == "A")
+            or (alleles[0].upper() == "T" and alleles[1].upper() == "C")
+        ):
+            transversions[site_id] = False
+        else:
+            transversions[site_id] = True
+    return transversions
+
+
 def combined_ts_constrained_samples(args):
     modern_samples = tsinfer.load(args.modern)
     high_cov_samples = tsinfer.load(args.high_cov)
@@ -224,6 +239,10 @@ def combined_ts_constrained_samples(args):
 
     # Set time of non-biallelic sites to 0
     all_ancient_samples_bound[~alleles_equal] = 0
+    # If args.transversions_only is True, set time of all transversions to 0
+    if args.transversions_only:
+        transversions = get_transversions(all_ancient_samples)
+        all_ancient_samples_bound[~transversions] = 0
     # Constrain the estimated ages from tree sequence with ancient bounds
     constrained_sites_time = np.maximum(sites_time, all_ancient_samples_bound)
     # Add constrained times to sampledata file with moderns and high cov ancients
@@ -507,6 +526,11 @@ def main():
         "--dated-ts",
         type=str,
         help="HGDP + 1kg + SGDP Dated Tree Sequence.",
+    )
+    subparser.add_argument(
+        "--transversions_only",
+        action="store_true",
+        help="Only constrain ancient site ages at transversions.",
     )
     subparser.add_argument("--output", type=str, help="Output sampledata filename")
     subparser.set_defaults(func=combined_ts_constrained_samples)

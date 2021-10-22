@@ -374,13 +374,13 @@ class Figure(object):
         if label is not None:
             ax.set_title(label, fontsize=24, color=cmap[:-1])
         assert len(x) == len(y)
-        ax.text(0.05, 0.9, str(len(x)) + " mutations", transform=ax.transAxes, size=14)
+        ax.text(0.05, 0.9, str(len(x)) + " mutations", transform=ax.transAxes, size=12)
         ax.text(
             0.05,
             0.85,
             "RMSLE: " + "{0:.2f}".format(np.sqrt(mean_squared_log_error(x, y))),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
@@ -388,21 +388,21 @@ class Figure(object):
             "Pearson's r: "
             + "{0:.2f}".format(scipy.stats.pearsonr(np.log(x), np.log(y))[0]),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
             0.75,
             "Spearman's $\\rho$: " + "{0:.2f}".format(scipy.stats.spearmanr(x, y)[0]),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         ax.text(
             0.05,
             0.7,
             "Bias:" + "{0:.2f}".format(np.mean(y - x)),
             transform=ax.transAxes,
-            size=14,
+            size=12,
         )
         if kc_distance_0 is not None:
             ax.text(
@@ -410,7 +410,7 @@ class Figure(object):
                 0.11,
                 "KC Dist. ($\lambda$=0):" + "{:.2E}".format(kc_distance_0),
                 transform=ax.transAxes,
-                size=14,
+                size=12,
             )
         if kc_distance_1 is not None:
             ax.text(
@@ -418,7 +418,7 @@ class Figure(object):
                 0.03,
                 "KC Dist. ($\lambda$=1):" + "{:.2E}".format(kc_distance_1),
                 transform=ax.transAxes,
-                size=14,
+                size=12,
             )
         return hb
 
@@ -1147,7 +1147,7 @@ class AncientConstraints(Figure):
         scatter_size = 0.2
         scatter_alpha = 0.2
         shading_alpha = 0.2
-        # Plot each method. Relate has estimates for each population, 
+        # Plot each method. Relate has estimates for each population,
         # so plot all estimates
         for i, method in enumerate(
             [
@@ -1657,7 +1657,7 @@ class WorldDensity(Figure):
 
 class Mismatch(Figure):
     """
-    Code for Figures S1 and S2
+    Code for Figures S11 and S12
     """
 
     data_path = "data"
@@ -1942,7 +1942,7 @@ class MismatchRealDataHGDP(MismatchRealData):
 
 class MultipleMutationDistributions(Figure):
     """
-    Figure S3: Plot the "histogram" of numbers of mutations for each site, for simulated
+    Figure S14: Plot the "histogram" of numbers of mutations for each site, for simulated
     and small TGP/HGDP inferred tree sequences
     """
 
@@ -2008,7 +2008,7 @@ class MultipleMutationDistributions(Figure):
 
 class PriorEvaluation(Figure):
     """
-    Figure S4: Evaluating the Lognormal Prior
+    Figure S13: Evaluating the Lognormal Prior
     To generate data for this figure, run:
     `python src/run_evaluation.py prior_evaluation --inference`
     """
@@ -2247,7 +2247,7 @@ class PriorEvaluation(Figure):
 
 class TsdateAccuracy(Figure):
     """
-    Figure S5: Evaluating tsdate's accuracy at various mutation rates
+    Figure S1: Evaluating tsdate's accuracy at various mutation rates
     """
 
     name = "tsdate_accuracy"
@@ -2338,7 +2338,7 @@ class TsdateAccuracy(Figure):
 
 class NeutralSims(Figure):
     """
-    Figure S6: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
+    Figure S2: Accuracy of tsdate, tsdate + tsinfer, Geva and Relate
     on a neutral coalescent simulation.
     """
 
@@ -2423,19 +2423,20 @@ class NeutralSims(Figure):
 
 class TsdateChr20Accuracy(Figure):
     """
-    Figure S7: Evaluating tsdate's accuracy on Simulated Chromosome 20
+    Figure S3: Evaluating tsdate's accuracy on Simulated Chromosome 20
     """
 
     name = "tsdate_accuracy_chr20"
     data_path = "simulated-data"
     filename = [
-        "tsdate_chr20_accuracy_mutations",
-        "tsdate_chr20_accuracy_error_mutations",
-        "tsdate_chr20_accuracy_anc_error_mutations",
-        "tsdate_chr20_accuracy_kc_distances",
-        "tsdate_chr20_accuracy_error_kc_distances",
-        "tsdate_chr20_accuracy_anc_error_kc_distances",
+        "tsdate_accuracy_chr20_mutations",
+        "tsdate_accuracy_chr20_error_mutations",
+        "tsdate_accuracy_chr20_anc_error_mutations",
+        "tsdate_accuracy_chr20_kc_distances",
+        "tsdate_accuracy_chr20_error_kc_distances",
+        "tsdate_accuracy_chr20_anc_error_kc_distances",
     ]
+    header = np.repeat("infer", len(filename))
 
     plt_title = "tsdate_accuracy_chr20"
 
@@ -2454,14 +2455,14 @@ class TsdateChr20Accuracy(Figure):
 
         f, axes = plt.subplots(
             ncols=3,
-            nrows=5,
+            nrows=6,
             sharex=True,
             sharey=True,
             gridspec_kw={
                 "wspace": 0.1,
-                "hspace": 0.1,
-                "width_ratios": [1, 1, 1],
-                "height_ratios": [1, 0.1, 1, 1, 1],
+                "hspace": 0.05,
+                "width_ratios": [0.8, 0.8, 0.8],
+                "height_ratios": [1.2, 0.05, 1.2, 1.2, 1.2, 1.2],
             },
             figsize=(15, 20),
         )
@@ -2481,17 +2482,19 @@ class TsdateChr20Accuracy(Figure):
             "tsdate",
             "",
             "tsinfer + tsdate",
-            "tsinfer with mismatch \n+ tsdate",
-            "iteration tsinfer \n+ tsdate",
+            "tsinfer (mismatch) \n+ tsdate",
+            "tsinfer (mismatch) \n+ tsdate + reinfer (mismatch)",
+            "tsinfer (mismatch)+ tsdate + reinfer \n (mismatch) + redate",
         ]
-        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2]):
-            axes[i, j].set_ylabel(name, rotation=90, size=20)
+        for (i, name), j in zip(enumerate(row_labels), [1, 2, 2, 2, 2, 2]):
+            axes[i, j].set_ylabel(name, rotation=90, size=14)
             axes[i, j].yaxis.set_label_position("right")
 
         sim = df["simulated_ts"]
         methods = [
             "tsdate_inferred",
             "tsdate_mismatch_inferred",
+            "tsdate_iterate_frommismatch_undated",
             "tsdate_iterate_frommismatch",
         ]
         comparable_sites = np.logical_and(sim > 0, df["tsdate"] > 0)
@@ -2514,15 +2517,13 @@ class TsdateChr20Accuracy(Figure):
             mut_df = mut_df.dropna(axis=1, how="all")
             mut_df = mut_df[np.all(mut_df > 0, axis=1)]
             for row, method, cmap in zip(
-                [2, 3, 4], methods, ["Blues", "Blues", "Blues"]
+                [2, 3, 4, 5], methods, ["Blues", "Blues", "Blues", "Blues"]
             ):
                 method = prefix + method
                 result = mut_df[method]
-                # comparable_sites = np.logical_and(sim > 0, result > 0)
                 comparable_sites = np.logical_and(
                     mut_df["simulated_ts"] > 0, result > 0
                 )
-                # cur_true_ages = sim[comparable_sites]
                 cur_true_ages = mut_df["simulated_ts"][comparable_sites]
                 cur_results = result[comparable_sites]
                 self.mutation_accuracy(
@@ -2538,15 +2539,14 @@ class TsdateChr20Accuracy(Figure):
         axes[2, 0].set_title("No Error")
         axes[2, 1].set_title("Empirical Error")
         axes[2, 2].set_title("Empirical Error + 1% Ancestral State Error")
-        f.text(0.5, 0.05, "True Time", ha="center", size=25)
+        f.text(0.5, 0.08, "True Time", ha="center", size=25)
         f.text(0.08, 0.4, "Estimated Time", va="center", rotation="vertical", size=25)
-
         self.save(self.name)
 
 
 class Chr20Sims(Figure):
     """
-    Figure S8: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
+    Figure S4: Evaluating tsdate, Relate, and GEVA accuracy on Simulated
     Chromosome 20 snippets
     """
 
@@ -2560,6 +2560,7 @@ class Chr20Sims(Figure):
         "chr20_sims_error_kc_distances",
         "chr20_sims_anc_error_kc_distances",
     ]
+    header = np.repeat("infer", len(filename))
     plt_title = "simulated_accuracy_chr20"
 
     def plot(self):
@@ -2677,7 +2678,7 @@ class Chr20Sims(Figure):
 
 class ScalingFigure(Figure):
     """
-    Figure S9: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
+    Figure S5: CPU and memory scaling of tsdate, tsinfer, Relate and GEVA.
     With both samples and length of sequence.
     """
 
@@ -2945,7 +2946,7 @@ class ScalingFigure(Figure):
 
 class MisspecifySampleTimes(Figure):
     """
-    Figure S10: Measuring the effect of misspecifying sample times
+    Figure S17: Measuring the effect of misspecifying sample times
     """
 
     name = "misspecify_sample_times"
@@ -3054,7 +3055,7 @@ class MisspecifySampleTimes(Figure):
 
 class ArchaicDescentSimsEvaluation(Figure):
     """
-    Figures S11A and S11B: Simulated evaluation of descent from sampled archaic
+    Figure 15: Simulated evaluation of descent from sampled archaic
     individuals.
     """
 
@@ -3187,7 +3188,7 @@ class ArchaicDescentSimsEvaluation(Figure):
 
 class GeographicEvaluation(Figure):
     """
-    Figure S12: Evaluation of geographic estimator.
+    Figure S9: Evaluation of geographic estimator.
     Generate data with:
     `python src/run_evaluation.py geographic_evaluation --setup --inference`
     """
@@ -3302,7 +3303,7 @@ class GeographicEvaluation(Figure):
 
 class SimulatedAfricanAncestors(Figure):
     """
-    Figure S13. Plot proportion of simulated ancestors closer to Eurasia than Africa
+    Figure S16. Plot proportion of simulated ancestors closer to Eurasia than Africa
     Generate data with same command as previous figure.
     """
 
@@ -3354,7 +3355,7 @@ class SimulatedAfricanAncestors(Figure):
 
 class SiteLinkageAndQuality(Figure):
     """
-    Figure S14. Plot proportion of sites with low quality or linkage as a function of the
+    Figure S6. Plot proportion of sites with low quality or linkage as a function of the
     number of mutations at those sites.
     To generate tree sequence for this plot, run:
     `make hgdp_tgp_sgdp_high_cov_ancients_chr20.dated.trees`
@@ -3522,7 +3523,7 @@ class SiteLinkageAndQuality(Figure):
 
 class DeletedSitesChr20(Figure):
     """
-    Figure S15. Evaluating the effect of deleting sites with > 100 mutations in the
+    Figure S10. Evaluating the effect of deleting sites with > 100 mutations in the
     inferred tree sequence of the long arm of Chromosome 20.
     To generate data for this plot, run:
     `python src/analyze_data.py redate_delete_sites`
@@ -3765,7 +3766,7 @@ class AncientDescent(Figure):
 
 class AfanasievoDescent(AncientDescent):
     """
-    Figure S16. Find Descendants of the Afanasievo Sons
+    Figure S7. Find Descendants of the Afanasievo Sons
     To generate data for this plot, run:
     `python src/analyze_data.py ancient_descendants --chrom 20`
     `python src/analyze_data.py ancient_descent_haplotypes --chrom 20`
@@ -3792,7 +3793,7 @@ class AfanasievoDescent(AncientDescent):
 
 class DenisovanDescent(AncientDescent):
     """
-    Figures 3C and S17. Find Descendants of the Denisovan
+    Figures 3C and S21. Find Descendants of the Denisovan
     To generate data for this figure, run:
     `python src/analyze_data.py reference_sets` and
     `python src/analyze_data.py ancient_descent_haplotypes`
@@ -3819,7 +3820,7 @@ class DenisovanDescent(AncientDescent):
 
 class VindijaRegionDescent(Figure):
     """
-    Figure S18: Vindija Descent Boxplot
+    Figure S8: Vindija Descent Boxplot
     To generate data for this figure, inferred tree sequences of modern and ancient
     data is required for each chromosomal arm, generated in all-data/ with:
     `make hgdp_tgp_sgdp_high_cov_ancients_chr*.dated.trees`. Then run:
@@ -3865,7 +3866,7 @@ class VindijaRegionDescent(Figure):
 
 class TgpMutEstsFrequency(Figure):
     """
-    Figure S19: Figure showing TGP mutation age estimates from tsdate,
+    Figure S18: Figure showing TGP mutation age estimates from tsdate,
     Relate, GEVA vs. frequency.
     See required data for "ancient_constraints_tgp"
     """
@@ -3941,7 +3942,7 @@ class TgpMutEstsFrequency(Figure):
 
 class TgpMutationAverageAge(Figure):
     """
-    Figure S20: Compare mutation age estimates from tsdate, Relate, and
+    Figure S19: Compare mutation age estimates from tsdate, Relate, and
     GEVA for tgp chromosome 20.
     See required data for "ancient_constraints_tgp"
     """
@@ -3989,7 +3990,7 @@ class TgpMutationAverageAge(Figure):
 
 class TgpMutationAgeComparisons(Figure):
     """
-    Figure S21: Comparing TGP mutation age estimates from tsdate, Relate,
+    Figure S20: Comparing TGP mutation age estimates from tsdate, Relate,
     and GEVA.
     See required data for "ancient_constraints_tgp"
     """
@@ -4064,7 +4065,7 @@ class TgpMutationAgeComparisons(Figure):
 
 class AncestryVideo(Figure):
     """
-    Video S1. Geography of all ancestors
+    Movie S1. Geography of all ancestors
     """
 
     name = "ancestry_video"
@@ -4239,7 +4240,7 @@ class AncestryVideo(Figure):
 
 class Timeline(Figure):
     """
-    Video S1. Timeline for Ancestry Map
+    Movie S1. Timeline for Ancestry Map
     """
 
     name = "timeline"
