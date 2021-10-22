@@ -1709,7 +1709,7 @@ class CpuScalingLength(CpuScalingSampleSize):
 
 class MisspecifyAncientDates(DataGeneration):
     """
-    Figure S17: Evaluating the effect of misspecifying ancient sample ages.
+    Figure S15: Evaluating the effect of misspecifying ancient sample ages.
     """
 
     name = "misspecify_sample_times"
@@ -1778,7 +1778,7 @@ class MisspecifyAncientDates(DataGeneration):
 
 class ArchaicDescent(Chr20Sims):
     """
-    Figure S15: Evaluate descent from sampled archaic individuals
+    Figure S16: Evaluate descent from sampled archaic individuals
     """
 
     name = "archaic_descent_evaluation"
@@ -2235,7 +2235,7 @@ class ArchaicDescent(Chr20Sims):
 
 class GeographicEvaluation(Chr20Sims):
     """
-    Figures S9 and S16, evaluation of the accuracy of ancestor location estimator.
+    Figures S9 and S17, evaluation of the accuracy of ancestor location estimator.
     """
 
     name = "geographic_evaluation"

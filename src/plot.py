@@ -2946,7 +2946,7 @@ class ScalingFigure(Figure):
 
 class MisspecifySampleTimes(Figure):
     """
-    Figure S17: Measuring the effect of misspecifying sample times
+    Figure S15: Measuring the effect of misspecifying sample times
     """
 
     name = "misspecify_sample_times"
@@ -3055,7 +3055,7 @@ class MisspecifySampleTimes(Figure):
 
 class ArchaicDescentSimsEvaluation(Figure):
     """
-    Figure 15: Simulated evaluation of descent from sampled archaic
+    Figure S16: Simulated evaluation of descent from sampled archaic
     individuals.
     """
 
@@ -3303,7 +3303,7 @@ class GeographicEvaluation(Figure):
 
 class SimulatedAfricanAncestors(Figure):
     """
-    Figure S16. Plot proportion of simulated ancestors closer to Eurasia than Africa
+    Figure S17. Plot proportion of simulated ancestors closer to Eurasia than Africa
     Generate data with same command as previous figure.
     """
 
