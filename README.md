@@ -18,8 +18,8 @@ These analyses are placed in subdirectories as follows:
 You must first clone this repo, including submodules as follows:
 
 ```
-$ git clone --recurse-submodules https://github.com/awohns/unified_genealogy_paper.git
-$ cd unified_genealogy_paper
+git clone --recurse-submodules https://github.com/awohns/unified_genealogy_paper.git
+cd unified_genealogy_paper
 ```
 
 #### Required Software
@@ -30,7 +30,7 @@ The Python packages required are listed in the ``requirements.txt`` file. These 
 installed with
 
 ```
-$ python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Please use Python 3.8 (`numba' fails to install using pip with Python 3.9).
@@ -39,8 +39,8 @@ Please use Python 3.8 (`numba' fails to install using pip with Python 3.9).
 separately with conda as follows:
 
 ```
-$ conda install -c conda-forge cartopy
-$ conda install -c conda-forge ffmpeg
+conda install -c conda-forge cartopy
+conda install -c conda-forge ffmpeg
 ```
 
 ### Required software for preparing real data
@@ -56,11 +56,11 @@ We compare our methods with [Genealogical Estimation of Variant Age (GEVA)](http
 All of these tools are kept in the ``tools`` directory and can be downloaded and built using 
 
 ```
-$ cd tools
-$ make all
+cd tools
+make all
 ```
 
-## Inferring Tree Sequences from Real Data
+#### Inferring Tree Sequences from Real Data
 
 Please see the [README](all-data/README.md) in the ``all-data`` directory for details on inferring the combined tree sequence. 
 
@@ -71,9 +71,9 @@ To generate data required for simulation-based figures and to plot the figures t
 The following example will generate Figure 1c:
 
 ```
-$ python src/run_evaluation.py tsdate_neutral_sims --setup
-$ python src/run_evaluation.py tsdate_neutral_sims --inference
-$ python src/plot.py tsdate_neutral_sims
+python src/run_evaluation.py tsdate_neutral_sims --setup
+python src/run_evaluation.py tsdate_neutral_sims --inference
+python src/plot.py tsdate_neutral_sims
 ```
 
 The first command runs the simulations for each evaluation. The simulations are stored in the `simulated-data` directory 
@@ -88,40 +88,39 @@ csv files in the `simulated-data` directory. The third command plots the csv fil
 To produce all the simulation data in our paper, run the following, in order
 
 ```
-$ python src/run_evaluation.py --setup all 
-$ python src/run_evaluation.py --infer all
+python src/run_evaluation.py --setup all 
+python src/run_evaluation.py --infer all
 ```
 
 You can speed up the inference step by using multiple processors, specified using the `-p` flag.
 For instance, on a 64 core machine, using all cores:
 
 ```
-$ python src/run_evaluation.py infer -p 64 all # will take a few days
+python src/run_evaluation.py infer all -p 64 all # will take a few days
 ```
 
 The mismatch simulations are produced separately, using the Makefile in the `data` directory:
 
 ```
-$ cd data
-$ make mismatch
+cd data
+make mismatch
 ```
 
 ### Analyzing inferred tree sequences
 
 Once you have inferred tree sequences and the results are in the ``all-data`` directory, run functions in ``src/analyze_data.py`` to generate data for non-simulation based figures. The figures themselves are plotted using ``src/plot.py``
 
-Before running these analyses, please download age estimates for 1000 Genomes variants from ``Relate'' and ``GEVA'' using the following:
+Before running these analyses, download other required files (such as allele age estimates from `Relate` and `GEVA`) using the following:
 
 ```
-$ cd data
-$ make relate_ages
-$ make geva_ages
+cd data
+make all
 ```
 
 You can then run all analyses using real data with:
 
 ```
-$ python src/analyze_data.py all
+python src/analyze_data.py all
 ```
 
 ### Plotting figures
