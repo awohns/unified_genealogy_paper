@@ -5,7 +5,7 @@ geva:
 	cd geva && make
 
 relate:
-	wget https://myersgroup.github.io/relate/download/relate_v1.1.7_x86_64_dynamic.tgz
+	wget https://github.com/MyersGroup/relate/raw/master/old_versions/relate_v1.1.7_x86_64_dynamic.tgz
 	tar -xzf relate_v1.1.7_x86_64_dynamic.tgz
 	mv relate_v1.1.7_x86_64_dynamic relate 
 

@@ -89,14 +89,14 @@ To produce all the simulation data in our paper, run the following, in order
 
 ```
 python src/run_evaluation.py --setup all 
-python src/run_evaluation.py --infer all
+python src/run_evaluation.py --infer all # will take a few days
 ```
 
 You can speed up the inference step by using multiple processors, specified using the `-p` flag.
 For instance, on a 64 core machine, using all cores:
 
 ```
-python src/run_evaluation.py infer all -p 64 all # will take a few days
+python src/run_evaluation.py --infer all -p 64
 ```
 
 The mismatch simulations are produced separately, using the Makefile in the `data` directory:
@@ -110,11 +110,13 @@ make mismatch
 
 Once you have inferred tree sequences and the results are in the ``all-data`` directory, run functions in ``src/analyze_data.py`` to generate data for non-simulation based figures. The figures themselves are plotted using ``src/plot.py``
 
-Before running these analyses, download other required files (such as allele age estimates from `Relate` and `GEVA`) using the following:
+Before running these analyses, download other required files (allele age estimates from `Relate` and `GEVA` as well as the 1000 genomes chr20 mask file) using the following:
 
 ```
 cd data
-make all
+make relate_ages
+make geva_ages.csv.gz
+make chr20_mask
 ```
 
 You can then run all analyses using real data with:
@@ -125,10 +127,15 @@ python src/analyze_data.py all
 
 ### Plotting figures
 
-The final figures can then be plotted using
+The final figures (including the movie) can then be plotted using
 
 ```
 python src/plot.py all
 ```
 
+The interactive figure is created separately using the following command:
+
+```
+python src/interactive_plot.py
+```
 
