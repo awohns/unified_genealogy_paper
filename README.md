@@ -1,20 +1,21 @@
 # Code for "A unified genealogy of modern and ancient genomes"
 
-This repo contains code used in ["A unified genealogy of modern and ancient genomes"](https://www.biorxiv.org/content/10.1101/2021.02.16.431497v1).
+This repo contains code used in ["A unified genealogy of modern and ancient genomes"](https://www.biorxiv.org/content/10.1101/2021.02.16.431497v2).
 This includes:
+* pipelines to generate a unified, dated tree sequence from multiple datasets
 * simulation based validation of [tsinfer](https://tsinfer.readthedocs.io/) and
 [tsdate](https://tsdate.readthedocs.io/en/latest/)
-* pipelines to generate a unified, dated tree sequence from multiple datasets
-* empirical validation of the tree sequence using ancient genomes
+* empirical validation of inferred tree sequences using ancient genomes
 * code to produce all non-schematic figures in the paper, as well as the interactive figure and supplementary video
 
 These analyses are placed in subdirectories as follows:
 * `all-data` contains all code for downloading and preparing real data, as well as the pipeline for creating tree sequences
-* `src` contains scripts to run analyses and validation on both real and simulated data
-* `data` contains reference data needed for some analyses and is where the results of analyses performed on the real inferred tree sequences are stored. It is also where simulations evaluating mismatch parameters in tsinfer are performed.
-* `simulated-data` contains the results of all simulation-based analyses
+* `src` contains scripts to run analyses and validation on both real and simulated data, as well as code for plotting figures
+* `data` contains reference data needed for some analyses. It is also where the results of analyses performed on tree sequences inferred from real data are stored. Finally, it is also where simulations evaluating mismatch parameters in tsinfer are performed
+* `simulated-data` is where the results of all simulation-based analyses are saved
 * `tools` contains methods used to compare the accuracy of `tsinfer` and `tsdate` as well as tools to process variant data files
 
+### Getting Started
 You must first clone this repo, including submodules as follows:
 
 ```
@@ -22,9 +23,9 @@ git clone --recurse-submodules https://github.com/awohns/unified_genealogy_paper
 cd unified_genealogy_paper
 ```
 
-#### Required Software
+### Required Software
 
-### Installing required python modules
+#### Installing required python modules
 
 Please use Python 3.8 (`numba' fails to install using pip with Python 3.9).
 
@@ -44,7 +45,7 @@ python -m pip install -r requirements.txt
 ```
 
 
-### Required software for preparing real data
+#### Required software for preparing real data
 
 We require [BCFtools, SAMtools, and HTSlib](http://www.htslib.org/download/), as well as
 [convertf](https://github.com/argriffing/eigensoft/tree/master/CONVERTF), [Picard](https://broadinstitute.github.io/picard/),
@@ -61,15 +62,15 @@ cd tools
 make all
 ```
 
-#### Inferring Tree Sequences from Real Data
+### Inferring Tree Sequences from Real Data
 
-Please see the [README](all-data/README.md) in the ``all-data`` directory for details on inferring the combined tree sequence. 
+Please see the [README](all-data/README.md) in the ``all-data`` directory for details on inferring tree sequences from real data.
 
 
-#### Running Simulations
+### Running Simulations
 
 To generate data required for simulation-based figures and to plot the figures themselves, follow this general process: generate data, run analyses, and plot the results. 
-The following example will generate Figure 1c:
+For example, the following will generate Figure 1c:
 
 ```
 python src/run_evaluation.py tsdate_neutral_sims --setup
@@ -86,11 +87,11 @@ csv files in the `simulated-data` directory. The third command plots the csv fil
 
 ### Running all evaluations
 
-To produce all the simulation data in our paper, run the following, in order
+To produce all the simulation data in our paper, run the following, in order:
 
 ```
 python src/run_evaluation.py --setup all 
-python src/run_evaluation.py --infer all # will take a few days
+python src/run_evaluation.py --infer all # will take multiple days
 ```
 
 You can speed up the inference step by using multiple processors, specified using the `-p` flag.
@@ -128,7 +129,7 @@ python src/analyze_data.py all
 
 ### Plotting figures
 
-The final figures (including the movie) can then be plotted using
+When the above steps have been completed, figures (including the movie) can be plotted using:
 
 ```
 python src/plot.py all
