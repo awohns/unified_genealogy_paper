@@ -33,7 +33,7 @@ installed with
 python -m pip install -r requirements.txt
 ```
 
-Please use Python 3.8 (`numba' fails to install using pip with Python 3.9).
+Please use Python 3.8 (`numba` fails to install using pip with Python 3.9).
 
 ``cartopy`` (required for generating figures with maps) and ``ffmpeg`` (required to create the movie)  must be installed
 separately with conda as follows:
