@@ -27,7 +27,7 @@ cd unified_genealogy_paper
 
 #### Installing required python modules
 
-Please use Python 3.8 (`numba' fails to install using pip with Python 3.9).
+Please use Python >= 3.8 and <= 3.10 (`numba' currently fails to install under Python 3.11).
 
 First, ``cartopy`` (required for generating figures with maps) and ``ffmpeg`` (required to create the movie)  must be installed
 with conda as follows:
