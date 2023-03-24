@@ -112,7 +112,7 @@ make mismatch
 
 Once you have inferred tree sequences and the results are in the ``all-data`` directory, run functions in ``src/analyze_data.py`` to generate data for non-simulation based figures. The figures themselves are plotted using ``src/plot.py``
 
-Before running these analyses, download other required files (allele age estimates from `Relate` and `GEVA` as well as the 1000 genomes chr20 mask file) using the following:
+Before running these analyses, for certain plots you will need to download other required files (allele age estimates from `Relate` and `GEVA` for fig S18="tgp_muts_frequency"; the 1000 genomes chr20 mask file for for fig S6="ld_quality_by_mutations"). You can do this using the following:
 
 ```
 cd data
@@ -140,4 +140,21 @@ The interactive figure is created separately using the following command:
 ```
 python src/interactive_plot.py
 ```
+#### Reproducing plots from downloaded data
 
+Note that if you simply want to produce figures similar to those in our published paper, you can download the
+tree sequences from Zenodo (https://zenodo.org/record/5512994), and perform plotting steps separately,
+e.g. within a terminal
+
+```
+cd all-data
+# can do this for different chromosome arms: here we use chr20_q as an example
+wget https://zenodo.org/record/5512994/files/hgdp_tgp_sgdp_high_cov_ancients_chr20_q.dated.trees.tsz
+python -m tszip -d hgdp_tgp_sgdp_high_cov_ancients_chr20_q.dated.trees.tsz  # uncompress the download
+
+# Make any csv files needed for a specific plot (see python src/analyze_data.py --help for options)
+python src/analyze_data.py hgdp_sgdp_ancients_ancestral_geography --chrom 20_q
+
+# Make a world map (see python src/plot.py for plots available)
+python src/plot.py world_density --chrom 20_q
+```
