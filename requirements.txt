@@ -1,6 +1,7 @@
 tskit >= 0.3.5
+tszip
 pandas >= 1.2.2
-numpy == 1.20.1
+numpy < 1.24, >= 1.20.1  # Numba currently incompatible with 1.24
 msprime >= 1.0.0a3
 tsinfer == 0.2.1
 tsdate == 0.1.4
@@ -18,4 +19,4 @@ pyreadr
 seaborn
 mpld3
 Bio
-git+git://github.com/popsim-consortium/stdpopsim.git@929dc39b3a7064913020ea58033037352a79f5bc#e=stdpopsim
+stdpopsim
