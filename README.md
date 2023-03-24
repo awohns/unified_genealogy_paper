@@ -152,9 +152,13 @@ cd all-data
 wget https://zenodo.org/record/5512994/files/hgdp_tgp_sgdp_high_cov_ancients_chr20_q.dated.trees.tsz
 python -m tszip -d hgdp_tgp_sgdp_high_cov_ancients_chr20_q.dated.trees.tsz  # uncompress the download
 
+# Make a world density map (see python src/plot.py for plots available)
 # Make any csv files needed for a specific plot (see python src/analyze_data.py --help for options)
 python src/analyze_data.py hgdp_sgdp_ancients_ancestral_geography --chrom 20_q
+python src/plot.py world_density --chrom 20_q  # creates files in figures/
 
-# Make a world map (see python src/plot.py for plots available)
-python src/plot.py world_density --chrom 20_q
+# Make a world locations map
+python src/analyze_data.py average_pop_ancestors_geography --chrom 20_q
+python src/plot.py population_ancestors --chrom 20_q  # creates files in figures/
+
 ```
