@@ -9,7 +9,7 @@ as well as all intermediate files.
 
 We assume that all commands are run **within** this directory.
 
-Note: The Afanasievo datasets must be separately downloaded from [here](https://reichdata.hms.harvard.edu/pub/datasets/release/wohn_2021_phasedAfanasievo/).
+Note: the Afanasievo datasets are downloaded from [here](https://reichdata.hms.harvard.edu/pub/datasets/release/wohn_2021_phasedAfanasievo/).
 
 
 ## Requirements
